@@ -1,0 +1,15 @@
+services:
+  robot_stack:
+    build:
+      context: ..
+      dockerfile: .devcontainer/Dockerfile
+    network_mode: host
+    user: "${UID:-1000}:${GID:-1000}"
+    volumes:
+      - ./:/home/workspace
+    command: >
+      bash -c "source /opt/ros/humble/setup.bash &&
+               cd /home/workspace &&
+               colcon build --symlink-install &&
+               source install/setup.bash &&
+               ros2 launch dummy_robot dummy.launch.py"
