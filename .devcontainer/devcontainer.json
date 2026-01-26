@@ -1,0 +1,37 @@
+{
+    "name": "ROS 2 Development Container",
+    "privileged": true,
+    "remoteUser": "koko",
+    "build": {
+        "dockerfile": "Dockerfile",
+        "args": {
+            "USERNAME": "koko"
+        }
+    },
+    "workspaceFolder": "/home/workspace",
+    "workspaceMount": "source=${localWorkspaceFolder}/workspace,target=/home/workspace,type=bind",
+    "customizations": {
+        "vscode": {
+            "extensions":[
+                "ms-python.python",
+                "ms-iot.vscode-ros"
+            ]
+        }
+    },
+    "containerEnv": {
+        "DISPLAY": "unix:0",
+        "ROS_AUTOMATIC_DISCOVERY_RANGE": "LOCALHOST",
+        "ROS_DOMAIN_ID": "0"
+    },
+    "runArgs": [
+        "--net=host",
+        "--pid=host",
+        "--ipc=host",
+        "-e", "DISPLAY=${env:DISPLAY}"
+    ],
+    "mounts": [
+       "source=/tmp/.X11-unix,target=/tmp/.X11-unix,type=bind,consistency=cached",
+       "source=/dev/dri,target=/dev/dri,type=bind,consistency=cached"
+    ],
+    "postCreateCommand": "sudo rosdep update && sudo rosdep install --from-paths src --ignore-src -y && sudo chown -R $(whoami) /home/workspace/"
+}
