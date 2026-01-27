@@ -14,7 +14,7 @@ RUN groupadd --gid $USER_GID $USERNAME \
     
 RUN apt-get update && apt-get install -y \
     python3-pip \
-    ros-humble-foxglove-bridge \
+    ros-humble-rosbridge-server  \
     ros-humble-nav2-map-server \
     ros-humble-nav2-lifecycle-manager
 
