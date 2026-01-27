@@ -35,5 +35,10 @@ def generate_launch_description() -> LaunchDescription:
           package='dummy_robot',
           executable='dummy_pose_tf',
           name='dummy_pose_tf_node'  
+        ),
+        Node(
+          package='dummy_robot',
+          executable='dummy_planner',
+          name='dummy_planner_node'  
         )
     ])
