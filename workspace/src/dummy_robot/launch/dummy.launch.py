@@ -23,9 +23,13 @@ def generate_launch_description() -> LaunchDescription:
             parameters=[{'autostart': True, 'node_names': ['map_server']}]
         ),
         Node(
-            package='foxglove_bridge',
-            executable='foxglove_bridge',
-            name='foxglove_bridge'
+            package='rosbridge_server',
+            executable='rosbridge_websocket',
+            name='rosbridge_websocket',
+            parameters=[{
+                'port': 9090,
+                'address': '0.0.0.0'
+            }]
         ),
         Node(
           package='dummy_robot',
