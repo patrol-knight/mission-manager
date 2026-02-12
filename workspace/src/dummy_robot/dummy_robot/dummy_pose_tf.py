@@ -16,8 +16,8 @@ class RobotPoseTf(Node):
         self.path_sub = self.create_subscription(Path, '/mission/path', self._path_callback, 10)
         
         self.timer = self.create_timer(0.05, self._update)
-        self.current_x = 0.0
-        self.current_y = 0.0
+        self.current_x = -23.5
+        self.current_y = -2.3
         self.current_yaw = 0.0
         self.waypoints = []
         self.speed = 0.1
@@ -28,41 +28,48 @@ class RobotPoseTf(Node):
         self.get_logger().info(f"Received {len(self.waypoints)} waypoints.")
 
     def _update(self):
-        if not self.waypoints:
-            return
-
-        target = self.waypoints[0]
-        dx = target.x - self.current_x
-        dy = target.y - self.current_y
-        distance = math.sqrt(dx**2 + dy**2)
-
-        if distance < 0.1:
-            self.waypoints.pop(0)
-            return
-
-        self.current_yaw = math.atan2(dy, dx)
-        self.current_x += (dx / distance) * self.speed
-        self.current_y += (dy / distance) * self.speed
-
         now = self.get_clock().now()
+        
+        if self.waypoints:
+            target = self.waypoints[0]
+            dx = target.x - self.current_x
+            dy = target.y - self.current_y
+            distance = math.sqrt(dx**2 + dy**2)
+
+            if distance < 0.1:
+                self.waypoints.pop(0)
+            else:
+                self.current_yaw = math.atan2(dy, dx)
+                self.current_x += (dx / distance) * self.speed
+                self.current_y += (dy / distance) * self.speed
+
+        # --- Always publish TF ---
         qz = math.sin(self.current_yaw / 2.0)
         qw = math.cos(self.current_yaw / 2.0)
+
         t = TransformStamped()
         t.header.stamp = now.to_msg()
         t.header.frame_id = 'map'
         t.child_frame_id = 'base_link'
         t.transform.translation.x = self.current_x
         t.transform.translation.y = self.current_y
+        t.transform.translation.z = 0.0
+        t.transform.rotation.x = 0.0
+        t.transform.rotation.y = 0.0
         t.transform.rotation.z = qz
         t.transform.rotation.w = qw
+
         self.tf_broadcaster.sendTransform(t)
+
         p = PoseStamped()
         p.header = t.header
         p.pose.position.x = self.current_x
         p.pose.position.y = self.current_y
-        p.pose.orientation.z = qz
-        p.pose.orientation.w = qw
+        p.pose.position.z = 0.0
+        p.pose.orientation = t.transform.rotation
+
         self.pose_publisher.publish(p)
+
         
 
 def main(args=None) -> None:
