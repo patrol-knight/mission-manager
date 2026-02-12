@@ -238,7 +238,6 @@ export default function App() {
             </span>
           </div>
 
-          {/* Waypoint List Content */}
           <div style={{
             maxHeight: isWaypointListExpanded ? "400px" : "0",
             overflow: "hidden",
@@ -310,7 +309,6 @@ export default function App() {
           </div>
         </div>
 
-        {/* Spacer to push content to top */}
         <div style={{ flex: 1 }} />
       </div>
 
