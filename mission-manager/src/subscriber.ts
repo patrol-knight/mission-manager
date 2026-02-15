@@ -9,7 +9,9 @@ export type MapData = {
     resolution: number;
     origin: { x: number; y: number };
   };
-};export function subscribeMap(onMap: (data: MapData) => void) {
+};
+
+export function subscribeMap(onMap: (data: MapData) => void) {
   const mapTopic = new Topic({
     ros,
     name: "/map",
@@ -79,14 +81,14 @@ export function subscribeRobotPose(
 ) {
   const poseTopic = new Topic({
     ros,
-    name: "/robot_pose",
-    messageType: "geometry_msgs/PoseStamped",
+    name: "/odom",
+    messageType: "nav_msgs/Odometry",
   });
 
   poseTopic.subscribe((msg: any) => {
-    const { position, orientation } = msg.pose;
-
+    const { position, orientation } = msg.pose.pose;
     const { x: qx, y: qy, z: qz, w: qw } = orientation;
+
     const yaw = Math.atan2(
       2 * (qw * qz + qx * qy),
       1 - 2 * (qy * qy + qz * qz)

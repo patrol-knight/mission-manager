@@ -203,10 +203,8 @@ export function MapView() {
     el.style.position = "relative";
 
     el.innerHTML = `
-      <svg width="30" height="30" viewBox="0 0 30 30" style="transform: rotate(${robotPose.yaw * (180 / Math.PI)}deg);">
-        <!-- 機器人主體（圓形） -->
+      <svg width="30" height="30" viewBox="0 0 30 30" style="transform: rotate(${-robotPose.yaw * (180 / Math.PI) + 90}deg);">
         <circle cx="15" cy="15" r="12" fill="#90e0ef" stroke="#023e8a" stroke-width="2"/>
-        <!-- 方向箭頭 -->
         <path d="M 15 5 L 20 15 L 15 12 L 10 15 Z" fill="#023e8a"/>
       </svg>
     `;
