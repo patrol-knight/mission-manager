@@ -38,7 +38,7 @@ def generate_launch_description() -> LaunchDescription:
         ),
         Node(
           package='dummy_robot',
-          executable='dummy_planner',
-          name='dummy_planner_node'  
+          executable='astar_planner',
+          name='astar_planner_node'  
         )
     ])
