@@ -8,9 +8,15 @@ export default function App() {
   const mode = useWaypoint((s) => s.mode);
   const setMode = useWaypoint((s) => s.setMode);
   const [isWaypointListExpanded, setIsWaypointListExpanded] = useState(false);
+  const [showNotification, setShowNotification] = useState(false);
 
   const handlePublishMission = () => {
     publishMission(waypoints);
+    
+    setShowNotification(true);
+    setTimeout(() => {
+      setShowNotification(false);
+    }, 1000);
   };
 
   return (
@@ -315,6 +321,146 @@ export default function App() {
       <div style={{ flex: 1, position: "relative" }}>
         <MapView />
       </div>
+
+      {/* Notification Popup */}
+      {showNotification && (
+        <div
+          style={{
+            position: "fixed",
+            top: "50%",
+            left: "50%",
+            transform: "translate(-50%, -50%)",
+            background: "white",
+            borderRadius: 16,
+            padding: "32px 48px",
+            boxShadow: "0 20px 60px rgba(0,0,0,0.3)",
+            zIndex: 10000,
+            minWidth: 400,
+            textAlign: "center",
+            animation: "slideIn 0.3s ease-out",
+          }}
+        >
+          {/* Close X button */}
+          <button
+            onClick={() => setShowNotification(false)}
+            style={{
+              position: "absolute",
+              top: 12,
+              right: 12,
+              width: 32,
+              height: 32,
+              background: "transparent",
+              border: "none",
+              borderRadius: "50%",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              transition: "all 0.2s ease",
+              color: "#6c757d",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = "#f8f9fa";
+              e.currentTarget.style.color = "#212529";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = "transparent";
+              e.currentTarget.style.color = "#6c757d";
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M2.146 2.854a.5.5 0 1 1 .708-.708L8 7.293l5.146-5.147a.5.5 0 0 1 .708.708L8.707 8l5.147 5.146a.5.5 0 0 1-.708.708L8 8.707l-5.146 5.147a.5.5 0 0 1-.708-.708L7.293 8 2.146 2.854Z"/>
+            </svg>
+          </button>
+
+          <div style={{
+            width: 64,
+            height: 64,
+            margin: "0 auto 20px",
+            background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+            borderRadius: "50%",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            animation: "scaleIn 0.5s ease-out",
+          }}>
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
+              <path d="M20 6L9 17L4 12" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </div>
+          
+          <h3 style={{
+            margin: "0 0 12px 0",
+            fontSize: 24,
+            fontWeight: 700,
+            color: "#212529",
+          }}>
+            Mission Published!
+          </h3>
+          
+          <p style={{
+            margin: "0 0 8px 0",
+            fontSize: 16,
+            color: "#6c757d",
+            fontWeight: 500,
+          }}>
+            {waypoints.length} waypoint{waypoints.length !== 1 ? 's' : ''} published successfully
+          </p>
+        </div>
+      )}
+
+      {/* Backdrop overlay */}
+      {showNotification && (
+        <div
+          onClick={() => setShowNotification(false)}
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: "rgba(0, 0, 0, 0.5)",
+            zIndex: 9999,
+            backdropFilter: "blur(4px)",
+            animation: "fadeIn 0.3s ease-out",
+          }}
+        />
+      )}
+
+      {/* Animations */}
+      <style>{`
+        @keyframes slideIn {
+          from {
+            opacity: 0;
+            transform: translate(-50%, -60%);
+          }
+          to {
+            opacity: 1;
+            transform: translate(-50%, -50%);
+          }
+        }
+
+        @keyframes fadeIn {
+          from {
+            opacity: 0;
+          }
+          to {
+            opacity: 1;
+          }
+        }
+
+        @keyframes scaleIn {
+          0% {
+            transform: scale(0);
+          }
+          50% {
+            transform: scale(1.1);
+          }
+          100% {
+            transform: scale(1);
+          }
+        }
+      `}</style>
     </div>
   );
 }
