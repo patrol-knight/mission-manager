@@ -1,8 +1,8 @@
 services:
   robot_stack:
     build:
-      context: ..
-      dockerfile: .devcontainer/Dockerfile
+      context: .
+      dockerfile: Dockerfile
     network_mode: host
     environment:
       - DISPLAY=${DISPLAY}
