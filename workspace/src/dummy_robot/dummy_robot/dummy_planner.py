@@ -9,8 +9,8 @@ class Planner(Node):
     def __init__(self):
         super().__init__('dummy_planner_node')
 
-        self.subscriber = self.create_subscription(PoseArray, '/mission/waypoints', self._update, 10)
-        self.publisher = self.create_publisher(Path, '/mission/path', 10)
+        self.subscriber = self.create_subscription(PoseArray, '/interface/waypoints', self._update, 10)
+        self.publisher = self.create_publisher(Path, '/planning/path', 10)
 
         self.get_logger().info("Dummy Planner ready.")
 

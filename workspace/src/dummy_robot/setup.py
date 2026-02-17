@@ -30,7 +30,8 @@ setup(
     entry_points={
         'console_scripts': [
             'dummy_pose_tf = dummy_robot.dummy_pose_tf:main',
-            'dummy_planner = dummy_robot.dummy_planner:main'
+            'dummy_planner = dummy_robot.dummy_planner:main',
+            'astar_planner = dummy_robot.astar_planner:main'
         ],
     },
 )
