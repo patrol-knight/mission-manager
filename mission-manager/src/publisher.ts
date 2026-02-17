@@ -3,7 +3,7 @@ import { ros } from "./ros"
 
 export const missionTopic = new Topic({
   ros,
-  name: "/mission/waypoints",
+  name: "/interface/waypoints",
   messageType: "geometry_msgs/PoseArray",
 });
 

@@ -81,7 +81,7 @@ export function subscribeRobotPose(
 ) {
   const poseTopic = new Topic({
     ros,
-    name: "/odom",
+    name: "/pf/pose/odom",
     messageType: "nav_msgs/Odometry",
   });
 
@@ -117,7 +117,7 @@ export function subscribePath(
 ) {
   const pathTopic = new Topic({
     ros,
-    name: "/mission/path",
+    name: "/planning/path",
     messageType: "nav_msgs/Path",
   });
 

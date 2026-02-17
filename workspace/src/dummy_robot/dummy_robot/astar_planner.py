@@ -34,9 +34,9 @@ class AStarGridPlanner(Node):
 
         # Parameters
         self.declare_parameter("map_topic", "/map")
-        self.declare_parameter("robot_pose_topic", "/odom")
-        self.declare_parameter("waypoints_topic", "/mission/waypoints")
-        self.declare_parameter("path_topic", "/mission/path")
+        self.declare_parameter("robot_pose_topic", "/pf/pose/odom")
+        self.declare_parameter("waypoints_topic", "/interface/waypoints")
+        self.declare_parameter("path_topic", "/planning/path")
 
         self.declare_parameter("occupied_threshold", 50)
         self.declare_parameter("unknown_is_occupied", True)
@@ -48,13 +48,19 @@ class AStarGridPlanner(Node):
         self.declare_parameter("resample_ds", 0.10)
         self.declare_parameter("min_path_points", 2)
 
+        # 🔹 Smoothing parameters
+        self.declare_parameter("smoothing_enable", True)
+        self.declare_parameter("smoothing_alpha", 0.1)
+        self.declare_parameter("smoothing_beta", 0.3)
+        self.declare_parameter("smoothing_iterations", 50)
+
         # Load parameters
         self.map_topic = self.get_parameter("map_topic").value
         self.robot_pose_topic = self.get_parameter("robot_pose_topic").value
         self.waypoints_topic = self.get_parameter("waypoints_topic").value
         self.path_topic = self.get_parameter("path_topic").value
 
-        # QoS Profiles
+        # QoS
         self.map_qos = QoSProfile(
             depth=1,
             reliability=ReliabilityPolicy.RELIABLE,
@@ -83,7 +89,7 @@ class AStarGridPlanner(Node):
         # Publisher
         self.path_pub = self.create_publisher(Path, self.path_topic, 10)
 
-        # State storage
+        # State
         self.robot_odom: Optional[Odometry] = None
         self.map_msg: Optional[OccupancyGrid] = None
         self.grid: Optional[Grid] = None
@@ -96,20 +102,18 @@ class AStarGridPlanner(Node):
         self.origin_y = 0.0
         self.frame_id = "map"
 
-        self.get_logger().info(
-            f"A* Grid Planner ready. Waiting for {self.map_topic}, {self.robot_pose_topic}, {self.waypoints_topic}."
-        )
+        self.get_logger().info("A* Planner with smoothing ready.")
 
-    # -----------------------------
+    # =============================
     # Callbacks
-    # -----------------------------
+    # =============================
 
-    def _on_robot_odom(self, msg: Odometry) -> None:
+    def _on_robot_odom(self, msg: Odometry):
         self.robot_odom = msg
 
-    def _on_map(self, msg: OccupancyGrid) -> None:
+    def _on_map(self, msg: OccupancyGrid):
         self.map_msg = msg
-        self.frame_id = msg.header.frame_id if msg.header.frame_id else "map"
+        self.frame_id = msg.header.frame_id or "map"
         self.width = msg.info.width
         self.height = msg.info.height
         self.resolution = msg.info.resolution
@@ -119,11 +123,9 @@ class AStarGridPlanner(Node):
         self.grid = self._occupancy_to_grid(msg)
         self.inflated_grid = self._inflate_grid(self.grid)
 
-        self.get_logger().info(
-            f"Map received: {self.width}x{self.height}, res={self.resolution:.3f}"
-        )
+        self.get_logger().info(f"Map received: {self.width}x{self.height}")
 
-    def _on_waypoints(self, msg: PoseArray) -> None:
+    def _on_waypoints(self, msg: PoseArray):
         if self.map_msg is None or self.inflated_grid is None:
             self.get_logger().warn("No map yet.")
             return
@@ -136,15 +138,15 @@ class AStarGridPlanner(Node):
             self.get_logger().warn("Need at least 1 waypoint.")
             return
 
-        world_points: List[Tuple[float, float]] = []
+        world_points = []
 
-        # Add robot current position
+        # Start from robot
         world_points.append((
             self.robot_odom.pose.pose.position.x,
             self.robot_odom.pose.pose.position.y
         ))
 
-        # Add mission waypoints
+        # Add waypoints
         for pose in msg.poses:
             world_points.append((pose.position.x, pose.position.y))
 
@@ -152,7 +154,7 @@ class AStarGridPlanner(Node):
         for (wx, wy) in world_points:
             cell = self.world_to_cell(wx, wy)
             if cell is None:
-                self.get_logger().warn("Waypoint out of map bounds.")
+                self.get_logger().warn("Waypoint outside map.")
                 return
             way_cells.append(cell)
 
@@ -163,7 +165,7 @@ class AStarGridPlanner(Node):
             goal = self._nearest_free(way_cells[i + 1])
 
             if start is None or goal is None:
-                self.get_logger().warn("Start/Goal not reachable.")
+                self.get_logger().warn("Start/Goal blocked.")
                 return
 
             seg = self._astar(start, goal)
@@ -178,7 +180,12 @@ class AStarGridPlanner(Node):
 
         poly = [self.cell_to_world(cx, cy) for (cx, cy) in full_cells]
 
+        # Resample
         poly = self._resample(poly, self.get_parameter("resample_ds").value)
+
+        # 🔹 Smooth
+        if self.get_parameter("smoothing_enable").value:
+            poly = self._smooth_path(poly)
 
         if len(poly) < self.get_parameter("min_path_points").value:
             self.get_logger().warn("Path too short.")
@@ -189,50 +196,16 @@ class AStarGridPlanner(Node):
 
         self.get_logger().info(f"Published path with {len(path_msg.poses)} poses.")
 
-    # -----------------------------
-    # Grid & A*
-    # -----------------------------
-
-    def _occupancy_to_grid(self, msg: OccupancyGrid) -> Grid:
-        thr = self.get_parameter("occupied_threshold").value
-        unknown_occ = self.get_parameter("unknown_is_occupied").value
-
-        grid = [[0 for _ in range(self.width)] for _ in range(self.height)]
-
-        for y in range(self.height):
-            for x in range(self.width):
-                v = msg.data[y * self.width + x]
-                if v < 0:
-                    grid[y][x] = 1 if unknown_occ else 0
-                else:
-                    grid[y][x] = 1 if v >= thr else 0
-
-        return grid
-
-    def _inflate_grid(self, grid: Grid) -> Grid:
-        r_m = self.get_parameter("inflation_radius_m").value
-        r_cells = int(math.ceil(r_m / self.resolution))
-
-        inflated = [row[:] for row in grid]
-
-        for y in range(self.height):
-            for x in range(self.width):
-                if grid[y][x] == 1:
-                    for dy in range(-r_cells, r_cells + 1):
-                        for dx in range(-r_cells, r_cells + 1):
-                            ny = y + dy
-                            nx = x + dx
-                            if 0 <= nx < self.width and 0 <= ny < self.height:
-                                inflated[ny][nx] = 1
-
-        return inflated
+    # =============================
+    # A*
+    # =============================
 
     def _astar(self, start, goal):
         allow_diag = self.get_parameter("allow_diagonal").value
         timeout_ms = self.get_parameter("astar_timeout_ms").value
 
         def heuristic(a, b):
-            return abs(a[0] - b[0]) + abs(a[1] - b[1])
+            return math.hypot(a[0] - b[0], a[1] - b[1])
 
         open_set = []
         heapq.heappush(open_set, (0, start))
@@ -278,9 +251,70 @@ class AStarGridPlanner(Node):
 
         return None
 
-    # -----------------------------
-    # Helpers
-    # -----------------------------
+    # =============================
+    # Smoothing (Elastic Band)
+    # =============================
+
+    def _smooth_path(self, pts):
+        if len(pts) < 3:
+            return pts
+
+        alpha = self.get_parameter("smoothing_alpha").value
+        beta = self.get_parameter("smoothing_beta").value
+        iterations = self.get_parameter("smoothing_iterations").value
+
+        original = pts[:]
+        smooth = [list(p) for p in pts]
+
+        for _ in range(iterations):
+            for i in range(1, len(pts) - 1):
+                for dim in range(2):
+                    smooth[i][dim] += alpha * (original[i][dim] - smooth[i][dim])
+                    smooth[i][dim] += beta * (
+                        smooth[i - 1][dim] +
+                        smooth[i + 1][dim] -
+                        2.0 * smooth[i][dim]
+                    )
+
+        return [(p[0], p[1]) for p in smooth]
+
+    # =============================
+    # Grid Helpers
+    # =============================
+
+    def _occupancy_to_grid(self, msg):
+        thr = self.get_parameter("occupied_threshold").value
+        unknown_occ = self.get_parameter("unknown_is_occupied").value
+
+        grid = [[0]*self.width for _ in range(self.height)]
+
+        for y in range(self.height):
+            for x in range(self.width):
+                v = msg.data[y*self.width + x]
+                if v < 0:
+                    grid[y][x] = 1 if unknown_occ else 0
+                else:
+                    grid[y][x] = 1 if v >= thr else 0
+
+        return grid
+
+    def _inflate_grid(self, grid):
+        r_m = self.get_parameter("inflation_radius_m").value
+        r_cells = int(math.ceil(r_m / self.resolution))
+
+        inflated = [row[:] for row in grid]
+
+        for y in range(self.height):
+            for x in range(self.width):
+                if grid[y][x] == 1:
+                    for dy in range(-r_cells, r_cells+1):
+                        for dx in range(-r_cells, r_cells+1):
+                            ny = y + dy
+                            nx = x + dx
+                            if 0 <= nx < self.width and 0 <= ny < self.height:
+                                inflated[ny][nx] = 1
+
+        return inflated
 
     def world_to_cell(self, wx, wy):
         mx = int((wx - self.origin_x) / self.resolution)
@@ -346,7 +380,7 @@ class AStarGridPlanner(Node):
             ps.pose.position.x = pts[i][0]
             ps.pose.position.y = pts[i][1]
 
-            if i < len(pts) - 1:
+            if i < len(pts)-1:
                 dx = pts[i+1][0] - pts[i][0]
                 dy = pts[i+1][1] - pts[i][1]
             else:

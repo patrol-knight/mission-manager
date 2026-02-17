@@ -12,8 +12,8 @@ class RobotPoseTf(Node):
         super().__init__('dummy_pose_tf_node')
 
         self.tf_broadcaster = TransformBroadcaster(self)
-        self.pose_publisher = self.create_publisher(Odometry, '/odom', 10)
-        self.path_sub = self.create_subscription(Path, '/mission/path', self._path_callback, 10)
+        self.pose_publisher = self.create_publisher(Odometry, '/pf/pose/odom', 10)
+        self.path_sub = self.create_subscription(Path, '/planning/path', self._path_callback, 10)
         
         self.timer = self.create_timer(0.05, self._update)
         self.current_x = 0.0
