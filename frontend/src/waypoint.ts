@@ -7,7 +7,6 @@ export type Waypoint = {
   yaw: number;
 };
 
-// 添加 Mode 類型
 export type Mode = "off" | "modify" | "delete";
 
 type State = {

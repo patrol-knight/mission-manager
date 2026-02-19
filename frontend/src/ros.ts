@@ -1,8 +1,12 @@
 import { Ros } from "roslib";
 
+const locolhost_url = `ws://${window.location.hostname}:9090`;
+const rosbridge_url = window.RUNTIME_CONFIG?.ROSBRIDGE_URL || locolhost_url;
+
 export const ros = new Ros({
-  url: "ws://localhost:9090"
+  url: rosbridge_url
 });
+
 
 ros.on("connection", () => {
   console.log("Connected to ROS");
