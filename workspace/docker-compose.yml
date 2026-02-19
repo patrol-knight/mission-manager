@@ -1,12 +1,16 @@
 services:
   robot_stack:
     build:
-      context: ..
-      dockerfile: .devcontainer/Dockerfile
+      context: .
+      dockerfile: Dockerfile
     network_mode: host
+    environment:
+      - DISPLAY=${DISPLAY}
+      - QT_X11_NO_MITSHM=1
     user: "${UID:-1000}:${GID:-1000}"
     volumes:
       - ./:/home/workspace
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
     command: >
       bash -c "source /opt/ros/humble/setup.bash &&
                cd /home/workspace &&

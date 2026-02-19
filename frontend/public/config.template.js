@@ -1,0 +1,3 @@
+window.RUNTIME_CONFIG = {
+  ROSBRIDGE_URL: "${ROSBRIDGE_URL}"
+};
