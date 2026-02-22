@@ -5,6 +5,7 @@ import { subscribeMap, type MapData, subscribeRobotPose, type RobotPose } from "
 import { subscribePath, type PathData } from "./subscriber";
 import { useWaypoint } from "./waypoint";
 import { publishInitialPose } from "./publisher";
+import { useRosConnection } from "./useRosConnection";
 
 type DragState = {
   startScreen: { x: number; y: number };
@@ -32,6 +33,9 @@ export function MapView() {
   const [robotPose, setRobotPose] = React.useState<RobotPose | null>(null);
   const [pathData, setPathData] = React.useState<PathData | null>(null);
   const [showResetButton, setShowResetButton] = React.useState(false);
+  const [mapLoading, setMapLoading] = React.useState(true);
+
+  const { status } = useRosConnection();
 
   // Init mode drag state
   const [initDrag, setInitDrag] = React.useState<DragState | null>(null);
@@ -39,7 +43,10 @@ export function MapView() {
 
   // Subscribe to ROS map
   React.useEffect(() => {
-    subscribeMap(setMapData);
+    subscribeMap((data) => {
+      setMapData(data);
+      setMapLoading(false);
+    });
   }, []);
 
   // Subscribe to robot pose
@@ -483,30 +490,62 @@ export function MapView() {
         </svg>
       )}
 
-      {/* Robot position info */}
-      <div
-        style={{
-          position: "absolute",
-          top: 10,
-          right: 10,
-          background: "rgba(0, 0, 0, 0.8)",
-          color: "white",
-          padding: "12px 16px",
-          borderRadius: 8,
-          fontSize: 13,
-          fontWeight: "500",
-          zIndex: 1000,
-          minWidth: 200,
-          backdropFilter: "blur(10px)",
-        }}
-      >
-        {robotPose && (
-          <div style={{ fontSize: 11, color: "#f8f9fa" }}>
-            <div style={{ fontWeight: 600 }}>Robot Position:</div>
-            <div>X: {robotPose.x.toFixed(2)}, Y: {robotPose.y.toFixed(2)}, Yaw: {(robotPose.yaw * (180 / Math.PI)).toFixed(1)}°</div>
+      {/* Robot position / status panel */}
+      <div style={{
+        position: "absolute", top: 10, right: 10,
+        background: "rgba(20, 20, 30, 0.85)", color: "white",
+        padding: "12px 16px", borderRadius: 10, fontSize: 13,
+        fontWeight: 500, zIndex: 1000, minWidth: 210,
+        backdropFilter: "blur(10px)",
+        border: status === "disconnected"
+          ? "1px solid rgba(231, 76, 60, 0.4)"
+          : "1px solid rgba(255,255,255,0.08)",
+      }}>
+        {status === "disconnected" ? (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, color: "#e74c3c" }}>
+            <span style={{ fontSize: 16 }}>⚠</span>
+            <span style={{ fontWeight: 600 }}>No Connection</span>
           </div>
+        ) : mapLoading ? (
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{
+              width: 14, height: 14, borderRadius: "50%",
+              border: "2px solid rgba(255,255,255,0.2)",
+              borderTopColor: "#667eea",
+              animation: "mapspin 0.8s linear infinite",
+              flexShrink: 0,
+            }} />
+            <span style={{ color: "#adb5bd", fontSize: 12 }}>Waiting for map...</span>
+          </div>
+        ) : robotPose ? (
+          <div style={{ fontSize: 11, color: "#f8f9fa" }}>
+            <div style={{ fontWeight: 600, marginBottom: 4, color: "#adb5bd", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.5px" }}>Robot Position</div>
+            <div>X: {robotPose.x.toFixed(2)}&nbsp;&nbsp;Y: {robotPose.y.toFixed(2)}</div>
+            <div>Yaw: {(robotPose.yaw * (180 / Math.PI)).toFixed(1)}°</div>
+          </div>
+        ) : (
+          <div style={{ fontSize: 11, color: "#adb5bd" }}>Waiting for pose...</div>
         )}
       </div>
+
+      {/* Map loading overlay */}
+      {mapLoading && status !== "disconnected" && (
+        <div style={{
+          position: "absolute", inset: 0,
+          display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+          background: "rgba(15, 15, 20, 0.7)", backdropFilter: "blur(4px)",
+          zIndex: 500, gap: 16,
+        }}>
+          <div style={{
+            width: 40, height: 40, borderRadius: "50%",
+            border: "3px solid rgba(102, 126, 234, 0.2)",
+            borderTopColor: "#667eea",
+            animation: "mapspin 0.9s linear infinite",
+          }} />
+          <div style={{ color: "#adb5bd", fontSize: 14, fontWeight: 500 }}>Waiting for map topic...</div>
+          <div style={{ color: "#6c757d", fontSize: 12 }}>/map</div>
+        </div>
+      )}
 
       {/* 2D / 3D buttons */}
       <div
@@ -612,6 +651,9 @@ export function MapView() {
       <style>{`
         div:has(> button):hover .view-shortcuts-hint {
           opacity: 1 !important;
+        }
+        @keyframes mapspin {
+          to { transform: rotate(360deg); }
         }
       `}</style>
     </div>
