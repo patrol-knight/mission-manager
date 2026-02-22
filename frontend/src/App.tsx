@@ -19,6 +19,13 @@ export default function App() {
     }, 1000);
   };
 
+  // Sliding highlight position
+  const modeOrder = ["off", "init", "modify", "delete"];
+  const modeIndex = modeOrder.indexOf(mode);
+  // Each button is ~48px tall + 4px gap
+  const ITEM_H = 48;
+  const GAP = 4;
+
   return (
     <div style={{ display: "flex", height: "100vh", width: "100vw" }}>
       <div
@@ -62,21 +69,20 @@ export default function App() {
             boxShadow: "inset 0 2px 4px rgba(0,0,0,0.06)",
             position: "relative",
           }}>
+            {/* Sliding highlight */}
             <div style={{
               position: "absolute",
               top: 4,
               left: 4,
               right: 4,
-              height: "calc(33.333% - 2.67px)",
+              height: ITEM_H,
               background: 
-                mode === "off" ? "linear-gradient(135deg, #667eea 0%, #764ba2 100%)" :
+                mode === "off"    ? "linear-gradient(135deg, #667eea 0%, #764ba2 100%)" :
+                mode === "init"   ? "linear-gradient(135deg, #f7971e 0%, #ffd200 100%)" :
                 mode === "modify" ? "linear-gradient(135deg, #f093fb 0%, #f5576c 100%)" :
-                "linear-gradient(135deg, #fa709a 0%, #fee140 100%)",
+                                    "linear-gradient(135deg, #fa709a 0%, #fee140 100%)",
               borderRadius: 8,
-              transform: 
-                mode === "off" ? "translateY(0)" :
-                mode === "modify" ? "translateY(calc(100% + 4px))" :
-                "translateY(calc(200% + 8px))",
+              transform: `translateY(${modeIndex * (ITEM_H + GAP)}px)`,
               transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
               boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
             }} />
@@ -84,67 +90,34 @@ export default function App() {
             <div style={{ 
               display: "flex", 
               flexDirection: "column", 
-              gap: 4,
+              gap: GAP,
               position: "relative",
               zIndex: 1,
             }}>
-              <button
-                onClick={() => setMode("off")}
-                style={{
-                  padding: "12px 16px",
-                  background: "transparent",
-                  color: mode === "off" ? "white" : "#6c757d",
-                  border: "none",
-                  borderRadius: 8,
-                  cursor: "pointer",
-                  fontWeight: mode === "off" ? 600 : 500,
-                  fontSize: 15,
-                  transition: "color 0.3s ease",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                }}
-              >
-                <span>Off</span>
-              </button>
-              <button
-                onClick={() => setMode("modify")}
-                style={{
-                  padding: "12px 16px",
-                  background: "transparent",
-                  color: mode === "modify" ? "white" : "#6c757d",
-                  border: "none",
-                  borderRadius: 8,
-                  cursor: "pointer",
-                  fontWeight: mode === "modify" ? 600 : 500,
-                  fontSize: 15,
-                  transition: "color 0.3s ease",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                }}
-              >
-                <span>Modify</span>
-              </button>
-              <button
-                onClick={() => setMode("delete")}
-                style={{
-                  padding: "12px 16px",
-                  background: "transparent",
-                  color: mode === "delete" ? "white" : "#6c757d",
-                  border: "none",
-                  borderRadius: 8,
-                  cursor: "pointer",
-                  fontWeight: mode === "delete" ? 600 : 500,
-                  fontSize: 15,
-                  transition: "color 0.3s ease",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                }}
-              >
-                <span>Delete</span>
-              </button>
+              {(["off", "init", "modify", "delete"] as const).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => setMode(m)}
+                  style={{
+                    height: ITEM_H,
+                    padding: "0 16px",
+                    background: "transparent",
+                    color: mode === m ? "white" : "#6c757d",
+                    border: "none",
+                    borderRadius: 8,
+                    cursor: "pointer",
+                    fontWeight: mode === m ? 600 : 500,
+                    fontSize: 15,
+                    transition: "color 0.3s ease",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    textAlign: "left",
+                  }}
+                >
+                  <span style={{ textTransform: "capitalize" }}>{m === "init" ? "Initialize" : m}</span>
+                </button>
+              ))}
             </div>
           </div>
           
@@ -158,7 +131,8 @@ export default function App() {
             lineHeight: 1.5,
             boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
           }}>
-            {mode === "off" && "No interaction with map"}
+            {mode === "off"    && "No interaction with map"}
+            {mode === "init"   && "Click & drag on map to set robot initial pose"}
             {mode === "modify" && "Click empty space to add, drag waypoint to move"}
             {mode === "delete" && "Click waypoint to delete"}
           </div>
@@ -340,7 +314,6 @@ export default function App() {
             animation: "slideIn 0.3s ease-out",
           }}
         >
-          {/* Close X button */}
           <button
             onClick={() => setShowNotification(false)}
             style={{
@@ -427,38 +400,19 @@ export default function App() {
         />
       )}
 
-      {/* Animations */}
       <style>{`
         @keyframes slideIn {
-          from {
-            opacity: 0;
-            transform: translate(-50%, -60%);
-          }
-          to {
-            opacity: 1;
-            transform: translate(-50%, -50%);
-          }
+          from { opacity: 0; transform: translate(-50%, -60%); }
+          to   { opacity: 1; transform: translate(-50%, -50%); }
         }
-
         @keyframes fadeIn {
-          from {
-            opacity: 0;
-          }
-          to {
-            opacity: 1;
-          }
+          from { opacity: 0; }
+          to   { opacity: 1; }
         }
-
         @keyframes scaleIn {
-          0% {
-            transform: scale(0);
-          }
-          50% {
-            transform: scale(1.1);
-          }
-          100% {
-            transform: scale(1);
-          }
+          0%   { transform: scale(0); }
+          50%  { transform: scale(1.1); }
+          100% { transform: scale(1); }
         }
       `}</style>
     </div>

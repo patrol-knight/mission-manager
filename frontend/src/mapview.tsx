@@ -4,6 +4,13 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { subscribeMap, type MapData, subscribeRobotPose, type RobotPose } from "./subscriber";
 import { subscribePath, type PathData } from "./subscriber";
 import { useWaypoint } from "./waypoint";
+import { publishInitialPose } from "./publisher";
+
+type DragState = {
+  startScreen: { x: number; y: number };
+  startLngLat: { lng: number; lat: number };
+  currentScreen: { x: number; y: number };
+};
 
 export function MapView() {
   const mapRef = React.useRef<HTMLDivElement>(null);
@@ -25,6 +32,10 @@ export function MapView() {
   const [robotPose, setRobotPose] = React.useState<RobotPose | null>(null);
   const [pathData, setPathData] = React.useState<PathData | null>(null);
   const [showResetButton, setShowResetButton] = React.useState(false);
+
+  // Init mode drag state
+  const [initDrag, setInitDrag] = React.useState<DragState | null>(null);
+  const initDragRef = React.useRef<DragState | null>(null);
 
   // Subscribe to ROS map
   React.useEffect(() => {
@@ -106,6 +117,7 @@ export function MapView() {
     setShowResetButton(false);
   }, [mapData]);
 
+  // Map click handler (modify mode)
   React.useEffect(() => {
     if (!map.current) return;
 
@@ -132,6 +144,78 @@ export function MapView() {
     };
   }, [mode, add]);
 
+  // Init mode: mouse drag to set initial pose
+  React.useEffect(() => {
+    const container = mapRef.current;
+    if (!container || !map.current) return;
+    if (mode !== "init") return;
+
+    map.current.dragPan.disable();
+
+    const handleMouseDown = (e: MouseEvent) => {
+      if (!map.current) return;
+      const rect = container.getBoundingClientRect();
+      const screenX = e.clientX - rect.left;
+      const screenY = e.clientY - rect.top;
+      const lngLat = map.current.unproject([screenX, screenY]);
+
+      const drag: DragState = {
+        startScreen: { x: screenX, y: screenY },
+        startLngLat: { lng: lngLat.lng, lat: lngLat.lat },
+        currentScreen: { x: screenX, y: screenY },
+      };
+      initDragRef.current = drag;
+      setInitDrag({ ...drag });
+    };
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!initDragRef.current) return;
+      const rect = container.getBoundingClientRect();
+      const screenX = e.clientX - rect.left;
+      const screenY = e.clientY - rect.top;
+      initDragRef.current = {
+        ...initDragRef.current,
+        currentScreen: { x: screenX, y: screenY },
+      };
+      setInitDrag({ ...initDragRef.current });
+    };
+
+    const handleMouseUp = (e: MouseEvent) => {
+      if (!initDragRef.current || !map.current) return;
+      const rect = container.getBoundingClientRect();
+      const endX = e.clientX - rect.left;
+      const endY = e.clientY - rect.top;
+      const endLngLat = map.current.unproject([endX, endY]);
+
+      const { startLngLat } = initDragRef.current;
+      const dx = endLngLat.lng - startLngLat.lng;
+      const dy = endLngLat.lat - startLngLat.lat;
+
+      // Only publish if dragged a meaningful distance
+      if (Math.abs(dx) > 1e-7 || Math.abs(dy) > 1e-7) {
+        const yaw = Math.atan2(dy, dx);
+        publishInitialPose(startLngLat.lng, startLngLat.lat, yaw);
+      }
+
+      initDragRef.current = null;
+      setInitDrag(null);
+    };
+
+    container.addEventListener("mousedown", handleMouseDown);
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+
+    return () => {
+      container.removeEventListener("mousedown", handleMouseDown);
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+      map.current?.dragPan.enable();
+      initDragRef.current = null;
+      setInitDrag(null);
+    };
+  }, [mode]);
+
+  // Waypoint markers
   React.useEffect(() => {
     if (!map.current) return;
 
@@ -174,7 +258,6 @@ export function MapView() {
       markersRef.current.set(wp.id, marker);
     }
 
-    // Cleanup function
     return () => {
       markersRef.current.forEach((marker) => marker.remove());
       markersRef.current.clear();
@@ -190,6 +273,7 @@ export function MapView() {
     });
   }, [mode]);
 
+  // Robot marker
   React.useEffect(() => {
     if (!map.current || !robotPose) return;
 
@@ -226,6 +310,7 @@ export function MapView() {
     };
   }, [robotPose]);
 
+  // Mission path
   React.useEffect(() => {
     if (!map.current || !pathData || pathData.points.length === 0) {
       if (map.current?.getSource("mission-path")) {
@@ -269,7 +354,6 @@ export function MapView() {
     }
 
     return () => {
-      // Cleanup
       if (map.current?.getSource("mission-path")) {
         map.current.removeLayer("mission-path-line");
         map.current.removeSource("mission-path");
@@ -305,23 +389,101 @@ export function MapView() {
 
   React.useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
-      if (e.key === "2") {
-        reset2DView();
-      }
-      if (e.key === "3") {
-        switch3DView();
-      }
+      if (e.key === "2") reset2DView();
+      if (e.key === "3") switch3DView();
     };
 
     window.addEventListener("keydown", handleKeyPress);
     return () => window.removeEventListener("keydown", handleKeyPress);
   }, []);
 
+  // Compute arrow SVG points from drag state
+  const arrowSvg = React.useMemo(() => {
+    if (!initDrag) return null;
+    const { startScreen: s, currentScreen: c } = initDrag;
+    const dx = c.x - s.x;
+    const dy = c.y - s.y;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    if (len < 8) return null; // minimum drag distance
+
+    const MAX_ARROW_LEN = 60; // px — clamp here
+    const angle = Math.atan2(dy, dx);
+    const clampedLen = Math.min(len, MAX_ARROW_LEN);
+
+    // Tip is always at most MAX_ARROW_LEN from start
+    const tip = {
+      x: s.x + clampedLen * Math.cos(angle),
+      y: s.y + clampedLen * Math.sin(angle),
+    };
+
+    const headLen = 18;
+    const headAngle = Math.PI / 6;
+
+    const left = {
+      x: tip.x - headLen * Math.cos(angle - headAngle),
+      y: tip.y - headLen * Math.sin(angle - headAngle),
+    };
+    const right = {
+      x: tip.x - headLen * Math.cos(angle + headAngle),
+      y: tip.y - headLen * Math.sin(angle + headAngle),
+    };
+
+    return { s, tip, left, right };
+  }, [initDrag]);
+
   return (
-    <div
-      ref={mapRef}
-      style={{ width: "100%", height: "100%", position: "relative" }}
-    >
+    <div style={{ width: "100%", height: "100%", position: "relative" }}>
+      {/* Map */}
+      <div
+        ref={mapRef}
+        style={{
+          width: "100%",
+          height: "100%",
+          cursor: mode === "init" ? "crosshair" : "default",
+        }}
+      />
+
+      {/* Orange arrow overlay for init mode */}
+      {arrowSvg && (
+        <svg
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            width: "100%",
+            height: "100%",
+            pointerEvents: "none",
+            zIndex: 500,
+          }}
+        >
+          {/* Shaft */}
+          <line
+            x1={arrowSvg.s.x}
+            y1={arrowSvg.s.y}
+            x2={arrowSvg.tip.x}
+            y2={arrowSvg.tip.y}
+            stroke="#ff8c00"
+            strokeWidth={3}
+            strokeLinecap="round"
+          />
+          {/* Arrowhead */}
+          <polygon
+            points={`${arrowSvg.tip.x},${arrowSvg.tip.y} ${arrowSvg.left.x},${arrowSvg.left.y} ${arrowSvg.right.x},${arrowSvg.right.y}`}
+            fill="#ff8c00"
+          />
+          {/* Start dot */}
+          <circle
+            cx={arrowSvg.s.x}
+            cy={arrowSvg.s.y}
+            r={6}
+            fill="#ff8c00"
+            stroke="white"
+            strokeWidth={2}
+          />
+        </svg>
+      )}
+
+      {/* Robot position info */}
       <div
         style={{
           position: "absolute",
@@ -346,6 +508,7 @@ export function MapView() {
         )}
       </div>
 
+      {/* 2D / 3D buttons */}
       <div
         style={{
           position: "absolute",
@@ -446,7 +609,6 @@ export function MapView() {
         <div><strong>2</strong> - 2D View | <strong>3</strong> - 3D View</div>
       </div>
 
-      {/* CSS for shortcuts hint hover effect */}
       <style>{`
         div:has(> button):hover .view-shortcuts-hint {
           opacity: 1 !important;

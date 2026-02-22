@@ -7,7 +7,7 @@ export type Waypoint = {
   yaw: number;
 };
 
-export type Mode = "off" | "modify" | "delete";
+export type Mode = "off" | "init" | "modify" | "delete";
 
 type State = {
   waypoints: Waypoint[];
@@ -16,7 +16,6 @@ type State = {
   update: (id: string, x: number, y: number) => void;
   remove: (id: string) => void;
   setYaw: (id: string, yaw: number) => void;
-
   setMode: (mode: Mode) => void;
 };
 
