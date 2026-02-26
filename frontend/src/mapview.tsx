@@ -14,8 +14,6 @@ type DragState = {
   currentScreen: { x: number; y: number };
 };
 
-// Draw a circle with a white number onto a canvas, return it as a DOM element.
-// Using canvas avoids all CSS layout/reflow issues that cause drift with div-based markers.
 function makeWaypointCanvas(index: number, isDelete: boolean): HTMLCanvasElement {
   const SIZE = 28;
   const canvas = document.createElement("canvas");
@@ -23,7 +21,6 @@ function makeWaypointCanvas(index: number, isDelete: boolean): HTMLCanvasElement
   canvas.height = SIZE;
   const ctx = canvas.getContext("2d")!;
 
-  // Circle
   ctx.beginPath();
   ctx.arc(SIZE / 2, SIZE / 2, SIZE / 2 - 2, 0, Math.PI * 2);
   ctx.fillStyle = isDelete ? "#c0392b" : "#ffadad";
@@ -32,7 +29,6 @@ function makeWaypointCanvas(index: number, isDelete: boolean): HTMLCanvasElement
   ctx.lineWidth = 2.5;
   ctx.stroke();
 
-  // Number
   const num = String(index + 1);
   ctx.fillStyle = "white";
   ctx.font = `bold ${num.length > 1 ? 10 : 12}px system-ui, sans-serif`;
@@ -41,6 +37,34 @@ function makeWaypointCanvas(index: number, isDelete: boolean): HTMLCanvasElement
   ctx.fillText(num, SIZE / 2, SIZE / 2);
 
   return canvas;
+}
+
+// Check what kind of cell a lng/lat falls on in the occupancy grid.
+function checkMapCell(
+  lng: number,
+  lat: number,
+  mapData: MapData
+): "free" | "occupied" | "unknown" | "out_of_bounds" {
+  const { image, info } = mapData;
+
+  const px = Math.floor((lng - info.origin.x) / info.resolution);
+  const py = Math.floor((lat - info.origin.y) / info.resolution);
+
+  if (px < 0 || px >= info.width || py < 0 || py >= info.height) {
+    return "out_of_bounds";
+  }
+
+  const ctx = image.getContext("2d");
+  if (!ctx) return "free";
+
+  // Canvas Y is flipped relative to map Y (subscriber does height - y - 1)
+  const canvasY = info.height - py - 1;
+  const pixel = ctx.getImageData(px, canvasY, 1, 1).data;
+  const gray = pixel[0]; // R = G = B for grayscale
+
+  if (gray < 50) return "occupied";            // ~0   black  obstacle
+  if (gray > 100 && gray < 180) return "unknown"; // ~127 gray   unexplored
+  return "free";                                // ~255 white  free space
 }
 
 export function MapView() {
@@ -63,22 +87,20 @@ export function MapView() {
   const [robotPose, setRobotPose] = React.useState<RobotPose | null>(null);
   const [pathData, setPathData] = React.useState<PathData | null>(null);
 
-  // Immediately clear path when clearAll is triggered
   React.useEffect(() => {
     if (clearedAt === null) return;
     setPathData(null);
   }, [clearedAt]);
+
   const [showResetButton, setShowResetButton] = React.useState(false);
   const [mapLoading, setMapLoading] = React.useState(true);
 
   const { status } = useRosConnection();
   const { show } = useToast();
 
-  // Init mode drag state
   const [initDrag, setInitDrag] = React.useState<DragState | null>(null);
   const initDragRef = React.useRef<DragState | null>(null);
 
-  // Subscribe to ROS map
   React.useEffect(() => {
     subscribeMap((data) => {
       setMapData(data);
@@ -86,53 +108,38 @@ export function MapView() {
     });
   }, []);
 
-  // Subscribe to robot pose
   React.useEffect(() => {
     subscribeRobotPose(setRobotPose);
   }, []);
 
-  // Subscribe to mission path
   React.useEffect(() => {
     subscribePath(setPathData);
   }, []);
 
-  // Init MapLibre
   React.useEffect(() => {
     if (!mapRef.current || map.current) return;
 
     map.current = new maplibregl.Map({
       container: mapRef.current,
-      style: {
-        version: 8,
-        sources: {},
-        layers: [],
-      },
+      style: { version: 8, sources: {}, layers: [] },
       center: [0, 0],
       zoom: 1,
       pitch: 0,
-      bearing: 0, 
+      bearing: 0,
     });
-    map.current.on("moveend", () => {
-      setShowResetButton(true);
-    });
+    map.current.on("moveend", () => setShowResetButton(true));
   }, []);
 
-  // Load ROS map as image layer
   React.useEffect(() => {
     if (!map.current || !mapData) return;
 
     const { image, info } = mapData;
-
     const bounds: [[number, number], [number, number]] = [
       [info.origin.x, info.origin.y],
-      [
-        info.origin.x + info.width * info.resolution,
-        info.origin.y + info.height * info.resolution,
-      ],
+      [info.origin.x + info.width * info.resolution, info.origin.y + info.height * info.resolution],
     ];
 
     originalBoundsRef.current = bounds;
-
     const url = image.toDataURL();
 
     if (map.current.getSource("ros-map")) {
@@ -151,17 +158,12 @@ export function MapView() {
       ],
     });
 
-    map.current.addLayer({
-      id: "ros-layer",
-      type: "raster",
-      source: "ros-map",
-    });
-
+    map.current.addLayer({ id: "ros-layer", type: "raster", source: "ros-map" });
     map.current.fitBounds(bounds, { padding: 20 });
     setShowResetButton(false);
   }, [mapData]);
 
-  // Map click handler (modify mode)
+  // Map click handler — with occupancy grid check
   React.useEffect(() => {
     if (!map.current) return;
 
@@ -170,25 +172,31 @@ export function MapView() {
 
       const { lng, lat } = e.lngLat;
       const clickedOnMarker = (e.originalEvent.target as HTMLElement).closest(".wp-marker");
-      
       if (clickedOnMarker) return;
 
-      add({
-        id: crypto.randomUUID(),
-        x: lng,
-        y: lat,
-        yaw: 0,
-      });
+      if (mapData) {
+        const cell = checkMapCell(lng, lat, mapData);
+        if (cell === "occupied") {
+          show("error", "Obstacle", "Cannot place waypoint on an obstacle");
+          return;
+        }
+        if (cell === "unknown") {
+          show("error", "Unknown Area", "Cannot place waypoint in an unexplored area");
+          return;
+        }
+        if (cell === "out_of_bounds") {
+          show("error", "Out of Map", "Cannot place waypoint outside the map");
+          return;
+        }
+      }
+
+      add({ id: crypto.randomUUID(), x: lng, y: lat, yaw: 0 });
     };
 
     map.current.on("click", handleMapClick);
+    return () => { map.current?.off("click", handleMapClick); };
+  }, [mode, add, mapData, show]);
 
-    return () => {
-      map.current?.off("click", handleMapClick);
-    };
-  }, [mode, add]);
-
-  // Init mode: mouse drag to set initial pose
   React.useEffect(() => {
     const container = mapRef.current;
     if (!container || !map.current) return;
@@ -202,7 +210,6 @@ export function MapView() {
       const screenX = e.clientX - rect.left;
       const screenY = e.clientY - rect.top;
       const lngLat = map.current.unproject([screenX, screenY]);
-
       const drag: DragState = {
         startScreen: { x: screenX, y: screenY },
         startLngLat: { lng: lngLat.lng, lat: lngLat.lat },
@@ -215,11 +222,9 @@ export function MapView() {
     const handleMouseMove = (e: MouseEvent) => {
       if (!initDragRef.current) return;
       const rect = container.getBoundingClientRect();
-      const screenX = e.clientX - rect.left;
-      const screenY = e.clientY - rect.top;
       initDragRef.current = {
         ...initDragRef.current,
-        currentScreen: { x: screenX, y: screenY },
+        currentScreen: { x: e.clientX - rect.left, y: e.clientY - rect.top },
       };
       setInitDrag({ ...initDragRef.current });
     };
@@ -227,19 +232,15 @@ export function MapView() {
     const handleMouseUp = (e: MouseEvent) => {
       if (!initDragRef.current || !map.current) return;
       const rect = container.getBoundingClientRect();
-      const endX = e.clientX - rect.left;
-      const endY = e.clientY - rect.top;
-      const endLngLat = map.current.unproject([endX, endY]);
-
+      const endLngLat = map.current.unproject([e.clientX - rect.left, e.clientY - rect.top]);
       const { startLngLat } = initDragRef.current;
       const dx = endLngLat.lng - startLngLat.lng;
       const dy = endLngLat.lat - startLngLat.lat;
 
-      // Only publish if dragged a meaningful distance
       if (Math.abs(dx) > 1e-7 || Math.abs(dy) > 1e-7) {
         const yaw = Math.atan2(dy, dx);
         publishInitialPose(startLngLat.lng, startLngLat.lat, yaw);
-      show("success", "Initial Pose Set", `X: ${startLngLat.lng.toFixed(2)}, Y: ${startLngLat.lat.toFixed(2)}, Yaw: ${(yaw * 180 / Math.PI).toFixed(1)}°`);
+        show("success", "Initial Pose Set", `X: ${startLngLat.lng.toFixed(2)}, Y: ${startLngLat.lat.toFixed(2)}, Yaw: ${(yaw * 180 / Math.PI).toFixed(1)}°`);
       }
 
       initDragRef.current = null;
@@ -260,7 +261,6 @@ export function MapView() {
     };
   }, [mode]);
 
-  // Waypoint markers
   React.useEffect(() => {
     if (!map.current) return;
 
@@ -268,7 +268,6 @@ export function MapView() {
     markersRef.current.clear();
 
     waypoints.forEach((wp, index) => {
-      // Canvas-based element: fixed pixel size, no CSS layout, no drift
       const canvas = makeWaypointCanvas(index, mode === "delete");
       canvas.className = "wp-marker";
       canvas.style.cursor = mode === "off" ? "default" : "pointer";
@@ -314,19 +313,15 @@ export function MapView() {
     });
   }, [mode]);
 
-  // Robot marker
   React.useEffect(() => {
     if (!map.current || !robotPose) return;
 
-    if (robotMarkerRef.current) {
-      robotMarkerRef.current.remove();
-    }
+    if (robotMarkerRef.current) robotMarkerRef.current.remove();
 
     const el = document.createElement("div");
     el.style.width = "30px";
     el.style.height = "30px";
     el.style.position = "relative";
-
     el.innerHTML = `
       <svg width="30" height="30" viewBox="0 0 30 30" style="transform: rotate(${-robotPose.yaw * (180 / Math.PI) + 90}deg);">
         <circle cx="15" cy="15" r="12" fill="#90e0ef" stroke="#023e8a" stroke-width="2"/>
@@ -334,10 +329,7 @@ export function MapView() {
       </svg>
     `;
 
-    const robotMarker = new maplibregl.Marker({
-      element: el,
-      anchor: "center",
-    })
+    const robotMarker = new maplibregl.Marker({ element: el, anchor: "center" })
       .setLngLat([robotPose.x, robotPose.y])
       .addTo(map.current);
 
@@ -351,7 +343,6 @@ export function MapView() {
     };
   }, [robotPose]);
 
-  // Mission path
   React.useEffect(() => {
     if (!map.current || !pathData || pathData.points.length === 0) {
       if (map.current?.getSource("mission-path")) {
@@ -373,24 +364,13 @@ export function MapView() {
     if (map.current.getSource("mission-path")) {
       (map.current.getSource("mission-path") as maplibregl.GeoJSONSource).setData(geojson);
     } else {
-      map.current.addSource("mission-path", {
-        type: "geojson",
-        data: geojson,
-      });
-
+      map.current.addSource("mission-path", { type: "geojson", data: geojson });
       map.current.addLayer({
         id: "mission-path-line",
         type: "line",
         source: "mission-path",
-        layout: {
-          "line-join": "round",
-          "line-cap": "round",
-        },
-        paint: {
-          "line-color": "#4a4e69",  
-          "line-width": 3,
-          "line-opacity": 0.8,
-        },
+        layout: { "line-join": "round", "line-cap": "round" },
+        paint: { "line-color": "#4a4e69", "line-width": 3, "line-opacity": 0.8 },
       });
     }
 
@@ -404,27 +384,13 @@ export function MapView() {
 
   const reset2DView = () => {
     if (!map.current || !originalBoundsRef.current) return;
-    
-    map.current.fitBounds(originalBoundsRef.current, { 
-      padding: 20,
-      pitch: 0,     
-      bearing: 0,    
-      duration: 1000,
-    });
-    
+    map.current.fitBounds(originalBoundsRef.current, { padding: 20, pitch: 0, bearing: 0, duration: 1000 });
     setShowResetButton(false);
   };
 
   const switch3DView = () => {
     if (!map.current || !originalBoundsRef.current) return;
-    
-    map.current.fitBounds(originalBoundsRef.current, { 
-      padding: 20,
-      pitch: 60,     
-      bearing: 0,    
-      duration: 1000,
-    });
-    
+    map.current.fitBounds(originalBoundsRef.current, { padding: 20, pitch: 60, bearing: 0, duration: 1000 });
     setShowResetButton(false);
   };
 
@@ -433,33 +399,27 @@ export function MapView() {
       if (e.key === "2") reset2DView();
       if (e.key === "3") switch3DView();
     };
-
     window.addEventListener("keydown", handleKeyPress);
     return () => window.removeEventListener("keydown", handleKeyPress);
   }, []);
 
-  // Compute arrow SVG points from drag state
   const arrowSvg = React.useMemo(() => {
     if (!initDrag) return null;
     const { startScreen: s, currentScreen: c } = initDrag;
     const dx = c.x - s.x;
     const dy = c.y - s.y;
     const len = Math.sqrt(dx * dx + dy * dy);
-    if (len < 8) return null; // minimum drag distance
+    if (len < 8) return null;
 
-    const MAX_ARROW_LEN = 60; // px — clamp here
+    const MAX_ARROW_LEN = 60;
     const angle = Math.atan2(dy, dx);
     const clampedLen = Math.min(len, MAX_ARROW_LEN);
-
-    // Tip is always at most MAX_ARROW_LEN from start
     const tip = {
       x: s.x + clampedLen * Math.cos(angle),
       y: s.y + clampedLen * Math.sin(angle),
     };
-
     const headLen = 18;
     const headAngle = Math.PI / 6;
-
     const left = {
       x: tip.x - headLen * Math.cos(angle - headAngle),
       y: tip.y - headLen * Math.sin(angle - headAngle),
@@ -468,59 +428,21 @@ export function MapView() {
       x: tip.x - headLen * Math.cos(angle + headAngle),
       y: tip.y - headLen * Math.sin(angle + headAngle),
     };
-
     return { s, tip, left, right };
   }, [initDrag]);
 
   return (
     <div style={{ width: "100%", height: "100%", position: "relative" }}>
-      {/* Map */}
       <div
         ref={mapRef}
-        style={{
-          width: "100%",
-          height: "100%",
-          cursor: mode === "init" ? "crosshair" : "default",
-        }}
+        style={{ width: "100%", height: "100%", cursor: mode === "init" ? "crosshair" : "default" }}
       />
 
-      {/* Orange arrow overlay for init mode */}
       {arrowSvg && (
-        <svg
-          style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            width: "100%",
-            height: "100%",
-            pointerEvents: "none",
-            zIndex: 500,
-          }}
-        >
-          {/* Shaft */}
-          <line
-            x1={arrowSvg.s.x}
-            y1={arrowSvg.s.y}
-            x2={arrowSvg.tip.x}
-            y2={arrowSvg.tip.y}
-            stroke="#ff8c00"
-            strokeWidth={3}
-            strokeLinecap="round"
-          />
-          {/* Arrowhead */}
-          <polygon
-            points={`${arrowSvg.tip.x},${arrowSvg.tip.y} ${arrowSvg.left.x},${arrowSvg.left.y} ${arrowSvg.right.x},${arrowSvg.right.y}`}
-            fill="#ff8c00"
-          />
-          {/* Start dot */}
-          <circle
-            cx={arrowSvg.s.x}
-            cy={arrowSvg.s.y}
-            r={6}
-            fill="#ff8c00"
-            stroke="white"
-            strokeWidth={2}
-          />
+        <svg style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", pointerEvents: "none", zIndex: 500 }}>
+          <line x1={arrowSvg.s.x} y1={arrowSvg.s.y} x2={arrowSvg.tip.x} y2={arrowSvg.tip.y} stroke="#ff8c00" strokeWidth={3} strokeLinecap="round" />
+          <polygon points={`${arrowSvg.tip.x},${arrowSvg.tip.y} ${arrowSvg.left.x},${arrowSvg.left.y} ${arrowSvg.right.x},${arrowSvg.right.y}`} fill="#ff8c00" />
+          <circle cx={arrowSvg.s.x} cy={arrowSvg.s.y} r={6} fill="#ff8c00" stroke="white" strokeWidth={2} />
         </svg>
       )}
 
@@ -531,9 +453,7 @@ export function MapView() {
         padding: "12px 16px", borderRadius: 10, fontSize: 13,
         fontWeight: 500, zIndex: 1000, minWidth: 210,
         backdropFilter: "blur(10px)",
-        border: status === "disconnected"
-          ? "1px solid rgba(231, 76, 60, 0.4)"
-          : "1px solid rgba(255,255,255,0.08)",
+        border: status === "disconnected" ? "1px solid rgba(231, 76, 60, 0.4)" : "1px solid rgba(255,255,255,0.08)",
       }}>
         {status === "disconnected" ? (
           <div style={{ display: "flex", alignItems: "center", gap: 8, color: "#e74c3c" }}>
@@ -542,13 +462,7 @@ export function MapView() {
           </div>
         ) : mapLoading ? (
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{
-              width: 14, height: 14, borderRadius: "50%",
-              border: "2px solid rgba(255,255,255,0.2)",
-              borderTopColor: "#667eea",
-              animation: "mapspin 0.8s linear infinite",
-              flexShrink: 0,
-            }} />
+            <div style={{ width: 14, height: 14, borderRadius: "50%", border: "2px solid rgba(255,255,255,0.2)", borderTopColor: "#667eea", animation: "mapspin 0.8s linear infinite", flexShrink: 0 }} />
             <span style={{ color: "#adb5bd", fontSize: 12 }}>Waiting for map...</span>
           </div>
         ) : robotPose ? (
@@ -562,133 +476,50 @@ export function MapView() {
         )}
       </div>
 
-      {/* Map loading overlay */}
       {mapLoading && status !== "disconnected" && (
-        <div style={{
-          position: "absolute", inset: 0,
-          display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-          background: "rgba(15, 15, 20, 0.7)", backdropFilter: "blur(4px)",
-          zIndex: 500, gap: 16,
-        }}>
-          <div style={{
-            width: 40, height: 40, borderRadius: "50%",
-            border: "3px solid rgba(102, 126, 234, 0.2)",
-            borderTopColor: "#667eea",
-            animation: "mapspin 0.9s linear infinite",
-          }} />
+        <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "rgba(15, 15, 20, 0.7)", backdropFilter: "blur(4px)", zIndex: 500, gap: 16 }}>
+          <div style={{ width: 40, height: 40, borderRadius: "50%", border: "3px solid rgba(102, 126, 234, 0.2)", borderTopColor: "#667eea", animation: "mapspin 0.9s linear infinite" }} />
           <div style={{ color: "#adb5bd", fontSize: 14, fontWeight: 500 }}>Waiting for map topic...</div>
           <div style={{ color: "#6c757d", fontSize: 12 }}>/map</div>
         </div>
       )}
 
-      {/* 2D / 3D buttons */}
-      <div
-        style={{
-          position: "absolute",
-          bottom: 20,
-          right: 20,
-          display: "flex",
-          gap: 8,
-          zIndex: 1000,
-        }}
-      >
+      <div style={{ position: "absolute", bottom: 20, right: 20, display: "flex", gap: 8, zIndex: 1000 }}>
         <button
           onClick={reset2DView}
           title="2D View (Press 2)"
           style={{
-            minWidth: 56,
-            height: 40,
-            padding: "0 16px",
-            background: showResetButton 
-              ? "linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
-              : "rgba(255, 255, 255, 0.95)",
-            border: "none",
-            borderRadius: 8,
-            cursor: "pointer",
-            fontSize: 14,
-            fontWeight: 600,
+            minWidth: 56, height: 40, padding: "0 16px",
+            background: showResetButton ? "linear-gradient(135deg, #667eea 0%, #764ba2 100%)" : "rgba(255, 255, 255, 0.95)",
+            border: "none", borderRadius: 8, cursor: "pointer", fontSize: 14, fontWeight: 600,
             color: showResetButton ? "white" : "#495057",
-            boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
-            transition: "all 0.3s ease",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.15)", transition: "all 0.3s ease",
             opacity: showResetButton ? 1 : 0.85,
             transform: showResetButton ? "scale(1)" : "scale(0.98)",
           }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.transform = "scale(1.05) translateY(-2px)";
-            e.currentTarget.style.boxShadow = showResetButton 
-              ? "0 4px 16px rgba(102, 126, 234, 0.5)"
-              : "0 4px 12px rgba(0,0,0,0.2)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.transform = showResetButton ? "scale(1)" : "scale(0.98)";
-            e.currentTarget.style.boxShadow = "0 2px 8px rgba(0,0,0,0.15)";
-          }}
-        >
-          2D
-        </button>
+          onMouseEnter={(e) => { e.currentTarget.style.transform = "scale(1.05) translateY(-2px)"; e.currentTarget.style.boxShadow = showResetButton ? "0 4px 16px rgba(102, 126, 234, 0.5)" : "0 4px 12px rgba(0,0,0,0.2)"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.transform = showResetButton ? "scale(1)" : "scale(0.98)"; e.currentTarget.style.boxShadow = "0 2px 8px rgba(0,0,0,0.15)"; }}
+        >2D</button>
 
         <button
           onClick={switch3DView}
           title="3D View (Press 3)"
-          style={{
-            minWidth: 56,
-            height: 40,
-            padding: "0 16px",
-            background: "rgba(255, 255, 255, 0.95)",
-            border: "none",
-            borderRadius: 8,
-            cursor: "pointer",
-            fontSize: 14,
-            fontWeight: 600,
-            color: "#495057",
-            boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
-            transition: "all 0.3s ease",
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.transform = "scale(1.05) translateY(-2px)";
-            e.currentTarget.style.background = "linear-gradient(135deg, #f093fb 0%, #f5576c 100%)";
-            e.currentTarget.style.color = "white";
-            e.currentTarget.style.boxShadow = "0 4px 16px rgba(240, 147, 251, 0.5)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.transform = "scale(1)";
-            e.currentTarget.style.background = "rgba(255, 255, 255, 0.95)";
-            e.currentTarget.style.color = "#495057";
-            e.currentTarget.style.boxShadow = "0 2px 8px rgba(0,0,0,0.15)";
-          }}
-        >
-          3D
-        </button>
+          style={{ minWidth: 56, height: 40, padding: "0 16px", background: "rgba(255, 255, 255, 0.95)", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 14, fontWeight: 600, color: "#495057", boxShadow: "0 2px 8px rgba(0,0,0,0.15)", transition: "all 0.3s ease" }}
+          onMouseEnter={(e) => { e.currentTarget.style.transform = "scale(1.05) translateY(-2px)"; e.currentTarget.style.background = "linear-gradient(135deg, #f093fb 0%, #f5576c 100%)"; e.currentTarget.style.color = "white"; e.currentTarget.style.boxShadow = "0 4px 16px rgba(240, 147, 251, 0.5)"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.transform = "scale(1)"; e.currentTarget.style.background = "rgba(255, 255, 255, 0.95)"; e.currentTarget.style.color = "#495057"; e.currentTarget.style.boxShadow = "0 2px 8px rgba(0,0,0,0.15)"; }}
+        >3D</button>
       </div>
 
       <div
-        style={{
-          position: "absolute",
-          bottom: 70,
-          right: 20,
-          background: "rgba(0, 0, 0, 0.8)",
-          color: "white",
-          padding: "8px 12px",
-          borderRadius: 6,
-          fontSize: 11,
-          backdropFilter: "blur(10px)",
-          opacity: 0,
-          transition: "opacity 0.3s ease",
-          pointerEvents: "none",
-          whiteSpace: "nowrap",
-        }}
+        style={{ position: "absolute", bottom: 70, right: 20, background: "rgba(0, 0, 0, 0.8)", color: "white", padding: "8px 12px", borderRadius: 6, fontSize: 11, backdropFilter: "blur(10px)", opacity: 0, transition: "opacity 0.3s ease", pointerEvents: "none", whiteSpace: "nowrap" }}
         className="view-shortcuts-hint"
       >
         <div><strong>2</strong> - 2D View | <strong>3</strong> - 3D View</div>
       </div>
 
       <style>{`
-        div:has(> button):hover .view-shortcuts-hint {
-          opacity: 1 !important;
-        }
-        @keyframes mapspin {
-          to { transform: rotate(360deg); }
-        }
+        div:has(> button):hover .view-shortcuts-hint { opacity: 1 !important; }
+        @keyframes mapspin { to { transform: rotate(360deg); } }
       `}</style>
     </div>
   );

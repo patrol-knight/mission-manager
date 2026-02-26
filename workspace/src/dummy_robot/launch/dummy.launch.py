@@ -7,7 +7,7 @@ from ament_index_python.packages import get_package_share_directory
 
 def generate_launch_description() -> LaunchDescription:
     pkg_share = get_package_share_directory('dummy_robot')
-    map_yaml_file = os.path.join(pkg_share, 'maps', 'map_3173.yaml')
+    map_yaml_file = os.path.join(pkg_share, 'maps', 'map_0201.yaml')
 
     return LaunchDescription([
         Node(
