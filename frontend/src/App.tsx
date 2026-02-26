@@ -1,7 +1,6 @@
-import { useState, useEffect, useRef } from "react";
-import { MapView } from "./mapview";
+import { useState, useEffect, useRef } from "react";import { MapView } from "./mapview";
 import { useWaypoint } from "./waypoint";
-import { publishMission } from "./publisher";
+import { publishMission, publishClearMission } from "./publisher";
 import { ToastProvider, useToast } from "./Toast";
 import { useRosConnection } from "./useRosConnection";
 
@@ -9,6 +8,7 @@ function AppInner() {
   const waypoints = useWaypoint((s) => s.waypoints);
   const mode = useWaypoint((s) => s.mode);
   const setMode = useWaypoint((s) => s.setMode);
+  const clearAll = useWaypoint((s) => s.clearAll);
   const [isWaypointListExpanded, setIsWaypointListExpanded] = useState(false);
 
   const { show } = useToast();
@@ -32,6 +32,12 @@ function AppInner() {
   const handlePublishMission = () => {
     publishMission(waypoints);
     show("info", "Mission Published", `${waypoints.length} waypoint${waypoints.length !== 1 ? "s" : ""} sent`);
+  };
+
+  const handleClearAll = () => {
+    clearAll();
+    publishClearMission();
+    show("error", "Mission Cleared", "All waypoints removed");
   };
 
   const modes = [
@@ -137,7 +143,25 @@ function AppInner() {
             onMouseLeave={(e) => { e.currentTarget.style.background = "linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%)"; }}
           >
             <span style={{ fontWeight: 600, fontSize: 14, color: "#495057" }}>Waypoints ({waypoints.length})</span>
-            <span style={{ fontSize: 18, transition: "transform 0.3s ease", transform: isWaypointListExpanded ? "rotate(180deg)" : "rotate(0deg)", display: "inline-block" }}>▼</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              {waypoints.length > 0 && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleClearAll(); }}
+                  title="Clear all waypoints"
+                  style={{
+                    padding: "3px 10px", fontSize: 11, fontWeight: 600,
+                    background: "rgba(231, 76, 60, 0.12)", color: "#c0392b",
+                    border: "1px solid rgba(231, 76, 60, 0.25)", borderRadius: 6,
+                    cursor: "pointer", transition: "all 0.2s ease",
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = "#e74c3c"; e.currentTarget.style.color = "white"; e.currentTarget.style.borderColor = "#e74c3c"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(231, 76, 60, 0.12)"; e.currentTarget.style.color = "#c0392b"; e.currentTarget.style.borderColor = "rgba(231, 76, 60, 0.25)"; }}
+                >
+                  Clear All
+                </button>
+              )}
+              <span style={{ fontSize: 18, transition: "transform 0.3s ease", transform: isWaypointListExpanded ? "rotate(180deg)" : "rotate(0deg)", display: "inline-block" }}>▼</span>
+            </div>
           </div>
           <div style={{ maxHeight: isWaypointListExpanded ? "400px" : "0", overflow: "hidden", transition: "max-height 0.3s cubic-bezier(0.4, 0, 0.2, 1)" }}>
             <div style={{ padding: isWaypointListExpanded ? "12px 0" : "0", maxHeight: 300, overflowY: "auto" }}>
