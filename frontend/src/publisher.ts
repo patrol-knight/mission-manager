@@ -1,13 +1,13 @@
 import { Topic } from "roslib";
 import { ros } from "./ros"
 
-export const missionTopic = new Topic({
-  ros,
-  name: "/interface/waypoints",
-  messageType: "geometry_msgs/PoseArray",
-});
 
 export function publishMission(waypoints: any[]) {
+  const missionTopic = new Topic({
+    ros,
+    name: "/interface/waypoints",
+    messageType: "geometry_msgs/PoseArray",
+  });
   const msg = {
     header: {
       frame_id: "map",
@@ -32,6 +32,25 @@ export function publishMission(waypoints: any[]) {
   };
 
   missionTopic.publish(msg);
+}
+
+export function publishClearMission() {
+  const topic = new Topic({
+    ros,
+    name: "/interface/waypoints",
+    messageType: "geometry_msgs/PoseArray",
+  });
+
+  topic.publish({
+    header: {
+      frame_id: "map",
+      stamp: {
+        sec: Math.floor(Date.now() / 1000),
+        nanosec: (Date.now() % 1000) * 1e6,
+      },
+    },
+    poses: [],
+  });
 }
 
 export function publishInitialPose(x: number, y: number, yaw: number) {

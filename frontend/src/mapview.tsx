@@ -6,12 +6,42 @@ import { subscribePath, type PathData } from "./subscriber";
 import { useWaypoint } from "./waypoint";
 import { publishInitialPose } from "./publisher";
 import { useRosConnection } from "./useRosConnection";
+import { useToast } from "./Toast";
 
 type DragState = {
   startScreen: { x: number; y: number };
   startLngLat: { lng: number; lat: number };
   currentScreen: { x: number; y: number };
 };
+
+// Draw a circle with a white number onto a canvas, return it as a DOM element.
+// Using canvas avoids all CSS layout/reflow issues that cause drift with div-based markers.
+function makeWaypointCanvas(index: number, isDelete: boolean): HTMLCanvasElement {
+  const SIZE = 28;
+  const canvas = document.createElement("canvas");
+  canvas.width = SIZE;
+  canvas.height = SIZE;
+  const ctx = canvas.getContext("2d")!;
+
+  // Circle
+  ctx.beginPath();
+  ctx.arc(SIZE / 2, SIZE / 2, SIZE / 2 - 2, 0, Math.PI * 2);
+  ctx.fillStyle = isDelete ? "#c0392b" : "#ffadad";
+  ctx.fill();
+  ctx.strokeStyle = "white";
+  ctx.lineWidth = 2.5;
+  ctx.stroke();
+
+  // Number
+  const num = String(index + 1);
+  ctx.fillStyle = "white";
+  ctx.font = `bold ${num.length > 1 ? 10 : 12}px system-ui, sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(num, SIZE / 2, SIZE / 2);
+
+  return canvas;
+}
 
 export function MapView() {
   const mapRef = React.useRef<HTMLDivElement>(null);
@@ -22,20 +52,27 @@ export function MapView() {
   const robotMarkerRef = React.useRef<maplibregl.Marker | null>(null);
   const originalBoundsRef = React.useRef<[[number, number], [number, number]] | null>(null);
 
-  // Zustand state
   const add = useWaypoint((s) => s.add);
   const update = useWaypoint((s) => s.update);
   const remove = useWaypoint((s) => s.remove);
   const waypoints = useWaypoint((s) => s.waypoints);
   const mode = useWaypoint((s) => s.mode);
+  const clearedAt = useWaypoint((s) => s.clearedAt);
 
   const [mapData, setMapData] = React.useState<MapData | null>(null);
   const [robotPose, setRobotPose] = React.useState<RobotPose | null>(null);
   const [pathData, setPathData] = React.useState<PathData | null>(null);
+
+  // Immediately clear path when clearAll is triggered
+  React.useEffect(() => {
+    if (clearedAt === null) return;
+    setPathData(null);
+  }, [clearedAt]);
   const [showResetButton, setShowResetButton] = React.useState(false);
   const [mapLoading, setMapLoading] = React.useState(true);
 
   const { status } = useRosConnection();
+  const { show } = useToast();
 
   // Init mode drag state
   const [initDrag, setInitDrag] = React.useState<DragState | null>(null);
@@ -202,6 +239,7 @@ export function MapView() {
       if (Math.abs(dx) > 1e-7 || Math.abs(dy) > 1e-7) {
         const yaw = Math.atan2(dy, dx);
         publishInitialPose(startLngLat.lng, startLngLat.lat, yaw);
+      show("success", "Initial Pose Set", `X: ${startLngLat.lng.toFixed(2)}, Y: ${startLngLat.lat.toFixed(2)}, Yaw: ${(yaw * 180 / Math.PI).toFixed(1)}°`);
       }
 
       initDragRef.current = null;
@@ -229,26 +267,23 @@ export function MapView() {
     markersRef.current.forEach((marker) => marker.remove());
     markersRef.current.clear();
 
-    for (const wp of waypoints) {
-      const el = document.createElement("div");
-      el.className = "wp-marker";
-      
-      el.style.width = "16px";
-      el.style.height = "16px";
-      el.style.background = "#ffadad";
-      el.style.borderRadius = "50%";
-      el.style.border = "2px solid white";
-      el.style.boxShadow = "0 2px 4px rgba(0,0,0,0.3)";
-      el.style.cursor = mode === "off" ? "default" : "pointer";
+    waypoints.forEach((wp, index) => {
+      // Canvas-based element: fixed pixel size, no CSS layout, no drift
+      const canvas = makeWaypointCanvas(index, mode === "delete");
+      canvas.className = "wp-marker";
+      canvas.style.cursor = mode === "off" ? "default" : "pointer";
+      canvas.style.display = "block";
 
       const marker = new maplibregl.Marker({
-        element: el,
-        draggable: mode === "modify", 
+        element: canvas,
+        anchor: "center",
+        draggable: mode === "modify",
       })
         .setLngLat([wp.x, wp.y])
         .addTo(map.current!);
 
       if (mode === "modify") {
+        canvas.style.cursor = "grab";
         marker.on("dragend", () => {
           const pos = marker.getLngLat();
           update(wp.id, pos.lng, pos.lat);
@@ -256,14 +291,14 @@ export function MapView() {
       }
 
       if (mode === "delete") {
-        el.addEventListener("click", (e) => {
-          e.stopPropagation(); 
+        canvas.addEventListener("click", (e) => {
+          e.stopPropagation();
           remove(wp.id);
         });
       }
 
       markersRef.current.set(wp.id, marker);
-    }
+    });
 
     return () => {
       markersRef.current.forEach((marker) => marker.remove());
@@ -274,7 +309,6 @@ export function MapView() {
   React.useEffect(() => {
     markersRef.current.forEach((marker) => {
       marker.setDraggable(mode === "modify");
-      
       const el = marker.getElement();
       el.style.cursor = mode === "off" ? "default" : "pointer";
     });
