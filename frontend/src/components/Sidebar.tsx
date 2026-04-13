@@ -3,6 +3,7 @@ import { useWaypointStore } from "../stores/waypointStore";
 import { useApiConnection } from "../hooks/useApiConnection";
 import type { Mode, RobotPose } from "../types";
 import type { RouteProgress } from "../stores/waypointStore";
+import type { RoutePhase } from "../App";
 
 const MODES: { key: Mode; label: string; description: string; gradient: string }[] = [
   { key: "off",    label: "Off",    description: "No interaction with map",                          gradient: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)" },
@@ -12,7 +13,6 @@ const MODES: { key: Mode; label: string; description: string; gradient: string }
 
 const ITEM_HEIGHT = 48;
 const GAP = 4;
-
 const SPEED_HISTORY = 5;
 const speedBuf: number[] = [];
 
@@ -33,7 +33,7 @@ function fmtDist(m: number) {
 function fmtEta(sec: number | null) {
   if (sec === null) return "—";
   if (sec >= 3600) return Math.round(sec / 3600) + " hr";
-  if (sec >= 60) return Math.round(sec / 60) + " min";
+  if (sec >= 60)   return Math.round(sec / 60) + " min";
   return Math.round(sec) + " s";
 }
 
@@ -62,19 +62,54 @@ function pathDistFromProjection(seg: number, t: number, coords: { x: number; y: 
 }
 
 interface SidebarProps {
-  onConfirm: () => void;
-  robotPose: RobotPose | null;
-  onClearRoute: () => void;
-  routeProgress: RouteProgress | null;
+  routePhase:     RoutePhase;
+  isLoading:      boolean;
+  onCheckRoute:   () => void;
+  onConfirmRoute: () => void;
+  onClear:        () => void;
+  robotPose:      RobotPose | null;
+  routeProgress:  RouteProgress | null;
+  waypointCount:  number;
 }
 
-export function Sidebar({ onConfirm, robotPose, onClearRoute, routeProgress }: SidebarProps) {
-  const waypoints = useWaypointStore((s) => s.waypoints);
-  const mode = useWaypointStore((s) => s.mode);
+export function Sidebar({
+  routePhase, isLoading,
+  onCheckRoute, onConfirmRoute, onClear,
+  robotPose, routeProgress, waypointCount,
+}: SidebarProps) {
+  const mode    = useWaypointStore((s) => s.mode);
   const setMode = useWaypointStore((s) => s.setMode);
   const { status } = useApiConnection();
-  const modeIndex = MODES.findIndex((m) => m.key === mode);
-  const hasWaypoints = waypoints.length > 0;
+  const modeIndex  = MODES.findIndex((m) => m.key === mode);
+
+  const primaryBtn = (() => {
+    switch (routePhase) {
+      case "idle":
+        return {
+          label: "Check Route (0)",
+          disabled: true,
+          onClick: onCheckRoute,
+          background: "#adb5bd",
+          shadow: "none",
+        };
+      case "check":
+        return {
+          label: `Check Route (${waypointCount})`,
+          disabled: isLoading,
+          onClick: onCheckRoute,
+          background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+          shadow: "0 4px 12px rgba(102,126,234,0.4)",
+        };
+      case "checked":
+        return {
+          label: "Confirm Route",
+          disabled: isLoading,
+          onClick: onConfirmRoute,
+          background: "linear-gradient(135deg, #11998e 0%, #38ef7d 100%)",
+          shadow: "0 4px 12px rgba(17,153,142,0.4)",
+        };
+    }
+  })();
 
   const stats = React.useMemo(() => {
     if (!routeProgress || !robotPose || routeProgress.goals.length === 0 || routeProgress.routeCoords.length < 2) return null;
@@ -127,7 +162,7 @@ export function Sidebar({ onConfirm, robotPose, onClearRoute, routeProgress }: S
         <h2 style={{ margin: 0, fontSize: 24, fontWeight: 600, color: "#212529" }}>Mission Editor</h2>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <StatusPill label="Backend" status={status} />
-          <StatusPill label="Robot" status={robotPose !== null ? "connected" : "disconnected"} />
+          <StatusPill label="Robot"   status={robotPose !== null ? "connected" : "disconnected"} />
         </div>
       </div>
 
@@ -164,32 +199,46 @@ export function Sidebar({ onConfirm, robotPose, onClearRoute, routeProgress }: S
 
       <div style={{ display: "flex", gap: 8 }}>
         <button
-          onClick={onConfirm}
-          disabled={!hasWaypoints}
+          onClick={primaryBtn.onClick}
+          disabled={primaryBtn.disabled}
           style={{
             flex: 1, padding: "12px 16px", color: "white", border: "none",
-            borderRadius: 10, cursor: !hasWaypoints ? "not-allowed" : "pointer",
+            borderRadius: 10,
+            cursor: primaryBtn.disabled ? "not-allowed" : "pointer",
             fontSize: 14, fontWeight: 600,
-            background: !hasWaypoints ? "#adb5bd" : "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-            boxShadow: !hasWaypoints ? "none" : "0 4px 12px rgba(102,126,234,0.4)",
+            background: primaryBtn.disabled ? "#adb5bd" : primaryBtn.background,
+            boxShadow: primaryBtn.disabled ? "none" : primaryBtn.shadow,
             transition: "all 0.3s ease",
           }}
-          onMouseEnter={(e) => { if (hasWaypoints) { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = "0 6px 16px rgba(102,126,234,0.5)"; } }}
-          onMouseLeave={(e) => { if (hasWaypoints) { e.currentTarget.style.transform = ""; e.currentTarget.style.boxShadow = "0 4px 12px rgba(102,126,234,0.4)"; } }}
+          onMouseEnter={(e) => {
+            if (!primaryBtn.disabled) {
+              e.currentTarget.style.transform = "translateY(-2px)";
+              e.currentTarget.style.filter = "brightness(1.05)";
+            }
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = "";
+            e.currentTarget.style.filter = "";
+          }}
         >
-          Confirm Route ({waypoints.length})
+          {isLoading ? "Loading…" : primaryBtn.label}
         </button>
+
         <button
-          onClick={onClearRoute}
+          onClick={onClear}
           style={{
             padding: "12px 14px", background: "#fff",
             color: "#dc3545", border: "1px solid #f5c6cb",
-            borderRadius: 10, cursor: "pointer", fontSize: 13, fontWeight: 500,
-            boxShadow: "0 1px 3px rgba(0,0,0,0.05)", transition: "all 0.2s", whiteSpace: "nowrap",
+            borderRadius: 10, cursor: "pointer",
+            fontSize: 13, fontWeight: 500,
+            boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+            transition: "all 0.2s", whiteSpace: "nowrap",
           }}
           onMouseEnter={(e) => { e.currentTarget.style.background = "#fff5f5"; }}
           onMouseLeave={(e) => { e.currentTarget.style.background = "#fff"; }}
-        >Clear</button>
+        >
+          Clear
+        </button>
       </div>
 
       <RouteProgressCard stats={stats} routeProgress={routeProgress} />
@@ -200,17 +249,15 @@ export function Sidebar({ onConfirm, robotPose, onClearRoute, routeProgress }: S
 }
 
 interface RouteStats {
-  arrived: boolean;
-  avg: number;
-  distNext: number;
+  arrived:   boolean;
+  avg:       number;
+  distNext:  number;
   distTotal: number;
   goalLabel: string;
 }
 
 function RouteProgressCard({ stats, routeProgress }: { stats: RouteStats | null; routeProgress: RouteProgress | null }) {
   const [expanded, setExpanded] = React.useState(false);
-
-  const isActive = routeProgress?.active ?? false;
 
   return (
     <div style={{ background: "#fff", borderRadius: 10, overflow: "hidden", boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}>
@@ -224,20 +271,7 @@ function RouteProgressCard({ stats, routeProgress }: { stats: RouteStats | null;
         }}
       >
         <span style={{ fontWeight: 600, fontSize: 14, color: "#495057" }}>Route Progress</span>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          {/* {isActive && (
-            <div style={{
-              width: 8, height: 8, borderRadius: "50%",
-              background: "#FF8C00",
-              boxShadow: "0 0 0 0 rgba(255,140,0,0.4)",
-              animation: "rpulse 1.2s infinite",
-            }} />
-          )} */}
-          <span style={{
-            fontSize: 10, color: expanded ? "#495057" : "#adb5bd",
-            transition: "color 0.2s",
-          }}>●</span>
-        </div>
+        <span style={{ fontSize: 10, color: expanded ? "#495057" : "#adb5bd", transition: "color 0.2s" }}>●</span>
       </div>
 
       <div style={{
@@ -246,70 +280,58 @@ function RouteProgressCard({ stats, routeProgress }: { stats: RouteStats | null;
         transition: "max-height 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
       }}>
         <div style={{ padding: "12px 16px", fontFamily: "monospace", fontSize: 13 }}>
-          {!isActive || !stats ? (
-            <NoRouteRows />
-          ) : stats.arrived ? (
-            <ArrivedRows />
-          ) : (
-            <ActiveRows stats={stats} />
-          )}
+          {!routeProgress || !stats
+            ? <NoRouteRows />
+            : stats.arrived
+            ? <ArrivedRows />
+            : <ActiveRows stats={stats} />
+          }
         </div>
       </div>
-
-      <style>{`@keyframes rpulse { 0%,100%{box-shadow:0 0 0 0 rgba(255,140,0,0.5)} 50%{box-shadow:0 0 0 5px rgba(255,140,0,0)} }`}</style>
     </div>
   );
 }
 
 function NoRouteRows() {
-  return (
-    <>
-      <RPRow label="Goal" value="—" />
-      
-      <RPDivider />
-      <RPSection>▸ next goal</RPSection>
-      <RPRow label="Distance" value="—" />
-      <RPRow label="ETA" value="—" />
-      <RPDivider />
-      <RPSection>▸ total remaining</RPSection>
-      <RPRow label="Distance" value="—" />
-      <RPRow label="ETA" value="—" />
-    </>
-  );
+  return (<>
+    <RPRow label="Goal" value="—" />
+    <RPDivider />
+    <RPSection>▸ next goal</RPSection>
+    <RPRow label="Distance" value="—" />
+    <RPRow label="ETA" value="—" />
+    <RPDivider />
+    <RPSection>▸ total remaining</RPSection>
+    <RPRow label="Distance" value="—" />
+    <RPRow label="ETA" value="—" />
+  </>);
 }
 
 function ArrivedRows() {
-  return (
-    <>
-      <RPRow label="Goal" value="Arrived" orange />
-      
-      <RPDivider />
-      <RPSection>▸ next goal</RPSection>
-      <RPRow label="Distance" value="—" orange />
-      <RPRow label="ETA" value="—" orange />
-      <RPDivider />
-      <RPSection>▸ total remaining</RPSection>
-      <RPRow label="Distance" value="0.0 m" orange />
-      <RPRow label="ETA" value="—" orange />
-    </>
-  );
+  return (<>
+    <RPRow label="Goal" value="Arrived" orange />
+    <RPDivider />
+    <RPSection>▸ next goal</RPSection>
+    <RPRow label="Distance" value="—" orange />
+    <RPRow label="ETA" value="—" orange />
+    <RPDivider />
+    <RPSection>▸ total remaining</RPSection>
+    <RPRow label="Distance" value="0.0 m" orange />
+    <RPRow label="ETA" value="—" orange />
+  </>);
 }
 
 function ActiveRows({ stats }: { stats: RouteStats }) {
-  return (
-    <>
-      <RPRow label="Goal" value={stats.goalLabel} orange />
-      
-      <RPDivider />
-      <RPSection>▸ next goal</RPSection>
-      <RPRow label="Distance" value={fmtDist(stats.distNext)} orange />
-      <RPRow label="ETA" value={fmtEta(stats.avg > 0.1 ? stats.distNext / stats.avg : null)} orange />
-      <RPDivider />
-      <RPSection>▸ total remaining</RPSection>
-      <RPRow label="Distance" value={fmtDist(stats.distTotal)} orange />
-      <RPRow label="ETA" value={fmtEta(stats.avg > 0.1 ? stats.distTotal / stats.avg : null)} orange />
-    </>
-  );
+  return (<>
+    <RPRow label="Goal" value={stats.goalLabel} orange />
+    <RPDivider />
+    <RPSection>▸ next goal</RPSection>
+    <RPRow label="Distance" value={fmtDist(stats.distNext)} orange />
+    <RPRow label="ETA" value={fmtEta(stats.avg > 0.1 ? stats.distNext / stats.avg : null)} orange />
+    <RPDivider />
+    <RPSection>▸ total remaining</RPSection>
+    <RPRow label="Distance" value={fmtDist(stats.distTotal)} orange />
+    <RPRow label="ETA" value={fmtEta(stats.avg > 0.1 ? stats.distTotal / stats.avg : null)} orange />
+  </>);
 }
 
 function RPRow({ label, value, orange }: { label: string; value: string; orange?: boolean }) {
@@ -342,15 +364,8 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 }
 
 function StatusPill({ label, status }: { label: string; status: string }) {
-  const color =
-    status === "connected" ? "#28a745" :
-    status === "connecting" ? "#ffc107" :
-    "#dc3545";
-
-  const textColor =
-    status === "connected" ? "#155724" :
-    status === "connecting" ? "#856404" :
-    "#721c24";
+  const color     = status === "connected" ? "#28a745" : status === "connecting" ? "#ffc107" : "#dc3545";
+  const textColor = status === "connected" ? "#155724" : status === "connecting" ? "#856404" : "#721c24";
 
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 5 }}>

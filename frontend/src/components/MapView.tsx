@@ -4,17 +4,13 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { useWaypointStore } from "../stores/waypointStore";
 import { useRobotPose } from "../hooks/useRobotPose";
 import { useLaneletMap } from "../hooks/useMapData";
-import { useMissionPath } from "../hooks/useMissionPath";
 import { useWaypointValidation } from "../hooks/useWaypointValidation";
 import { fetchMapBounds, projectToXY, projectToLngLat } from "../api/rest";
 import { useApiConnection } from "../hooks/useApiConnection";
 import { useToast } from "./Toast";
 
-// No frontend projection math — all coordinate conversion goes through the backend.
-// Backend uses Transverse Mercator (pyproj); any frontend approximation causes ~20cm drift.
-
 const MARKER_COLORS = {
-  planning: "#00FF88",
+  planning: "#4dabf7",
   pending:  "#00FF88",
   current:  "#FF8C00",
   done:     "#666666",
@@ -49,6 +45,7 @@ export function MapView({ onMapReady, routeGeojson }: MapViewProps) {
   const robotMarkerRef = React.useRef<maplibregl.Marker | null>(null);
   const mapBoundsRef = React.useRef<[[number, number], [number, number]] | null>(null);
   const laneletGeojsonRef = React.useRef<GeoJSON.FeatureCollection | null>(null);
+  const prevBearingRef = React.useRef<number | null>(null);
 
   const add = useWaypointStore((s) => s.add);
   const update = useWaypointStore((s) => s.update);
@@ -60,7 +57,6 @@ export function MapView({ onMapReady, routeGeojson }: MapViewProps) {
 
   const robotPose = useRobotPose();
   const { geojson: laneletGeojson } = useLaneletMap();
-  const pathData = useMissionPath();
   const { validate } = useWaypointValidation();
   const { status } = useApiConnection();
   const { show } = useToast();
@@ -130,6 +126,7 @@ export function MapView({ onMapReady, routeGeojson }: MapViewProps) {
       center: [121.5, 25.0],
       zoom: 17,
       maxZoom: 22,
+      pitchWithRotate: false,
     });
     mapRef.current = map;
 
@@ -191,7 +188,7 @@ export function MapView({ onMapReady, routeGeojson }: MapViewProps) {
     routeMarkersRef.current.forEach((m) => m.remove());
     routeMarkersRef.current = [];
 
-    if (!routeProgress || !routeProgress.active) return;
+    if (!routeProgress) return;
 
     Promise.all(
       routeProgress.goals.map((goal) => projectToLngLat(goal.x, goal.y))
@@ -224,7 +221,15 @@ export function MapView({ onMapReady, routeGeojson }: MapViewProps) {
 
     const lng = robotPose.lon;
     const lat = robotPose.lat;
-    const bearing = 90 - robotPose.yaw * (180 / Math.PI);
+    const rawBearing = 90 - robotPose.yaw * (180 / Math.PI);
+    let bearing = rawBearing;
+    if (prevBearingRef.current !== null) {
+      let delta = rawBearing - prevBearingRef.current;
+      if (delta > 180)  delta -= 360;
+      if (delta < -180) delta += 360;
+      bearing = prevBearingRef.current + delta;
+    }
+    prevBearingRef.current = bearing;
 
     if (robotMarkerRef.current) {
       robotMarkerRef.current.setLngLat([lng, lat]);
@@ -246,8 +251,14 @@ export function MapView({ onMapReady, routeGeojson }: MapViewProps) {
     if (rp?.active) {
       let idx = rp.currentGoalIdx;
       while (idx < rp.goals.length) {
-        const d = Math.sqrt((robotPose.x - rp.goals[idx].x) ** 2 + (robotPose.y - rp.goals[idx].y) ** 2);
-        if (d < 3.0) idx++; else break;
+        const dx = rp.goals[idx].x - robotPose.x;
+        const dy = rp.goals[idx].y - robotPose.y;
+        const d = Math.sqrt(dx ** 2 + dy ** 2);
+
+        // const vx = Math.cos(robotPose.yaw);
+        // const vy = Math.sin(robotPose.yaw);
+        // const dot = vx * dx + vy * dy;
+        if (d < 0.5) idx++; else break;
       }
       if (idx !== rp.currentGoalIdx) advanceGoalRef.current(idx, robotPose.speed ?? 0);
     }
@@ -339,43 +350,6 @@ export function MapView({ onMapReady, routeGeojson }: MapViewProps) {
     map.on("click", handleClick);
     return () => { map.off("click", handleClick); };
   }, [mode, add, validate, show]);
-
-  React.useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-    const cleanup = () => {
-      if (map.getLayer("path-line")) map.removeLayer("path-line");
-      if (map.getSource("mission-path")) map.removeSource("mission-path");
-    };
-    if (!pathData || pathData.points.length === 0) {
-      if (map.loaded()) cleanup();
-      return cleanup;
-    }
-
-    Promise.all(pathData.points.map((p) => projectToLngLat(p.x, p.y)))
-      .then((lngLats) => {
-        const geojson: GeoJSON.Feature<GeoJSON.LineString> = {
-          type: "Feature", properties: {},
-          geometry: { type: "LineString", coordinates: lngLats.map(({ lng, lat }) => [lng, lat]) },
-        };
-        const apply = () => {
-          if (map.getSource("mission-path")) {
-            (map.getSource("mission-path") as maplibregl.GeoJSONSource).setData(geojson);
-          } else {
-            map.addSource("mission-path", { type: "geojson", data: geojson });
-            map.addLayer({
-              id: "path-line", type: "line", source: "mission-path",
-              layout: { "line-join": "round", "line-cap": "round" },
-              paint: { "line-color": "#4a4e69", "line-width": 3, "line-opacity": 0.8 },
-            });
-          }
-        };
-        if (map.loaded()) apply(); else map.once("load", apply);
-      })
-      .catch((e) => console.warn("Mission path projection failed:", e));
-
-    return cleanup;
-  }, [pathData]);
 
   return (
     <div style={{ width: "100%", height: "100%", position: "relative" }}>
