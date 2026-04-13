@@ -1,0 +1,26 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    network_mode: host
+    volumes:
+      - ./maps:/app/maps:ro
+
+    environment:
+      - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+      - CYCLONEDDS_URI=file:///app/cyclonedds.xml
+
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+    ports:
+      - "5050:80"
+    environment:
+      - API_BASE_URL=http://localhost:8000
+      - WS_URL=ws://localhost:8000/ws
+
+    depends_on:
+      - backend
+    restart: unless-stopped
