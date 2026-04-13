@@ -16,7 +16,7 @@ class MapServer:
         self._routing_graph  = None
         self._origin_lat     = None
         self._origin_lon     = None
-        self._projector      = None 
+        self._projector      = None
         self._map_bounds     = None
 
     def load(self, osm_path: str, projector_yaml: str):
@@ -28,7 +28,7 @@ class MapServer:
         print(f"[MapServer] Origin lat={self._origin_lat}, lon={self._origin_lon}")
 
         origin = Origin(self._origin_lat, self._origin_lon)
-        self._projector = LocalCartesianProjector(origin)   
+        self._projector = LocalCartesianProjector(origin)
 
         self._lanelet_map   = load(osm_path, self._projector)
         self._lanelet_layer = self._lanelet_map.laneletLayer
@@ -42,6 +42,8 @@ class MapServer:
 
         self._map_bounds = self._compute_bounds()
 
+    # ── Coordinate conversion ─────────────────────────────────────────────
+
     def xy_to_latlon(self, x: float, y: float) -> tuple[float, float]:
         gps = self._projector.reverse(BasicPoint3d(x, y, 0.0))
         return gps.lat, gps.lon
@@ -53,6 +55,8 @@ class MapServer:
     def _to_latlon(self, x: float, y: float) -> list[float]:
         lat, lon = self.xy_to_latlon(x, y)
         return [lon, lat]
+
+    # ── Map metadata ──────────────────────────────────────────────────────
 
     def _compute_bounds(self):
         min_lat = min_lon =  1e18
@@ -84,6 +88,8 @@ class MapServer:
             features.append({"type": "Feature", "geometry": {"type": "LineString", "coordinates": center}, "properties": {"type": "center"}})
         return {"type": "FeatureCollection", "features": features}
 
+    # ── Lanelet queries ───────────────────────────────────────────────────
+
     def is_in_lanelet(self, x: float, y: float) -> bool:
         point   = BasicPoint2d(x, y)
         nearest = findNearest(self._lanelet_layer, point, 1)
@@ -91,18 +97,53 @@ class MapServer:
             return False
         return inside(nearest[0][1], point)
 
-    def _nearest_lanelet(self, x: float, y: float):
-        point   = BasicPoint2d(x, y)
-        nearest = findNearest(self._lanelet_layer, point, 1)
-        return nearest[0][1] if nearest else None
-
-    def _closest_centerline_index(self, ll, x: float, y: float) -> int:
-        best_i, best_d = 0, float("inf")
-        for i, p in enumerate(ll.centerline):
-            d = (p.x - x) ** 2 + (p.y - y) ** 2
+    def _get_lanelet_yaw(self, ll, x: float, y: float) -> float:
+        """取得該點在 lanelet centerline 上最近 segment 的切線方向"""
+        pts = list(ll.centerline)
+        if len(pts) < 2:
+            return 0.0
+        best_i = 0
+        best_d = float("inf")
+        for i in range(len(pts) - 1):
+            mx = (pts[i].x + pts[i+1].x) / 2
+            my = (pts[i].y + pts[i+1].y) / 2
+            d = (mx - x) ** 2 + (my - y) ** 2
             if d < best_d:
-                best_d, best_i = d, i
-        return best_i
+                best_d = d
+                best_i = i
+        dx = pts[best_i + 1].x - pts[best_i].x
+        dy = pts[best_i + 1].y - pts[best_i].y
+        return math.atan2(dy, dx)
+
+    def _nearest_lanelet(self, x: float, y: float):
+        """找最近且方向一致的 lanelet，用 centerline 切線做方向過濾"""
+        point = BasicPoint2d(x, y)
+        candidates = findNearest(self._lanelet_layer, point, 5)
+        if not candidates:
+            return None
+
+        best_ll   = None
+        best_dist = float("inf")
+
+        for dist, ll in candidates:
+            yaw = self._get_lanelet_yaw(ll, x, y)
+            # 用相鄰候選互相比較方向一致性
+            # 選方向跟最近 lanelet 一致、且距離最近的
+            if best_ll is None:
+                ref_yaw = yaw
+                best_ll = ll
+                best_dist = dist
+                continue
+
+            # dot product 判斷是否同向
+            dot = math.cos(yaw) * math.cos(ref_yaw) + math.sin(yaw) * math.sin(ref_yaw)
+            if dot > 0 and dist < best_dist:
+                best_dist = dist
+                best_ll = ll
+
+        return best_ll
+
+    # ── Centerline sampling ───────────────────────────────────────────────
 
     def _project_point_onto_centerline(self, ll, x: float, y: float) -> float:
         pts = list(ll.centerline)
@@ -143,15 +184,35 @@ class MapServer:
                 return self._to_latlon(x, y)
         return self._to_latlon(pts[-1].x, pts[-1].y)
 
-    def _sample_centerline_from(self, ll, t_start: float) -> list:
-        pts = list(ll.centerline)
-        if len(pts) < 2:
-            return []
+    def _build_arc(self, pts):
         arc = [0.0]
         for i in range(1, len(pts)):
             dx = pts[i].x - pts[i-1].x
             dy = pts[i].y - pts[i-1].y
             arc.append(arc[-1] + math.sqrt(dx*dx + dy*dy))
+        return arc
+
+    def _sample_centerline_between(self, ll, t_start: float, t_end: float) -> list:
+        pts = list(ll.centerline)
+        if len(pts) < 2:
+            return []
+        arc   = self._build_arc(pts)
+        total = arc[-1]
+        if total == 0:
+            return [self._to_latlon(pts[0].x, pts[0].y)]
+        result = [self._interp_centerline_at(pts, arc, total, t_start)]
+        for i, a in enumerate(arc[1:], start=1):
+            t = a / total
+            if t_start + 1e-9 < t < t_end - 1e-9:
+                result.append(self._to_latlon(pts[i].x, pts[i].y))
+        result.append(self._interp_centerline_at(pts, arc, total, t_end))
+        return result
+
+    def _sample_centerline_from(self, ll, t_start: float) -> list:
+        pts = list(ll.centerline)
+        if len(pts) < 2:
+            return []
+        arc   = self._build_arc(pts)
         total = arc[-1]
         if total == 0:
             return [self._to_latlon(pts[0].x, pts[0].y)]
@@ -165,11 +226,7 @@ class MapServer:
         pts = list(ll.centerline)
         if len(pts) < 2:
             return []
-        arc = [0.0]
-        for i in range(1, len(pts)):
-            dx = pts[i].x - pts[i-1].x
-            dy = pts[i].y - pts[i-1].y
-            arc.append(arc[-1] + math.sqrt(dx*dx + dy*dy))
+        arc   = self._build_arc(pts)
         total = arc[-1]
         if total == 0:
             return [self._to_latlon(pts[0].x, pts[0].y)]
@@ -197,24 +254,39 @@ class MapServer:
 
             t0 = self._project_point_onto_centerline(start_ll, wx0, wy0)
             t1 = self._project_point_onto_centerline(end_ll,   wx1, wy1)
+            print(f"[Route] seg {seg}: t0={t0:.3f}, t1={t1:.3f}, start_ll={start_ll.id}, end_ll={end_ll.id}")
 
-            route = self._routing_graph.getRoute(start_ll, end_ll, 0)
-            if route is None:
-                return None
-            path = route.shortestPath()
-            if path is None:
-                return None
-            ll_sequence = list(path)
+            if start_ll.id == end_ll.id and t0 > t1:
+                following = list(self._routing_graph.following(start_ll))
+                if not following:
+                    print(f"[Route] No following lanelets for ll={start_ll.id}, cannot reroute")
+                    return None
+                via_ll = following[0]
+
+                route1 = self._routing_graph.getRoute(start_ll, via_ll, 0)
+                if route1 is None:
+                    print(f"[Route] getRoute part1 returned None")
+                    return None
+                route2 = self._routing_graph.getRoute(via_ll, end_ll, 0)
+                if route2 is None:
+                    print(f"[Route] getRoute part2 returned None")
+                    return None
+
+                path1 = list(route1.shortestPath())
+                path2 = list(route2.shortestPath())
+                ll_sequence = path1 + path2[1:]
+            else:
+                route = self._routing_graph.getRoute(start_ll, end_ll, 0)
+                if route is None:
+                    return None
+                ll_sequence = list(route.shortestPath())
 
             coords = []
             for i, ll in enumerate(ll_sequence):
                 if i == 0 and i == len(ll_sequence) - 1:
-                    seg_coords = self._sample_centerline_from(ll, t0)
-                    coords.extend(seg_coords[:-1])
-                    coords.extend(self._sample_centerline_to(ll, t1))
+                    coords.extend(self._sample_centerline_between(ll, t0, t1))
                 elif i == 0:
-                    seg_coords = self._sample_centerline_from(ll, t0)
-                    coords.extend(seg_coords[:-1])
+                    coords.extend(self._sample_centerline_from(ll, t0)[:-1])
                 elif i == len(ll_sequence) - 1:
                     coords.extend(self._sample_centerline_to(ll, t1))
                 else:
@@ -223,7 +295,6 @@ class MapServer:
 
             if full_coords and coords:
                 coords = coords[1:]
-
             full_coords.extend(coords)
 
         return {

@@ -5,16 +5,14 @@ from nav_msgs.msg import Odometry
 from geometry_msgs.msg import PoseArray, Pose, Quaternion
 
 from .state_manager import StateManager
-
-
-BASE_LINK_TO_CENTER_OFFSET = 0.0 
+from .map_server import MapServer
 
 
 class BridgeNode(Node):
     def __init__(self, state_manager: StateManager, map_server=None):
         super().__init__('bridge_node')
-        self._sm         = state_manager
-        self._map_server = map_server
+        self._sm: StateManager      = state_manager
+        self._map_server: MapServer = map_server
 
         self.create_subscription(
             Odometry,
@@ -47,10 +45,6 @@ class BridgeNode(Node):
         yaw   = self._quat_to_yaw(msg.pose.pose.orientation)
         speed = msg.twist.twist.linear.x
 
-        if BASE_LINK_TO_CENTER_OFFSET != 0.0:
-            x += BASE_LINK_TO_CENTER_OFFSET * math.cos(yaw)
-            y += BASE_LINK_TO_CENTER_OFFSET * math.sin(yaw)
-
         lat, lon = None, None
         if self._map_server is not None:
             try:
@@ -59,7 +53,6 @@ class BridgeNode(Node):
                 self.get_logger().warn(f'xy_to_latlon failed: {e}')
 
         self._sm.update(x, y, yaw, speed, lat=lat, lon=lon)
-
 
     def publish_waypoints(self, waypoints: list[dict]):
         """
