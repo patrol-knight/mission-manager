@@ -6,17 +6,8 @@ import { useWaypointStore } from "./stores/waypointStore";
 import { useApiConnection } from "./hooks/useApiConnection";
 import { useRobotPose } from "./hooks/useRobotPose";
 import { useWaypointValidation } from "./hooks/useWaypointValidation";
-import { fetchRoute, publishWaypoints } from "./api/rest";
+import { fetchRoute, publishWaypoints, projectToXY } from "./api/rest";
 import type { RouteProgress } from "./stores/waypointStore";
-
-function lngLatToLocal(lng: number, lat: number, originLat: number, originLon: number) {
-  const EARTH_RADIUS = 6_378_137.0;
-  const cosOrigin = Math.cos((originLat * Math.PI) / 180);
-  return {
-    x: ((lng - originLon) * Math.PI / 180) * EARTH_RADIUS * cosOrigin,
-    y: ((lat - originLat) * Math.PI / 180) * EARTH_RADIUS,
-  };
-}
 
 function AppInner() {
   const waypoints = useWaypointStore((s) => s.waypoints);
@@ -47,13 +38,7 @@ function AppInner() {
   const handleConfirm = async () => {
     if (waypoints.length === 0) return;
 
-    const ORIGIN_LAT = 37.384707;
-    const ORIGIN_LON = -122.032313;
-
-    let wps = waypoints.map((wp) => {
-      const local = lngLatToLocal(wp.x, wp.y, ORIGIN_LAT, ORIGIN_LON);
-      return { x: local.x, y: local.y };
-    });
+    let wps = waypoints.map((wp) => ({ x: wp.x, y: wp.y }));
 
     if (robotPose) {
       try {
@@ -73,8 +58,11 @@ function AppInner() {
       const robotPrepended = robotPose && wps[0].x === robotPose.x && wps[0].y === robotPose.y;
       const userWps = robotPrepended ? wps.slice(1) : wps;
 
-      const routeCoords = data.route.geometry.coordinates.map(([lng, lat]) =>
-        lngLatToLocal(lng, lat, ORIGIN_LAT, ORIGIN_LON)
+      const routeCoords = await Promise.all(
+        data.route.geometry.coordinates.map(async ([lng, lat]) => {
+        const xy = await projectToXY(lng, lat);
+          return xy;
+        })
       );
 
       const rp: RouteProgress = {

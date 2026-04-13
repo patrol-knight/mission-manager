@@ -3,32 +3,15 @@ import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useWaypointStore } from "../stores/waypointStore";
 import { useRobotPose } from "../hooks/useRobotPose";
-import { useLaneletMap, useOccupancyMap } from "../hooks/useMapData";
+import { useLaneletMap } from "../hooks/useMapData";
 import { useMissionPath } from "../hooks/useMissionPath";
 import { useWaypointValidation } from "../hooks/useWaypointValidation";
-import { fetchMapOrigin, fetchMapBounds } from "../api/rest";
+import { fetchMapBounds, projectToXY, projectToLngLat } from "../api/rest";
 import { useApiConnection } from "../hooks/useApiConnection";
 import { useToast } from "./Toast";
 
-let ORIGIN_LAT = 37.384707;
-let ORIGIN_LON = -122.032313;
-const EARTH_RADIUS = 6_378_137.0;
-
-function lngLatToLocal(lng: number, lat: number): { x: number; y: number } {
-  const cosOrigin = Math.cos((ORIGIN_LAT * Math.PI) / 180);
-  return {
-    x: ((lng - ORIGIN_LON) * Math.PI / 180) * EARTH_RADIUS * cosOrigin,
-    y: ((lat - ORIGIN_LAT) * Math.PI / 180) * EARTH_RADIUS,
-  };
-}
-
-function localToLngLat(x: number, y: number): { lng: number; lat: number } {
-  const cosOrigin = Math.cos((ORIGIN_LAT * Math.PI) / 180);
-  return {
-    lng: ORIGIN_LON + (x / (EARTH_RADIUS * cosOrigin)) * (180 / Math.PI),
-    lat: ORIGIN_LAT + (y / EARTH_RADIUS) * (180 / Math.PI),
-  };
-}
+// No frontend projection math — all coordinate conversion goes through the backend.
+// Backend uses Transverse Mercator (pyproj); any frontend approximation causes ~20cm drift.
 
 const MARKER_COLORS = {
   planning: "#00FF88",
@@ -49,9 +32,7 @@ function makeMarkerEl(label: number, color: string, pulse: boolean): HTMLElement
     cursor:default;
   `;
   el.textContent = String(label);
-  if (pulse) {
-    el.style.animation = "mppulse 1.2s infinite";
-  }
+  if (pulse) el.style.animation = "mppulse 1.2s infinite";
   return el;
 }
 
@@ -79,7 +60,6 @@ export function MapView({ onMapReady, routeGeojson }: MapViewProps) {
 
   const robotPose = useRobotPose();
   const { geojson: laneletGeojson } = useLaneletMap();
-  const occupancyMap = useOccupancyMap();
   const pathData = useMissionPath();
   const { validate } = useWaypointValidation();
   const { status } = useApiConnection();
@@ -89,7 +69,6 @@ export function MapView({ onMapReady, routeGeojson }: MapViewProps) {
 
   React.useEffect(() => {
     if (status === "disconnected") setMapLoading(true);
-    // If reconnected and lanelet already loaded, clear spinner
     if (status === "connected" && laneletGeojsonRef.current && mapRef.current?.loaded()) {
       setMapLoading(false);
     }
@@ -138,7 +117,6 @@ export function MapView({ onMapReady, routeGeojson }: MapViewProps) {
     }
   }, []);
 
-  // ── Init map ──────────────────────────────────────────────────────────────
   React.useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
 
@@ -149,7 +127,7 @@ export function MapView({ onMapReady, routeGeojson }: MapViewProps) {
         sources: { osm: { type: "raster", tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"], tileSize: 256, attribution: "© OpenStreetMap contributors", maxzoom: 19 } },
         layers: [{ id: "osm-tiles", type: "raster", source: "osm", minzoom: 0, maxzoom: 22 }],
       },
-      center: [ORIGIN_LON, ORIGIN_LAT],
+      center: [121.5, 25.0],
       zoom: 17,
       maxZoom: 22,
     });
@@ -157,15 +135,12 @@ export function MapView({ onMapReady, routeGeojson }: MapViewProps) {
 
     map.on("load", async () => {
       try {
-        const [originData, boundsData] = await Promise.all([fetchMapOrigin(), fetchMapBounds()]);
-        ORIGIN_LAT = originData.lat;
-        ORIGIN_LON = originData.lon;
+        const boundsData = await fetchMapBounds();
         mapBoundsRef.current = boundsData.bounds;
         map.fitBounds(boundsData.bounds, { padding: 60, duration: 0 });
       } catch (e) {
-        console.warn("Could not fetch origin/bounds:", e);
+        console.warn("Could not fetch map bounds:", e);
       }
-
       if (laneletGeojsonRef.current) {
         applyLaneletLayers(map, laneletGeojsonRef.current);
         setMapLoading(false);
@@ -197,7 +172,6 @@ export function MapView({ onMapReady, routeGeojson }: MapViewProps) {
     }
   }, [laneletGeojson, applyLaneletLayers]);
 
-  // ── Route geojson line ────────────────────────────────────────────────────
   React.useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -210,7 +184,6 @@ export function MapView({ onMapReady, routeGeojson }: MapViewProps) {
     if (map.loaded()) apply(); else map.once("load", apply);
   }, [routeGeojson]);
 
-  // ── Route markers (orange/green/gray circles on map) ─────────────────────
   React.useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -220,43 +193,44 @@ export function MapView({ onMapReady, routeGeojson }: MapViewProps) {
 
     if (!routeProgress || !routeProgress.active) return;
 
-    routeProgress.goals.forEach((goal, i) => {
-      const { lng, lat } = localToLngLat(goal.x, goal.y);
-      const color = MARKER_COLORS[goal.state];
-      const pulse = goal.state === "current";
-      const el = makeMarkerEl(i + 1, color, pulse);
-      const marker = new maplibregl.Marker({ element: el, anchor: "center" })
-        .setLngLat([lng, lat])
-        .addTo(map);
-      routeMarkersRef.current.push(marker);
-    });
+    Promise.all(
+      routeProgress.goals.map((goal) => projectToLngLat(goal.x, goal.y))
+    ).then((lngLats) => {
+      lngLats.forEach(({ lng, lat }, i) => {
+        const goal = routeProgress.goals[i];
+        const color = MARKER_COLORS[goal.state];
+        const el = makeMarkerEl(i + 1, color, goal.state === "current");
+        const marker = new maplibregl.Marker({ element: el, anchor: "center" })
+          .setLngLat([lng, lat])
+          .addTo(map);
+        routeMarkersRef.current.push(marker);
+      });
+    }).catch((e) => console.warn("Route marker projection failed:", e));
   }, [routeProgress]);
 
-  // Keep refs to routeProgress and advanceGoal so the robot pose effect
-  // never needs them in its dependency array (prevents infinite re-render loop).
   const routeProgressRef = React.useRef(routeProgress);
   routeProgressRef.current = routeProgress;
   const advanceGoalRef = React.useRef(advanceGoal);
   advanceGoalRef.current = advanceGoal;
 
-  // ── Robot pose → HTML marker (always above waypoint markers) ────────────
   React.useEffect(() => {
     const map = mapRef.current;
     if (!map || !robotPose) return;
 
-    const lng = robotPose.lon ?? robotPose.x;
-    const lat = robotPose.lat ?? robotPose.y;
-    const yawDeg = robotPose.yaw * (180 / Math.PI);
-    const bearing = 90 - yawDeg;
+    if (robotPose.lat === undefined || robotPose.lon === undefined) {
+      console.warn("[MapView] robotPose missing lat/lon — backend must include them in robot_pose WS payload");
+      return;
+    }
+
+    const lng = robotPose.lon;
+    const lat = robotPose.lat;
+    const bearing = 90 - robotPose.yaw * (180 / Math.PI);
 
     if (robotMarkerRef.current) {
-      // Update position and rotation of existing marker
       robotMarkerRef.current.setLngLat([lng, lat]);
-      const el = robotMarkerRef.current.getElement();
-      const svg = el.querySelector("svg");
+      const svg = robotMarkerRef.current.getElement().querySelector("svg");
       if (svg) svg.style.transform = `rotate(${bearing}deg)`;
     } else {
-      // Create HTML marker with high z-index
       const el = document.createElement("div");
       el.style.cssText = "width:36px;height:36px;z-index:9999;";
       el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36" style="transform:rotate(${bearing}deg);transition:transform 0.1s linear;">
@@ -268,49 +242,21 @@ export function MapView({ onMapReady, routeGeojson }: MapViewProps) {
         .addTo(map);
     }
 
-    // Advance route goals — use refs to avoid dependency array issues
     const rp = routeProgressRef.current;
     if (rp?.active) {
-      const rx = robotPose.x, ry = robotPose.y;
       let idx = rp.currentGoalIdx;
-      const goals = rp.goals;
-      while (idx < goals.length) {
-        const gx = goals[idx].x, gy = goals[idx].y;
-        const d = Math.sqrt((rx - gx) ** 2 + (ry - gy) ** 2);
+      while (idx < rp.goals.length) {
+        const d = Math.sqrt((robotPose.x - rp.goals[idx].x) ** 2 + (robotPose.y - rp.goals[idx].y) ** 2);
         if (d < 3.0) idx++; else break;
       }
-      if (idx !== rp.currentGoalIdx) {
-        advanceGoalRef.current(idx, robotPose.speed ?? 0);
-      }
+      if (idx !== rp.currentGoalIdx) advanceGoalRef.current(idx, robotPose.speed ?? 0);
     }
   }, [robotPose]);
 
-  // Cleanup robot marker on unmount
   React.useEffect(() => {
     return () => { robotMarkerRef.current?.remove(); robotMarkerRef.current = null; };
   }, []);
 
-  // ── Occupancy map ─────────────────────────────────────────────────────────
-  React.useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !occupancyMap) return;
-    const { image, info } = occupancyMap;
-    const bounds: [[number, number], [number, number]] = [
-      [info.origin.x, info.origin.y],
-      [info.origin.x + info.width * info.resolution, info.origin.y + info.height * info.resolution],
-    ];
-    if (!mapBoundsRef.current) mapBoundsRef.current = bounds;
-    const url = image.toDataURL();
-    const apply = () => {
-      if (map.getSource("occ-map")) { map.removeLayer("occ-layer"); map.removeSource("occ-map"); }
-      map.addSource("occ-map", { type: "image", url, coordinates: [[bounds[0][0], bounds[1][1]], [bounds[1][0], bounds[1][1]], [bounds[1][0], bounds[0][1]], [bounds[0][0], bounds[0][1]]] });
-      map.addLayer({ id: "occ-layer", type: "raster", source: "occ-map" });
-      map.fitBounds(bounds, { padding: 20 });
-    };
-    if (map.loaded()) apply(); else map.once("load", apply);
-  }, [occupancyMap]);
-
-  // ── Waypoint planning markers ─────────────────────────────────────────────
   React.useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -318,37 +264,47 @@ export function MapView({ onMapReady, routeGeojson }: MapViewProps) {
     wpMarkersRef.current.forEach((m) => m.remove());
     wpMarkersRef.current.clear();
 
-    waypoints.forEach((wp, index) => {
-      const el = document.createElement("div");
-      el.className = "wp-marker";
-      el.style.cssText = `
-        width:24px;height:24px;border-radius:50%;
-        background:${MARKER_COLORS.planning};
-        font-weight:bold;font-size:12px;font-family:monospace;
-        display:flex;align-items:center;justify-content:center;
-        color:white;
-        box-shadow:0 1px 5px rgba(0,0,0,0.6);
-        cursor:${mode === "off" ? "default" : "pointer"};user-select:none;
-      `;
-      el.textContent = String(index + 1);
+    Promise.all(
+      waypoints.map((wp) => projectToLngLat(wp.x, wp.y).then(({ lng, lat }) => ({ wp, lng, lat })))
+    ).then((resolved) => {
+      resolved.forEach(({ wp, lng, lat }, index) => {
+        const el = document.createElement("div");
+        el.className = "wp-marker";
+        el.style.cssText = `
+          width:24px;height:24px;border-radius:50%;
+          background:${MARKER_COLORS.planning};
+          font-weight:bold;font-size:12px;font-family:monospace;
+          display:flex;align-items:center;justify-content:center;
+          color:white;
+          box-shadow:0 1px 5px rgba(0,0,0,0.6);
+          cursor:${mode === "off" ? "default" : "pointer"};user-select:none;
+        `;
+        el.textContent = String(index + 1);
 
-      const marker = new maplibregl.Marker({ element: el, draggable: mode === "modify", anchor: "center" })
-        .setLngLat([wp.x, wp.y]).addTo(map);
+        const marker = new maplibregl.Marker({ element: el, draggable: mode === "modify", anchor: "center" })
+          .setLngLat([lng, lat])
+          .addTo(map);
 
-      if (mode === "modify") {
-        marker.on("dragend", async () => {
-          const pos = marker.getLngLat();
-          const local = lngLatToLocal(pos.lng, pos.lat);
-          const isValid = await validate(local.x, local.y);
-          if (!isValid) { marker.setLngLat([wp.x, wp.y]); show("warning", "Outside lanelet", `Waypoint #${index + 1} snapped back`); }
-          else update(wp.id, pos.lng, pos.lat);
-        });
-      }
-      if (mode === "delete") {
-        el.addEventListener("click", (e) => { e.stopPropagation(); remove(wp.id); });
-      }
-      wpMarkersRef.current.set(wp.id, marker);
-    });
+        if (mode === "modify") {
+          marker.on("dragend", async () => {
+            const pos = marker.getLngLat();
+            const local = await projectToXY(pos.lng, pos.lat);
+            const isValid = await validate(local.x, local.y);
+            if (!isValid) {
+              const orig = await projectToLngLat(wp.x, wp.y);
+              marker.setLngLat([orig.lng, orig.lat]);
+              show("warning", "Outside lanelet", `Waypoint #${index + 1} snapped back`);
+            } else {
+              update(wp.id, local.x, local.y);
+            }
+          });
+        }
+        if (mode === "delete") {
+          el.addEventListener("click", (e) => { e.stopPropagation(); remove(wp.id); });
+        }
+        wpMarkersRef.current.set(wp.id, marker);
+      });
+    }).catch((e) => console.warn("Waypoint marker projection failed:", e));
 
     return () => { wpMarkersRef.current.forEach((m) => m.remove()); wpMarkersRef.current.clear(); };
   }, [waypoints, mode, update, remove, validate, show]);
@@ -360,7 +316,6 @@ export function MapView({ onMapReady, routeGeojson }: MapViewProps) {
     });
   }, [mode]);
 
-  // ── Map click → add waypoint ──────────────────────────────────────────────
   React.useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -368,10 +323,9 @@ export function MapView({ onMapReady, routeGeojson }: MapViewProps) {
       if (mode !== "modify") return;
       if ((e.originalEvent.target as HTMLElement).closest(".wp-marker")) return;
       const { lng, lat } = e.lngLat;
-      const local = lngLatToLocal(lng, lat);
+      const local = await projectToXY(lng, lat);
       const isValid = await validate(local.x, local.y);
       if (!isValid) {
-        // Flash red X marker briefly
         const el = document.createElement("div");
         el.style.cssText = `width:24px;height:24px;border-radius:50%;background:#FF4444;color:#fff;font-size:14px;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 5px rgba(0,0,0,0.6);`;
         el.textContent = "✕";
@@ -380,13 +334,12 @@ export function MapView({ onMapReady, routeGeojson }: MapViewProps) {
         show("warning", "Outside lanelet", "Waypoint not placed — outside drivable area");
         return;
       }
-      add({ id: crypto.randomUUID(), x: lng, y: lat, yaw: 0 });
+      add({ id: crypto.randomUUID(), x: local.x, y: local.y, yaw: 0 });
     };
     map.on("click", handleClick);
     return () => { map.off("click", handleClick); };
   }, [mode, add, validate, show]);
 
-  // ── Mission path ──────────────────────────────────────────────────────────
   React.useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -394,19 +347,33 @@ export function MapView({ onMapReady, routeGeojson }: MapViewProps) {
       if (map.getLayer("path-line")) map.removeLayer("path-line");
       if (map.getSource("mission-path")) map.removeSource("mission-path");
     };
-    if (!pathData || pathData.points.length === 0) { if (map.loaded()) cleanup(); return cleanup; }
-    const geojson: GeoJSON.Feature<GeoJSON.LineString> = {
-      type: "Feature", properties: {},
-      geometry: { type: "LineString", coordinates: pathData.points.map((p) => [p.x, p.y]) },
-    };
-    const apply = () => {
-      if (map.getSource("mission-path")) { (map.getSource("mission-path") as maplibregl.GeoJSONSource).setData(geojson); }
-      else {
-        map.addSource("mission-path", { type: "geojson", data: geojson });
-        map.addLayer({ id: "path-line", type: "line", source: "mission-path", layout: { "line-join": "round", "line-cap": "round" }, paint: { "line-color": "#4a4e69", "line-width": 3, "line-opacity": 0.8 } });
-      }
-    };
-    if (map.loaded()) apply(); else map.once("load", apply);
+    if (!pathData || pathData.points.length === 0) {
+      if (map.loaded()) cleanup();
+      return cleanup;
+    }
+
+    Promise.all(pathData.points.map((p) => projectToLngLat(p.x, p.y)))
+      .then((lngLats) => {
+        const geojson: GeoJSON.Feature<GeoJSON.LineString> = {
+          type: "Feature", properties: {},
+          geometry: { type: "LineString", coordinates: lngLats.map(({ lng, lat }) => [lng, lat]) },
+        };
+        const apply = () => {
+          if (map.getSource("mission-path")) {
+            (map.getSource("mission-path") as maplibregl.GeoJSONSource).setData(geojson);
+          } else {
+            map.addSource("mission-path", { type: "geojson", data: geojson });
+            map.addLayer({
+              id: "path-line", type: "line", source: "mission-path",
+              layout: { "line-join": "round", "line-cap": "round" },
+              paint: { "line-color": "#4a4e69", "line-width": 3, "line-opacity": 0.8 },
+            });
+          }
+        };
+        if (map.loaded()) apply(); else map.once("load", apply);
+      })
+      .catch((e) => console.warn("Mission path projection failed:", e));
+
     return cleanup;
   }, [pathData]);
 
@@ -416,7 +383,6 @@ export function MapView({ onMapReady, routeGeojson }: MapViewProps) {
         ref={mapContainerRef}
         style={{ width: "100%", height: "100%", cursor: mode === "modify" ? "crosshair" : "default" }}
       />
-
       {mapLoading && (
         <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "rgba(15,15,20,0.7)", backdropFilter: "blur(4px)", zIndex: 500, gap: 16 }}>
           <Spinner size={40} />
@@ -424,7 +390,6 @@ export function MapView({ onMapReady, routeGeojson }: MapViewProps) {
           <div style={{ color: "#6c757d", fontSize: 12 }}>GET /map</div>
         </div>
       )}
-
       <style>{`
         @keyframes mapspin { to { transform: rotate(360deg); } }
         @keyframes mppulse {

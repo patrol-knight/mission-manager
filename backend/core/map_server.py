@@ -2,15 +2,11 @@ import yaml
 import math
 
 from lanelet2.io import load, Origin
-from lanelet2.core import BasicPoint2d
-from lanelet2.projection import UtmProjector
+from lanelet2.core import BasicPoint2d, BasicPoint3d, GPSPoint
+from lanelet2.projection import LocalCartesianProjector
 from lanelet2.geometry import inside, findNearest
 from lanelet2.routing import RoutingGraph
 from lanelet2 import traffic_rules
-
-from pyproj import Proj
-
-EARTH_RADIUS = 6378137.0
 
 
 class MapServer:
@@ -20,7 +16,7 @@ class MapServer:
         self._routing_graph  = None
         self._origin_lat     = None
         self._origin_lon     = None
-        self._proj           = None
+        self._projector      = None 
         self._map_bounds     = None
 
     def load(self, osm_path: str, projector_yaml: str):
@@ -31,21 +27,10 @@ class MapServer:
         self._origin_lon = data["map_origin"]["longitude"]
         print(f"[MapServer] Origin lat={self._origin_lat}, lon={self._origin_lon}")
 
-        self._proj = Proj(
-            proj="tmerc",
-            lat_0=self._origin_lat,
-            lon_0=self._origin_lon,
-            k=0.9996,
-            x_0=0.0,
-            y_0=0.0,
-            datum="WGS84",
-            units="m",
-        )
+        origin = Origin(self._origin_lat, self._origin_lon)
+        self._projector = LocalCartesianProjector(origin)   
 
-        origin    = Origin(self._origin_lat, self._origin_lon)
-        projector = UtmProjector(origin)
-
-        self._lanelet_map   = load(osm_path, projector)
+        self._lanelet_map   = load(osm_path, self._projector)
         self._lanelet_layer = self._lanelet_map.laneletLayer
 
         tr = traffic_rules.create(
@@ -58,24 +43,14 @@ class MapServer:
         self._map_bounds = self._compute_bounds()
 
     def xy_to_latlon(self, x: float, y: float) -> tuple[float, float]:
-        if self._proj is not None:
-            lon, lat = self._proj(x, y, inverse=True)
-            return lat, lon
-        lat0_rad = math.radians(self._origin_lat)
-        lat = self._origin_lat + math.degrees(y / EARTH_RADIUS)
-        lon = self._origin_lon + math.degrees(x / (EARTH_RADIUS * math.cos(lat0_rad)))
-        return lat, lon
+        gps = self._projector.reverse(BasicPoint3d(x, y, 0.0))
+        return gps.lat, gps.lon
 
     def latlon_to_xy(self, lat: float, lon: float) -> tuple[float, float]:
-        if self._proj is not None:
-            x, y = self._proj(lon, lat)
-            return x, y
-        lat0_rad = math.radians(self._origin_lat)
-        x = math.radians(lon - self._origin_lon) * EARTH_RADIUS * math.cos(lat0_rad)
-        y = math.radians(lat - self._origin_lat) * EARTH_RADIUS
-        return x, y
+        point = self._projector.forward(GPSPoint(lat, lon, 0.0))
+        return point.x, point.y
 
-    def _to_latlon(self, x, y):
+    def _to_latlon(self, x: float, y: float) -> list[float]:
         lat, lon = self.xy_to_latlon(x, y)
         return [lon, lat]
 
@@ -130,7 +105,6 @@ class MapServer:
         return best_i
 
     def _project_point_onto_centerline(self, ll, x: float, y: float) -> float:
-        """Return fractional arc-length [0,1] of (x,y) projected onto ll's centerline."""
         pts = list(ll.centerline)
         if len(pts) < 2:
             return 0.0
@@ -159,7 +133,6 @@ class MapServer:
         return best_t
 
     def _interp_centerline_at(self, pts, arc, total, t: float):
-        """Interpolate [lon, lat] at fractional arc-length t on a centerline."""
         s = t * total
         for i in range(len(pts) - 1):
             if arc[i] <= s <= arc[i+1]:
@@ -171,7 +144,6 @@ class MapServer:
         return self._to_latlon(pts[-1].x, pts[-1].y)
 
     def _sample_centerline_from(self, ll, t_start: float) -> list:
-        """Sample from t_start to end of centerline. Includes interpolated start point."""
         pts = list(ll.centerline)
         if len(pts) < 2:
             return []
@@ -190,7 +162,6 @@ class MapServer:
         return result
 
     def _sample_centerline_to(self, ll, t_end: float) -> list:
-        """Sample from start to t_end of centerline. Includes interpolated end point."""
         pts = list(ll.centerline)
         if len(pts) < 2:
             return []

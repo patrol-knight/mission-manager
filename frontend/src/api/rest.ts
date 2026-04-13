@@ -76,3 +76,17 @@ export async function publishInitialPose(x: number, y: number, yaw: number): Pro
 export async function fetchRobotPose(): Promise<RobotPose> {
   return apiFetch<RobotPose>("/robot/pose");
 }
+
+export async function projectToXY(lng: number, lat: number): Promise<{ x: number; y: number }> {
+  return apiFetch<{ x: number; y: number }>("/map/project/to_xy", {
+    method: "POST",
+    body: JSON.stringify({ lng, lat }),
+  });
+}
+
+export async function projectToLngLat(x: number, y: number): Promise<{ lng: number; lat: number }> {
+  return apiFetch<{ lng: number; lat: number }>("/map/project/to_lnglat", {
+    method: "POST",
+    body: JSON.stringify({ x, y }),
+  });
+}

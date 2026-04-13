@@ -1,9 +1,12 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from core.bridge_node import BridgeNode
+from core.map_server import MapServer
+
 router     = APIRouter()
-map_server = None
-bridge_node = None
+map_server: MapServer = None
+bridge_node: BridgeNode = None
 
 
 def init(server, bridge=None):
@@ -28,12 +31,12 @@ class RouteRequest(BaseModel):
 
 
 class WaypointPublishRequest(BaseModel):
-    """
-    Waypoints to publish as a ROS2 PoseArray.
-    x, y are in map-frame metres (same coordinate system as Odometry).
-    yaw is optional (radians); defaults to 0 if omitted.
-    """
     waypoints: list[WaypointWithYaw]
+
+
+class LngLatPoint(BaseModel):
+    lng: float
+    lat: float
 
 
 @router.get("/map")
@@ -41,34 +44,27 @@ def get_map():
     return map_server.get_json()
 
 
+@router.get("/map/origin")
+def get_origin():
+    return map_server.get_origin()
+
+
 @router.get("/map/bounds")
 def get_bounds():
-    """Return [[minLon, minLat], [maxLon, maxLat]] of the loaded lanelet map."""
     bounds = map_server.get_bounds()
     if bounds is None:
         raise HTTPException(status_code=503, detail="Map not loaded yet")
     return {"bounds": bounds}
 
 
-@router.get("/map/origin")
-def get_origin():
-    """Return the map origin lat/lon read from map_projector_info.yaml."""
-    return map_server.get_origin()
-
-
-class LngLatPoint(BaseModel):
-    lng: float
-    lat: float
-
 @router.post("/map/project/to_xy")
 def project_to_xy(pt: LngLatPoint):
-    """Convert (lng, lat) → map-frame (x, y) using TransverseMercator."""
     x, y = map_server.latlon_to_xy(pt.lat, pt.lng)
     return {"x": x, "y": y}
 
+
 @router.post("/map/project/to_lnglat")
 def project_to_lnglat(wp: Waypoint):
-    """Convert map-frame (x, y) → (lng, lat) using TransverseMercator."""
     lat, lon = map_server.xy_to_latlon(wp.x, wp.y)
     return {"lng": lon, "lat": lat}
 
@@ -89,10 +85,6 @@ def get_route(req: RouteRequest):
 
 @router.post("/map/waypoints/publish")
 def publish_waypoints(req: WaypointPublishRequest):
-    """
-    Receive confirmed waypoints from the frontend and publish them
-    as a ROS2 PoseArray on /robot/waypoints (for your scheduler).
-    """
     if bridge_node is None:
         raise HTTPException(status_code=503, detail="ROS2 bridge not ready")
 

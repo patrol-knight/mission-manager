@@ -7,3 +7,12 @@ window.RUNTIME_CONFIG = {
   // WebSocket endpoint. "ws://robot-host:8000/ws"
   WS_URL: "${WS_URL}",
 };
+
+if (!window.RUNTIME_CONFIG.API_BASE_URL) {
+  console.warn("API_BASE_URL not set, fallback to localhost");
+  window.RUNTIME_CONFIG.API_BASE_URL = "http://localhost:8000";
+}
+
+if (!window.RUNTIME_CONFIG.WS_URL) {
+  window.RUNTIME_CONFIG.WS_URL = "ws://localhost:8000/ws";
+}

@@ -18,10 +18,8 @@ state_manager = StateManager()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     map_server.load(
-        # "maps/prc_powow_lot/lanelet2_map.osm",
-        # "maps/prc_powow_lot/map_projector_info.yaml",
-        "../maps/lanelet2_map.osm",
-        "../maps/map_projector_info.yaml",
+        "maps/lanelet2_map.osm",
+        "maps/map_projector_info.yaml",
     )
     print("[FastAPI] Map loaded")
 
@@ -43,7 +41,6 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -51,7 +48,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 app.include_router(map_api.router)
 
 
