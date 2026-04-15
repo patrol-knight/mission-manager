@@ -53,7 +53,6 @@ export function MapView({ onMapReady, routeGeojson }: MapViewProps) {
   const waypoints = useWaypointStore((s) => s.waypoints);
   const mode = useWaypointStore((s) => s.mode);
   const routeProgress = useWaypointStore((s) => s.routeProgress);
-  const advanceGoal = useWaypointStore((s) => s.advanceGoal);
 
   const robotPose = useRobotPose();
   const { geojson: laneletGeojson } = useLaneletMap();
@@ -205,11 +204,6 @@ export function MapView({ onMapReady, routeGeojson }: MapViewProps) {
     }).catch((e) => console.warn("Route marker projection failed:", e));
   }, [routeProgress]);
 
-  const routeProgressRef = React.useRef(routeProgress);
-  routeProgressRef.current = routeProgress;
-  const advanceGoalRef = React.useRef(advanceGoal);
-  advanceGoalRef.current = advanceGoal;
-
   React.useEffect(() => {
     const map = mapRef.current;
     if (!map || !robotPose) return;
@@ -245,22 +239,6 @@ export function MapView({ onMapReady, routeGeojson }: MapViewProps) {
       robotMarkerRef.current = new maplibregl.Marker({ element: el, anchor: "center" })
         .setLngLat([lng, lat])
         .addTo(map);
-    }
-
-    const rp = routeProgressRef.current;
-    if (rp?.active) {
-      let idx = rp.currentGoalIdx;
-      while (idx < rp.goals.length) {
-        const dx = rp.goals[idx].x - robotPose.x;
-        const dy = rp.goals[idx].y - robotPose.y;
-        const d = Math.sqrt(dx ** 2 + dy ** 2);
-
-        // const vx = Math.cos(robotPose.yaw);
-        // const vy = Math.sin(robotPose.yaw);
-        // const dot = vx * dx + vy * dy;
-        if (d < 0.5) idx++; else break;
-      }
-      if (idx !== rp.currentGoalIdx) advanceGoalRef.current(idx, robotPose.speed ?? 0);
     }
   }, [robotPose]);
 

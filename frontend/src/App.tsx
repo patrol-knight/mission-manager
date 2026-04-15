@@ -5,6 +5,7 @@ import { ToastProvider, useToast } from "./components/Toast";
 import { useWaypointStore } from "./stores/waypointStore";
 import { useApiConnection } from "./hooks/useApiConnection";
 import { useRobotPose } from "./hooks/useRobotPose";
+import { useRouteProgress } from "./hooks/useRouteProgress";
 import { useWaypointValidation } from "./hooks/useWaypointValidation";
 import { fetchRoute, publishWaypoints, projectToXY } from "./api/rest";
 import type { RouteProgress } from "./stores/waypointStore";
@@ -21,6 +22,8 @@ function AppInner() {
   const prevStatusRef    = useRef(status);
   const robotPose        = useRobotPose();
   const { validate }     = useWaypointValidation();
+
+  useRouteProgress();
 
   const [routeGeojson, setRouteGeojson] = useState<GeoJSON.Feature<GeoJSON.LineString> | null>(null);
   const [routePhase, setRoutePhase]     = useState<RoutePhase>("idle");
