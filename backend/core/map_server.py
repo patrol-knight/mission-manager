@@ -98,7 +98,6 @@ class MapServer:
         return inside(nearest[0][1], point)
 
     def _get_lanelet_yaw(self, ll, x: float, y: float) -> float:
-        """取得該點在 lanelet centerline 上最近 segment 的切線方向"""
         pts = list(ll.centerline)
         if len(pts) < 2:
             return 0.0
@@ -116,7 +115,6 @@ class MapServer:
         return math.atan2(dy, dx)
 
     def _nearest_lanelet(self, x: float, y: float):
-        """找最近且方向一致的 lanelet，用 centerline 切線做方向過濾"""
         point = BasicPoint2d(x, y)
         candidates = findNearest(self._lanelet_layer, point, 5)
         if not candidates:
@@ -127,15 +125,12 @@ class MapServer:
 
         for dist, ll in candidates:
             yaw = self._get_lanelet_yaw(ll, x, y)
-            # 用相鄰候選互相比較方向一致性
-            # 選方向跟最近 lanelet 一致、且距離最近的
             if best_ll is None:
                 ref_yaw = yaw
                 best_ll = ll
                 best_dist = dist
                 continue
 
-            # dot product 判斷是否同向
             dot = math.cos(yaw) * math.cos(ref_yaw) + math.sin(yaw) * math.sin(ref_yaw)
             if dot > 0 and dist < best_dist:
                 best_dist = dist
@@ -254,7 +249,6 @@ class MapServer:
 
             t0 = self._project_point_onto_centerline(start_ll, wx0, wy0)
             t1 = self._project_point_onto_centerline(end_ll,   wx1, wy1)
-            print(f"[Route] seg {seg}: t0={t0:.3f}, t1={t1:.3f}, start_ll={start_ll.id}, end_ll={end_ll.id}")
 
             if start_ll.id == end_ll.id and t0 > t1:
                 following = list(self._routing_graph.following(start_ll))
