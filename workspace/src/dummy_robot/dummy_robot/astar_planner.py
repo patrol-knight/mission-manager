@@ -2,6 +2,7 @@
 import math
 import heapq
 from typing import List, Tuple, Optional
+from collections import deque
 
 import rclpy
 from rclpy.node import Node
@@ -32,7 +33,6 @@ class AStarGridPlanner(Node):
     def __init__(self):
         super().__init__("astar_planner_node")
 
-        # Parameters
         self.declare_parameter("map_topic", "/map")
         self.declare_parameter("robot_pose_topic", "/pf/pose/odom")
         self.declare_parameter("waypoints_topic", "/interface/waypoints")
@@ -40,7 +40,7 @@ class AStarGridPlanner(Node):
 
         self.declare_parameter("occupied_threshold", 50)
         self.declare_parameter("unknown_is_occupied", True)
-        self.declare_parameter("inflation_radius_m", 0.25)
+        self.declare_parameter("inflation_radius_m", 0.45)
 
         self.declare_parameter("allow_diagonal", True)
         self.declare_parameter("astar_timeout_ms", 300)
@@ -48,19 +48,16 @@ class AStarGridPlanner(Node):
         self.declare_parameter("resample_ds", 0.10)
         self.declare_parameter("min_path_points", 2)
 
-        # 🔹 Smoothing parameters
         self.declare_parameter("smoothing_enable", True)
-        self.declare_parameter("smoothing_alpha", 0.1)
+        self.declare_parameter("smoothing_alpha", 0.08)
         self.declare_parameter("smoothing_beta", 0.3)
-        self.declare_parameter("smoothing_iterations", 50)
+        self.declare_parameter("smoothing_iterations", 60)
 
-        # Load parameters
         self.map_topic = self.get_parameter("map_topic").value
         self.robot_pose_topic = self.get_parameter("robot_pose_topic").value
         self.waypoints_topic = self.get_parameter("waypoints_topic").value
         self.path_topic = self.get_parameter("path_topic").value
 
-        # QoS
         self.map_qos = QoSProfile(
             depth=1,
             reliability=ReliabilityPolicy.RELIABLE,
@@ -73,7 +70,6 @@ class AStarGridPlanner(Node):
             durability=DurabilityPolicy.VOLATILE
         )
 
-        # Subscribers
         self.map_sub = self.create_subscription(
             OccupancyGrid, self.map_topic, self._on_map, self.map_qos
         )
@@ -86,10 +82,8 @@ class AStarGridPlanner(Node):
             PoseArray, self.waypoints_topic, self._on_waypoints, self.stream_qos
         )
 
-        # Publisher
         self.path_pub = self.create_publisher(Path, self.path_topic, 10)
 
-        # State
         self.robot_odom: Optional[Odometry] = None
         self.map_msg: Optional[OccupancyGrid] = None
         self.grid: Optional[Grid] = None
@@ -103,10 +97,6 @@ class AStarGridPlanner(Node):
         self.frame_id = "map"
 
         self.get_logger().info("A* Planner with smoothing ready.")
-
-    # =============================
-    # Callbacks
-    # =============================
 
     def _on_robot_odom(self, msg: Odometry):
         self.robot_odom = msg
@@ -140,13 +130,11 @@ class AStarGridPlanner(Node):
 
         world_points = []
 
-        # Start from robot
         world_points.append((
             self.robot_odom.pose.pose.position.x,
             self.robot_odom.pose.pose.position.y
         ))
 
-        # Add waypoints
         for pose in msg.poses:
             world_points.append((pose.position.x, pose.position.y))
 
@@ -180,10 +168,8 @@ class AStarGridPlanner(Node):
 
         poly = [self.cell_to_world(cx, cy) for (cx, cy) in full_cells]
 
-        # Resample
         poly = self._resample(poly, self.get_parameter("resample_ds").value)
 
-        # 🔹 Smooth
         if self.get_parameter("smoothing_enable").value:
             poly = self._smooth_path(poly)
 
@@ -195,10 +181,6 @@ class AStarGridPlanner(Node):
         self.path_pub.publish(path_msg)
 
         self.get_logger().info(f"Published path with {len(path_msg.poses)} poses.")
-
-    # =============================
-    # A*
-    # =============================
 
     def _astar(self, start, goal):
         allow_diag = self.get_parameter("allow_diagonal").value
@@ -251,10 +233,6 @@ class AStarGridPlanner(Node):
 
         return None
 
-    # =============================
-    # Smoothing (Elastic Band)
-    # =============================
-
     def _smooth_path(self, pts):
         if len(pts) < 3:
             return pts
@@ -277,10 +255,6 @@ class AStarGridPlanner(Node):
                     )
 
         return [(p[0], p[1]) for p in smooth]
-
-    # =============================
-    # Grid Helpers
-    # =============================
 
     def _occupancy_to_grid(self, msg):
         thr = self.get_parameter("occupied_threshold").value
@@ -330,8 +304,38 @@ class AStarGridPlanner(Node):
 
     def _nearest_free(self, cell):
         x, y = cell
+
+        if not (0 <= x < self.width and 0 <= y < self.height):
+            return None
+
         if self.inflated_grid[y][x] == 0:
             return cell
+
+        visited = set()
+        q = deque()
+        q.append((x, y))
+        visited.add((x, y))
+
+        neighbors = [(-1,0),(1,0),(0,-1),(0,1)]
+
+        while q:
+            cx, cy = q.popleft()
+
+            for dx, dy in neighbors:
+                nx, ny = cx + dx, cy + dy
+
+                if not (0 <= nx < self.width and 0 <= ny < self.height):
+                    continue
+
+                if (nx, ny) in visited:
+                    continue
+
+                if self.inflated_grid[ny][nx] == 0:
+                    return (nx, ny)
+
+                visited.add((nx, ny))
+                q.append((nx, ny))
+
         return None
 
     def _resample(self, pts, ds):
