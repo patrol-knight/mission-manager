@@ -5,11 +5,7 @@ services:
     network_mode: host
     volumes:
       - ./maps:/app/maps:ro
-
-    environment:
-      - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
-      - CYCLONEDDS_URI=file:///app/cyclonedds.xml
-
+      
     restart: unless-stopped
 
   frontend:
