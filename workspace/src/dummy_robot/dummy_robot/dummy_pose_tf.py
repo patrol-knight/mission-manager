@@ -16,8 +16,8 @@ class RobotPoseTf(Node):
         self.path_sub = self.create_subscription(Path, '/planning/path', self._path_callback, 10)
         
         self.timer = self.create_timer(0.05, self._update)
-        self.current_x = 0.0
-        self.current_y = 0.0
+        self.current_x = -8.0
+        self.current_y =  0.4
         self.current_yaw = 0.0
         self.prev_x = self.current_x
         self.prev_y = self.current_y

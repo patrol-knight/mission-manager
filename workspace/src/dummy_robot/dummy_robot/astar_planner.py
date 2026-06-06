@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 import math
 import heapq
+import numpy as np
+
 from typing import List, Tuple, Optional
 from collections import deque
 
@@ -18,7 +20,7 @@ Grid = List[List[int]]
 
 def yaw_to_quat(yaw: float) -> Quaternion:
     q = Quaternion()
-    q.w = math.cos(yaw * 0.5)
+    q.w = math.cos(yaw * 0.5) 
     q.z = math.sin(yaw * 0.5)
     q.x = 0.0
     q.y = 0.0
@@ -49,9 +51,9 @@ class AStarGridPlanner(Node):
         self.declare_parameter("min_path_points", 2)
 
         self.declare_parameter("smoothing_enable", True)
-        self.declare_parameter("smoothing_alpha", 0.08)
-        self.declare_parameter("smoothing_beta", 0.3)
-        self.declare_parameter("smoothing_iterations", 60)
+        self.declare_parameter("smoothing_alpha", 0.05)
+        self.declare_parameter("smoothing_beta", 0.4)
+        self.declare_parameter("smoothing_iterations", 65)
 
         self.map_topic = self.get_parameter("map_topic").value
         self.robot_pose_topic = self.get_parameter("robot_pose_topic").value
@@ -89,12 +91,12 @@ class AStarGridPlanner(Node):
         self.grid: Optional[Grid] = None
         self.inflated_grid: Optional[Grid] = None
 
-        self.width = 0
-        self.height = 0
+        self.width      = 0
+        self.height     = 0
         self.resolution = 0.0
-        self.origin_x = 0.0
-        self.origin_y = 0.0
-        self.frame_id = "map"
+        self.origin_x   = 0.0
+        self.origin_y   = 0.0
+        self.frame_id   = "map"
 
         self.get_logger().info("A* Planner with smoothing ready.")
 
@@ -166,18 +168,18 @@ class AStarGridPlanner(Node):
 
             full_cells.extend(seg)
 
-        poly = [self.cell_to_world(cx, cy) for (cx, cy) in full_cells]
+        poly_raw = [self.cell_to_world(cx, cy) for (cx, cy) in full_cells]
+        poly_raw = self._resample(poly_raw, self.get_parameter("resample_ds").value)
 
-        poly = self._resample(poly, self.get_parameter("resample_ds").value)
-
+        poly_smooth = poly_raw[:]
         if self.get_parameter("smoothing_enable").value:
-            poly = self._smooth_path(poly)
+            poly_smooth = self._smooth_path(poly_raw)
 
-        if len(poly) < self.get_parameter("min_path_points").value:
+        if len(poly_smooth) < self.get_parameter("min_path_points").value:
             self.get_logger().warn("Path too short.")
             return
 
-        path_msg = self._polyline_to_path(poly)
+        path_msg = self._polyline_to_path(poly_smooth)
         self.path_pub.publish(path_msg)
 
         self.get_logger().info(f"Published path with {len(path_msg.poses)} poses.")
@@ -397,7 +399,58 @@ class AStarGridPlanner(Node):
             path.poses.append(ps)
 
         return path
+    
+    def _compute_length(self, pts):
+        return sum(dist(pts[i], pts[i+1]) for i in range(len(pts)-1))
 
+    def _compute_curvature(self, pts):
+        if len(pts) < 3:
+            return np.array([])
+
+        curvatures = []
+
+        for i in range(1, len(pts)-1):
+            p_prev = np.array(pts[i-1])
+            p = np.array(pts[i])
+            p_next = np.array(pts[i+1])
+
+            v1 = p - p_prev
+            v2 = p_next - p
+
+            norm1 = np.linalg.norm(v1)
+            norm2 = np.linalg.norm(v2)
+
+            if norm1 < 1e-6 or norm2 < 1e-6:
+                curvatures.append(0.0)
+                continue
+
+            cos_theta = np.dot(v1, v2) / (norm1 * norm2)
+            cos_theta = np.clip(cos_theta, -1.0, 1.0)
+            theta = np.arccos(cos_theta)
+
+            ds = 0.5 * (norm1 + norm2)
+
+            kappa = theta / ds
+            curvatures.append(kappa)
+
+        return np.array(curvatures)
+
+    def _compute_second_diff(self, pts):
+        if len(pts) < 3:
+            return 0.0
+
+        total = 0.0
+
+        for i in range(1, len(pts)-1):
+            p_prev = np.array(pts[i-1])
+            p = np.array(pts[i])
+            p_next = np.array(pts[i+1])
+
+            val = p_prev - 2*p + p_next
+            total += np.linalg.norm(val)**2
+
+        return total
+    
 
 def main(args=None):
     rclpy.init(args=args)
