@@ -1,25 +1,26 @@
 # Mission Manager
-A containerized React frontend for controlling and monitoring the robot stack via ROS Bridge. The application is served using Nginx, and supports runtime configuration of the ROS bridge address through environment variables.
+###### tags: `f1tenth`, `react-vite`, `roslib.js`, `nginx`
+
+A containerized React frontend designed for controlling and monitoring the `f1tenth` robot stack via ROS Bridge. The application is served via Nginx and lightweight user interface supports dynamic runtime configuration of the ROS Bridge WebSocket address using environment variables.
 
 ## Quick Start
-
-Pull the latest image from Dockerhub
+Fetch the latest production-ready image from Dockerhub
 
 ```shell
 docker pull kokolates/patrolknight-ui:latest
 ```
 
-Run the application server inside docker container
+Launch the application server locally
 
 ```shell
 docker run --rm -p 3000:80 kokolates/patrolknight-ui:latest
 ```
 
-Then open your browser with `http://localhost:3000`. Remeber to launch your robot stack with `rosbridge server`. If the `rosbridge_server` is successfully connected, you can see your map and robot information.
+Then open your browser with [`http://localhost:3000`](http://localhost:3000). Ensure your robot stack or simulation is running and the `rosbridge server` node is active. Once connected successfully, the map and robot telemetry will automatically render.
 
 ## Robot Configuration
 
-The current bridge IP is set as `ws://localhost:9090` which is mainly for dummy testing on developing computer. To connect the user interface to your robot, you have to connect your computer to the robot, and then check the IP of robot. 
+By default, the application attempts to connect to `ws://localhost:9090` (ideal for local dummy testing). To connect the interface to a physical robot or a remote simulation, inject the robot's IP address using the `ROSBRIDGE_URL` environment variable.
 
 ```shell
 docker run --rm \
@@ -28,15 +29,15 @@ docker run --rm \
     kokolates/patrolknight-ui:latest
 ```
 
-## Dummy Nodes
-There are dummy nodes for robot position, map server, and simple planner. 
+## Local Testing (Dummy Nodes)
+If you don't have a physical robot ready, the repository includes mocked ROS nodes (Robot Position, Map Server, and a Simple Planner) for local validation. Navigate to the workspace directory and launch the container orchestration:
 
 ```shell
 cd workspace
 docker compose up --build
 ```
 
-You only have to build image when you run it first time, then you can just simple `docker compose up` to launch the container. And after testing, just run
+(Note: The `--build` flag is only necessary for the initial setup or when modifying dummy node source files. For subsequent runs, a simple `docker compose up` is sufficient.) To clean up and stop all running dummy nodes, execute:
 
 ```shell
 docker compose down
