@@ -1,11 +1,11 @@
 FROM node:20-alpine AS build
 
 WORKDIR /app
-COPY ./frontend/package-lock.json ./frontend/package.json ./
 
+COPY package.json package-lock.json ./
 RUN npm install
 
-COPY ./frontend ./
+COPY . .
 RUN npm run build
 
 FROM nginx:alpine
@@ -13,7 +13,7 @@ FROM nginx:alpine
 RUN rm -rf /usr/share/nginx/html/*
 COPY --from=build /app/dist /usr/share/nginx/html
 
-COPY ./frontend/public/config.template.js /usr/share/nginx/html/config.template.js
+COPY public/config.template.js /usr/share/nginx/html/config.template.js
 COPY docker-entrypoint.sh /docker-entrypoint.sh
 
 RUN chmod +x /docker-entrypoint.sh

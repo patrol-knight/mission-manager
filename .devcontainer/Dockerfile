@@ -14,12 +14,16 @@ RUN groupadd --gid $USER_GID $USERNAME \
     
 RUN apt-get update && apt-get install -y \
     python3-pip \
+    python3-scipy \
+    python3-matplotlib \
     ros-humble-rosbridge-server  \
     ros-humble-nav2-map-server \
     ros-humble-nav2-lifecycle-manager \
     ros-humble-rqt-graph \
     && rm -rf /var/lib/apt/lists/*
 
-ENV SHELL /bin/bash
 USER $USERNAME
+RUN echo "source /opt/ros/humble/setup.bash" >> /home/$USERNAME/.bashrc
+
+ENV SHELL /bin/bash
 CMD ["/bin/bash"]

@@ -1,17 +1,12 @@
 import * as React from "react";
 
-export type ToastType = "success" | "error" | "info";
+export type ToastType = "success" | "error" | "info" | "warning";
 
 export type ToastMessage = {
   id: number;
   type: ToastType;
   title: string;
   subtitle?: string;
-};
-
-type ToastItemProps = {
-  toast: ToastMessage;
-  onDismiss: (id: number) => void;
 };
 
 const COLORS: Record<ToastType, { bg: string; icon: string; border: string }> = {
@@ -30,33 +25,36 @@ const COLORS: Record<ToastType, { bg: string; icon: string; border: string }> = 
     icon: "↑",
     border: "rgba(102, 126, 234, 0.3)",
   },
+  warning: {
+    bg: "linear-gradient(135deg, #f7971e 0%, #ffd200 100%)",
+    icon: "⚠",
+    border: "rgba(255, 210, 0, 0.35)",
+  },
 };
 
-const DURATION = 2500; // ms before auto-dismiss
+const DURATION = 3000;
 
-function ToastItem({ toast, onDismiss }: ToastItemProps) {
+function ToastItem({
+  toast,
+  onDismiss,
+}: {
+  toast: ToastMessage;
+  onDismiss: (id: number) => void;
+}) {
   const [visible, setVisible] = React.useState(false);
   const color = COLORS[toast.type];
 
-  // Slide in on mount
   React.useEffect(() => {
-    const showTimer = requestAnimationFrame(() => {
-      requestAnimationFrame(() => setVisible(true));
-    });
-
-    // Auto dismiss
-    const hideTimer = setTimeout(() => {
-      setVisible(false);
-    }, DURATION);
-
-    const removeTimer = setTimeout(() => {
-      onDismiss(toast.id);
-    }, DURATION + 400); // wait for slide-out animation
+    const show = requestAnimationFrame(() =>
+      requestAnimationFrame(() => setVisible(true))
+    );
+    const hide = setTimeout(() => setVisible(false), DURATION);
+    const remove = setTimeout(() => onDismiss(toast.id), DURATION + 400);
 
     return () => {
-      cancelAnimationFrame(showTimer);
-      clearTimeout(hideTimer);
-      clearTimeout(removeTimer);
+      cancelAnimationFrame(show);
+      clearTimeout(hide);
+      clearTimeout(remove);
     };
   }, [toast.id, onDismiss]);
 
@@ -81,11 +79,11 @@ function ToastItem({ toast, onDismiss }: ToastItemProps) {
         maxWidth: 360,
         transform: visible ? "translateY(0)" : "translateY(-110%)",
         opacity: visible ? 1 : 0,
-        transition: "transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.35s ease",
+        transition:
+          "transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.35s ease",
         userSelect: "none",
       }}
     >
-      {/* Icon badge */}
       <div
         style={{
           width: 36,
@@ -104,8 +102,6 @@ function ToastItem({ toast, onDismiss }: ToastItemProps) {
       >
         {color.icon}
       </div>
-
-      {/* Text */}
       <div style={{ flex: 1 }}>
         <div style={{ fontSize: 14, fontWeight: 600, color: "#f8f9fa" }}>
           {toast.title}
@@ -120,15 +116,13 @@ function ToastItem({ toast, onDismiss }: ToastItemProps) {
   );
 }
 
-// ── Context ──────────────────────────────────────────────────────────────────
+// ── Context ───────────────────────────────────────────────────────────────────
 
 type ToastContextValue = {
   show: (type: ToastType, title: string, subtitle?: string) => void;
 };
 
-const ToastContext = React.createContext<ToastContextValue>({
-  show: () => {},
-});
+const ToastContext = React.createContext<ToastContextValue>({ show: () => {} });
 
 export function useToast() {
   return React.useContext(ToastContext);
@@ -136,11 +130,11 @@ export function useToast() {
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = React.useState<ToastMessage[]>([]);
-  const counterRef = React.useRef(0);
+  const counter = React.useRef(0);
 
   const show = React.useCallback(
     (type: ToastType, title: string, subtitle?: string) => {
-      const id = ++counterRef.current;
+      const id = ++counter.current;
       setToasts((prev) => [...prev, { id, type, title, subtitle }]);
     },
     []
@@ -153,8 +147,6 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
     <ToastContext.Provider value={{ show }}>
       {children}
-
-      {/* Toast container — top center */}
       <div
         style={{
           position: "fixed",
