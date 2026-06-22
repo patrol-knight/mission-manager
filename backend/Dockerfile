@@ -1,11 +1,16 @@
 FROM ros:humble
 
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-pip \
     ros-humble-rmw-cyclonedds-cpp \
     && rm -rf /var/lib/apt/lists/*
 
-RUN pip3 install fastapi "uvicorn[standard]" pyyaml lanelet2 pyproj
+RUN pip3 install --no-cache-dir \
+    fastapi \
+    "uvicorn[standard]" \
+    pyyaml \
+    lanelet2 \
+    pyproj
 
 WORKDIR /app
 COPY . .
