@@ -14,6 +14,7 @@ __pycache__
 
 venv/
 .venv/
+.env.*
 
 msg_gen/
 srv_gen/
