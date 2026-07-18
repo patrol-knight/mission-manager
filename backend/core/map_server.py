@@ -1,16 +1,32 @@
-import yaml
+import logging
 import math
+from pathlib import Path
 
-from lanelet2.io import load, Origin
-from lanelet2.core import BasicPoint2d, BasicPoint3d, GPSPoint
-from lanelet2.projection import LocalCartesianProjector
-from lanelet2.geometry import inside, findNearest
-from lanelet2.routing import RoutingGraph
-from lanelet2 import traffic_rules
+import yaml
+
+from core.errors import MapUnavailableError
+from models.map import LatLon, MapInfo, MapPoint, ReachableGoal, RouteWaypoint, XY
+
+logger = logging.getLogger(__name__)
+
+try:
+    from lanelet2.core import BasicPoint2d, BasicPoint3d, GPSPoint
+    from lanelet2.geometry import findNearest, inside
+    from lanelet2.io import Origin
+    from lanelet2.io import load as ll2_load
+    from lanelet2.projection import LocalCartesianProjector
+    from lanelet2.routing import RoutingGraph
+    from lanelet2 import traffic_rules
+
+    _LANELET2_AVAILABLE = True
+except ImportError:
+    _LANELET2_AVAILABLE = False
 
 
 class MapServer:
-    def __init__(self):
+    def __init__(self) -> None:
+        self._available     = False
+        self._map_name       = None
         self._lanelet_map    = None
         self._lanelet_layer  = None
         self._routing_graph  = None
@@ -19,44 +35,69 @@ class MapServer:
         self._projector      = None
         self._map_bounds     = None
 
-    def load(self, osm_path: str, projector_yaml: str):
-        with open(projector_yaml, "r") as f:
-            data = yaml.safe_load(f)
+    def is_available(self) -> bool:
+        return self._available
 
-        self._origin_lat = data["map_origin"]["latitude"]
-        self._origin_lon = data["map_origin"]["longitude"]
-        print(f"[MapServer] Origin lat={self._origin_lat}, lon={self._origin_lon}")
+    def _ensure_available(self) -> None:
+        if not self._available:
+            raise MapUnavailableError(
+                "Map service is unavailable: map files or Lanelet2 dependency not loaded"
+            )
 
-        origin = Origin(self._origin_lat, self._origin_lon)
-        self._projector = LocalCartesianProjector(origin)
+    def load(self, osm_path: str, projector_yaml: str) -> None:
+        if not _LANELET2_AVAILABLE:
+            logger.warning(
+                "MapServer.load() skipped: lanelet2 dependency is not installed"
+            )
+            raise MapUnavailableError(
+                "Map service is unavailable: map files or Lanelet2 dependency not loaded"
+            )
 
-        self._lanelet_map   = load(osm_path, self._projector)
-        self._lanelet_layer = self._lanelet_map.laneletLayer
+        try:
+            with open(projector_yaml, "r") as f:
+                data = yaml.safe_load(f)
 
-        tr = traffic_rules.create(
-            traffic_rules.Locations.Germany,
-            traffic_rules.Participants.Vehicle,
-        )
-        self._routing_graph = RoutingGraph(self._lanelet_map, tr)
-        print(f"[MapServer] Loaded {len(self._lanelet_layer)} lanelets, routing graph built")
+            self._origin_lat = data["map_origin"]["latitude"]
+            self._origin_lon = data["map_origin"]["longitude"]
 
-        self._map_bounds = self._compute_bounds()
+            origin = Origin(self._origin_lat, self._origin_lon)
+            self._projector = LocalCartesianProjector(origin)
 
-    # ── Coordinate conversion ─────────────────────────────────────────────
+            self._lanelet_map   = ll2_load(osm_path, self._projector)
+            self._lanelet_layer = self._lanelet_map.laneletLayer
 
-    def xy_to_latlon(self, x: float, y: float) -> tuple[float, float]:
+            tr = traffic_rules.create(
+                traffic_rules.Locations.Germany,
+                traffic_rules.Participants.Vehicle,
+            )
+            self._routing_graph = RoutingGraph(self._lanelet_map, tr)
+            self._map_bounds = self._compute_bounds()
+            self._map_name = Path(osm_path).stem
+            self._available = True
+            logger.info(
+                "MapServer loaded %d lanelets from %s", len(self._lanelet_layer), osm_path
+            )
+        except MapUnavailableError:
+            raise
+        except Exception as exc:
+            self._available = False
+            raise MapUnavailableError(
+                f"Map service is unavailable: failed to load map: {exc}"
+            ) from exc
+
+    def xy_to_latlon(self, x: float, y: float, frame_id: str = "map") -> LatLon:
+        self._ensure_available()
         gps = self._projector.reverse(BasicPoint3d(x, y, 0.0))
-        return gps.lat, gps.lon
+        return LatLon(lat=gps.lat, lon=gps.lon)
 
-    def latlon_to_xy(self, lat: float, lon: float) -> tuple[float, float]:
+    def latlon_to_xy(self, lat: float, lon: float, target_frame_id: str = "map") -> XY:
+        self._ensure_available()
         point = self._projector.forward(GPSPoint(lat, lon, 0.0))
-        return point.x, point.y
+        return XY(x=point.x, y=point.y, frame_id=target_frame_id)
 
     def _to_latlon(self, x: float, y: float) -> list[float]:
-        lat, lon = self.xy_to_latlon(x, y)
-        return [lon, lat]
-
-    # ── Map metadata ──────────────────────────────────────────────────────
+        gps = self._projector.reverse(BasicPoint3d(x, y, 0.0))
+        return [gps.lon, gps.lat]
 
     def _compute_bounds(self):
         min_lat = min_lon =  1e18
@@ -64,20 +105,30 @@ class MapServer:
         for ll in self._lanelet_layer:
             for bound in (ll.leftBound, ll.rightBound):
                 for p in bound:
-                    lat, lon = self.xy_to_latlon(p.x, p.y)
-                    if lat < min_lat: min_lat = lat
-                    if lat > max_lat: max_lat = lat
-                    if lon < min_lon: min_lon = lon
-                    if lon > max_lon: max_lon = lon
-        return [[min_lon, min_lat], [max_lon, max_lat]]
+                    lon, lat = self._to_latlon(p.x, p.y)
+                    min_lat = min(min_lat, lat)
+                    max_lat = max(max_lat, lat)
+                    min_lon = min(min_lon, lon)
+                    max_lon = max(max_lon, lon)
+        # [[south, west], [north, east]]
+        return [[min_lat, min_lon], [max_lat, max_lon]]
 
-    def get_bounds(self):
+    def get_bounds(self) -> list[list[float]]:
+        self._ensure_available()
         return self._map_bounds
 
-    def get_origin(self):
-        return {"lat": self._origin_lat, "lon": self._origin_lon}
+    def get_info(self) -> MapInfo:
+        self._ensure_available()
+        return MapInfo(
+            map_name=self._map_name,
+            frame_id="map",
+            origin_lat=self._origin_lat,
+            origin_lon=self._origin_lon,
+            lanelet_count=len(self._lanelet_layer),
+        )
 
-    def get_json(self):
+    def get_geojson(self) -> dict:
+        self._ensure_available()
         features = []
         for ll in self._lanelet_layer:
             left   = [self._to_latlon(p.x, p.y) for p in ll.leftBound]
@@ -88,14 +139,30 @@ class MapServer:
             features.append({"type": "Feature", "geometry": {"type": "LineString", "coordinates": center}, "properties": {"type": "center"}})
         return {"type": "FeatureCollection", "features": features}
 
-    # ── Lanelet queries ───────────────────────────────────────────────────
-
-    def is_in_lanelet(self, x: float, y: float) -> bool:
+    def is_in_lanelet(self, x: float, y: float, frame_id: str = "map") -> bool:
+        self._ensure_available()
         point   = BasicPoint2d(x, y)
         nearest = findNearest(self._lanelet_layer, point, 1)
         if not nearest:
             return False
         return inside(nearest[0][1], point)
+
+    def snap_to_lanelet(self, x: float, y: float, frame_id: str = "map") -> MapPoint:
+        self._ensure_available()
+        ll = self._nearest_lanelet(x, y)
+        if ll is None:
+            return MapPoint(x=x, y=y, frame_id=frame_id, lanelet_id=None)
+        t = self._project_point_onto_centerline(ll, x, y)
+        sx, sy = self._interp_centerline_xy_at(ll, t)
+        return MapPoint(x=sx, y=sy, frame_id=frame_id, lanelet_id=ll.id)
+
+    def project_reachable_goal(
+        self, x: float, y: float, frame_id: str = "map"
+    ) -> ReachableGoal:
+        self._ensure_available()
+        return ReachableGoal(
+            x=x, y=y, frame_id=frame_id, reachable=self.is_in_lanelet(x, y, frame_id)
+        )
 
     def _get_lanelet_yaw(self, ll, x: float, y: float) -> float:
         pts = list(ll.centerline)
@@ -138,8 +205,6 @@ class MapServer:
 
         return best_ll
 
-    # ── Centerline sampling ───────────────────────────────────────────────
-
     def _project_point_onto_centerline(self, ll, x: float, y: float) -> float:
         pts = list(ll.centerline)
         if len(pts) < 2:
@@ -178,6 +243,25 @@ class MapServer:
                 y = pts[i].y + alpha * (pts[i+1].y - pts[i].y)
                 return self._to_latlon(x, y)
         return self._to_latlon(pts[-1].x, pts[-1].y)
+
+    def _interp_centerline_xy_at(self, ll, t: float) -> tuple[float, float]:
+        pts = list(ll.centerline)
+        if len(pts) < 2:
+            p = pts[0]
+            return p.x, p.y
+        arc   = self._build_arc(pts)
+        total = arc[-1]
+        if total == 0:
+            return pts[0].x, pts[0].y
+        s = t * total
+        for i in range(len(pts) - 1):
+            if arc[i] <= s <= arc[i+1]:
+                seg_len = arc[i+1] - arc[i]
+                alpha = (s - arc[i]) / seg_len if seg_len > 0 else 0.0
+                x = pts[i].x + alpha * (pts[i+1].x - pts[i].x)
+                y = pts[i].y + alpha * (pts[i+1].y - pts[i].y)
+                return x, y
+        return pts[-1].x, pts[-1].y
 
     def _build_arc(self, pts):
         arc = [0.0]
@@ -253,17 +337,17 @@ class MapServer:
             if start_ll.id == end_ll.id and t0 > t1:
                 following = list(self._routing_graph.following(start_ll))
                 if not following:
-                    print(f"[Route] No following lanelets for ll={start_ll.id}, cannot reroute")
+                    logger.info("No following lanelets for ll=%s, cannot reroute", start_ll.id)
                     return None
                 via_ll = following[0]
 
                 route1 = self._routing_graph.getRoute(start_ll, via_ll, 0)
                 if route1 is None:
-                    print(f"[Route] getRoute part1 returned None")
+                    logger.info("getRoute part1 returned None")
                     return None
                 route2 = self._routing_graph.getRoute(via_ll, end_ll, 0)
                 if route2 is None:
-                    print(f"[Route] getRoute part2 returned None")
+                    logger.info("getRoute part2 returned None")
                     return None
 
                 path1 = list(route1.shortestPath())
@@ -296,3 +380,8 @@ class MapServer:
             "geometry": {"type": "LineString", "coordinates": full_coords},
             "properties": {"type": "route"},
         }
+
+    def get_route_preview(self, waypoints: list[RouteWaypoint]) -> dict | None:
+        self._ensure_available()
+        wps = [{"x": w.x, "y": w.y} for w in waypoints]
+        return self.get_route(wps)

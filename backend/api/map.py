@@ -1,93 +1,83 @@
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from fastapi import APIRouter, HTTPException, Request
 
-from core.bridge_node import BridgeNode
-from core.map_server import MapServer
+from core.errors import MapUnavailableError
+from models.map import (
+    MapInfo,
+    MapPoint,
+    PointQuery,
+    ProjectReachableGoalRequest,
+    ReachableGoal,
+    RoutePreviewRequest,
+)
 
-router     = APIRouter()
-map_server: MapServer = None
-bridge_node: BridgeNode = None
-
-
-def init(server, bridge=None):
-    global map_server, bridge_node
-    map_server  = server
-    bridge_node = bridge
+router = APIRouter()
 
 
-class Waypoint(BaseModel):
-    x: float
-    y: float
+def _map_server(request: Request):
+    return request.app.state.map_server
 
 
-class WaypointWithYaw(BaseModel):
-    x:   float
-    y:   float
-    yaw: float = 0.0
+def _unavailable(exc: MapUnavailableError) -> HTTPException:
+    return HTTPException(status_code=503, detail=str(exc))
 
 
-class RouteRequest(BaseModel):
-    waypoints: list[Waypoint]
+@router.get("/info", response_model=MapInfo)
+def get_info(request: Request) -> MapInfo:
+    try:
+        return _map_server(request).get_info()
+    except MapUnavailableError as exc:
+        raise _unavailable(exc) from exc
 
 
-class WaypointPublishRequest(BaseModel):
-    waypoints: list[WaypointWithYaw]
+@router.get("/geojson")
+def get_geojson(request: Request) -> dict:
+    try:
+        return _map_server(request).get_geojson()
+    except MapUnavailableError as exc:
+        raise _unavailable(exc) from exc
 
 
-class LngLatPoint(BaseModel):
-    lng: float
-    lat: float
+@router.get("/bounds")
+def get_bounds(request: Request) -> dict:
+    try:
+        return {"bounds": _map_server(request).get_bounds()}
+    except MapUnavailableError as exc:
+        raise _unavailable(exc) from exc
 
 
-@router.get("/map")
-def get_map():
-    return map_server.get_json()
+@router.post("/is-in-lanelet")
+def is_in_lanelet(query: PointQuery, request: Request) -> dict:
+    try:
+        result = _map_server(request).is_in_lanelet(query.x, query.y, query.frame_id)
+        return {"in_lanelet": result}
+    except MapUnavailableError as exc:
+        raise _unavailable(exc) from exc
 
 
-@router.get("/map/origin")
-def get_origin():
-    return map_server.get_origin()
+@router.post("/snap-waypoint", response_model=MapPoint)
+def snap_waypoint(query: PointQuery, request: Request) -> MapPoint:
+    try:
+        return _map_server(request).snap_to_lanelet(query.x, query.y, query.frame_id)
+    except MapUnavailableError as exc:
+        raise _unavailable(exc) from exc
 
 
-@router.get("/map/bounds")
-def get_bounds():
-    bounds = map_server.get_bounds()
-    if bounds is None:
-        raise HTTPException(status_code=503, detail="Map not loaded yet")
-    return {"bounds": bounds}
+@router.post("/project-reachable-goal", response_model=ReachableGoal)
+def project_reachable_goal(
+    req: ProjectReachableGoalRequest, request: Request
+) -> ReachableGoal:
+    try:
+        return _map_server(request).project_reachable_goal(
+            req.x, req.y, req.frame_id
+        )
+    except MapUnavailableError as exc:
+        raise _unavailable(exc) from exc
 
 
-@router.post("/map/project/to_xy")
-def project_to_xy(pt: LngLatPoint):
-    x, y = map_server.latlon_to_xy(pt.lat, pt.lng)
-    return {"x": x, "y": y}
-
-
-@router.post("/map/project/to_lnglat")
-def project_to_lnglat(wp: Waypoint):
-    lat, lon = map_server.xy_to_latlon(wp.x, wp.y)
-    return {"lng": lon, "lat": lat}
-
-
-@router.post("/map/validate")
-def validate(wp: Waypoint):
-    return {"valid": map_server.is_in_lanelet(wp.x, wp.y)}
-
-
-@router.post("/map/route")
-def get_route(req: RouteRequest):
-    wps    = [{"x": w.x, "y": w.y} for w in req.waypoints]
-    result = map_server.get_route(wps)
-    if result is None:
-        return {"ok": False, "route": None}
-    return {"ok": True, "route": result}
-
-
-@router.post("/map/waypoints/publish")
-def publish_waypoints(req: WaypointPublishRequest):
-    if bridge_node is None:
-        raise HTTPException(status_code=503, detail="ROS2 bridge not ready")
-
-    wps = [{"x": w.x, "y": w.y, "yaw": w.yaw} for w in req.waypoints]
-    bridge_node.publish_waypoints(wps)
-    return {"ok": True, "count": len(wps)}
+@router.post("/route-preview")
+def route_preview(req: RoutePreviewRequest, request: Request) -> dict:
+    try:
+        route = _map_server(request).get_route_preview(req.waypoints)
+        return {"ok": route is not None, "route": route}
+    except MapUnavailableError as exc:
+        raise _unavailable(exc) from exc
