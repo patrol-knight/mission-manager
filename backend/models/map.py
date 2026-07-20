@@ -40,6 +40,12 @@ class PointQuery(BaseModel):
     frame_id: str = "map"
 
 
+class LatLonQuery(BaseModel):
+    lat: float
+    lon: float
+    frame_id: str = "map"
+
+
 class ProjectReachableGoalRequest(BaseModel):
     x: float
     y: float
