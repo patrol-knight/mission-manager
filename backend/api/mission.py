@@ -2,12 +2,20 @@ from fastapi import APIRouter, HTTPException, Request, Response, status
 
 from core.errors import (
     MissionAlreadyExistsError,
+    MissionExecutionLockedError,
     MissionNotFoundError,
     MissionValidationError,
 )
 from models.mission import Mission, MissionSummary
 
 router = APIRouter()
+
+
+def _broadcast_current_mission(request: Request) -> None:
+    current = request.app.state.mission_server.get_current()
+    request.app.state.websocket_manager.broadcast_threadsafe(
+        {"type": "mission.current", "data": current.model_dump(mode="json") if current else None}
+    )
 
 
 @router.get("", response_model=list[MissionSummary])
@@ -52,26 +60,40 @@ def create_mission(mission: Mission, request: Request) -> Mission:
 @router.put("/{mission_id}", response_model=Mission)
 def update_mission(mission_id: str, mission: Mission, request: Request) -> Mission:
     try:
-        return request.app.state.mission_server.update_mission(mission_id, mission)
+        request.app.state.mission_execution_manager.assert_editable(mission_id)
+        updated = request.app.state.mission_server.update_mission(mission_id, mission)
+        request.app.state.mission_execution_manager.on_edited(mission_id)
+        _broadcast_current_mission(request)
+        return updated
     except MissionNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except MissionValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except MissionExecutionLockedError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @router.delete("/{mission_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_mission(mission_id: str, request: Request) -> Response:
     try:
+        request.app.state.mission_execution_manager.assert_editable(mission_id)
         request.app.state.mission_server.delete_mission(mission_id)
+        request.app.state.mission_execution_manager.on_deleted(mission_id)
+        _broadcast_current_mission(request)
     except MissionNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except MissionExecutionLockedError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post("/{mission_id}/activate", response_model=Mission)
 def activate_mission(mission_id: str, request: Request) -> Mission:
     try:
-        return request.app.state.mission_server.activate(mission_id)
+        activated = request.app.state.mission_server.activate(mission_id)
+        request.app.state.mission_execution_manager.on_activated(mission_id)
+        _broadcast_current_mission(request)
+        return activated
     except MissionNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 

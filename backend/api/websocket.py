@@ -12,6 +12,8 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     manager = websocket.app.state.websocket_manager
     device_registry = websocket.app.state.device_registry
     mission_server = getattr(websocket.app.state, "mission_server", None)
+    mission_execution_manager = getattr(websocket.app.state, "mission_execution_manager", None)
+    anomaly_registry = getattr(websocket.app.state, "anomaly_registry", None)
 
     await manager.connect(websocket)
     try:
@@ -34,6 +36,25 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 {
                     "type": "mission.current",
                     "data": current.model_dump(mode="json") if current else None,
+                },
+            )
+
+        if mission_execution_manager is not None:
+            execution = mission_execution_manager.get_state()
+            await manager.send_json(
+                websocket,
+                {
+                    "type": "mission.execution",
+                    "data": execution.model_dump(mode="json") if execution else None,
+                },
+            )
+
+        if anomaly_registry is not None:
+            await manager.send_json(
+                websocket,
+                {
+                    "type": "anomalies.snapshot",
+                    "data": [a.model_dump(mode="json") for a in anomaly_registry.list()],
                 },
             )
 

@@ -2,12 +2,15 @@ from fastapi import APIRouter, HTTPException, Request
 
 from core.errors import MapUnavailableError
 from models.map import (
+    LatLon,
+    LatLonQuery,
     MapInfo,
     MapPoint,
     PointQuery,
     ProjectReachableGoalRequest,
     ReachableGoal,
     RoutePreviewRequest,
+    XY,
 )
 
 router = APIRouter()
@@ -79,5 +82,21 @@ def route_preview(req: RoutePreviewRequest, request: Request) -> dict:
     try:
         route = _map_server(request).get_route_preview(req.waypoints)
         return {"ok": route is not None, "route": route}
+    except MapUnavailableError as exc:
+        raise _unavailable(exc) from exc
+
+
+@router.post("/xy-to-lnglat", response_model=LatLon)
+def xy_to_lnglat(query: PointQuery, request: Request) -> LatLon:
+    try:
+        return _map_server(request).xy_to_latlon(query.x, query.y, query.frame_id)
+    except MapUnavailableError as exc:
+        raise _unavailable(exc) from exc
+
+
+@router.post("/lnglat-to-xy", response_model=XY)
+def lnglat_to_xy(query: LatLonQuery, request: Request) -> XY:
+    try:
+        return _map_server(request).latlon_to_xy(query.lat, query.lon, query.frame_id)
     except MapUnavailableError as exc:
         raise _unavailable(exc) from exc
