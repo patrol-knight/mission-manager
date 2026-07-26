@@ -14,9 +14,9 @@ from api import mission_execution as mission_execution_api
 from api import websocket as websocket_api
 from bootstrap import Services, build_services
 from config import Settings
+from core.anomaly_response import AnomalyResponseCoordinator
 from core.device_registry import DeviceRegistry
 from core.websocket_manager import WebSocketManager
-from simulation.dev_simulator import DevSimulator
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -27,6 +27,7 @@ settings = Settings()
 async def monitor_devices(
     registry: DeviceRegistry,
     websocket_manager: WebSocketManager,
+    anomaly_response_coordinator: AnomalyResponseCoordinator,
     timeout_sec: float,
     interval_sec: float,
 ) -> None:
@@ -39,16 +40,8 @@ async def monitor_devices(
                     "data": [d.model_dump(mode="json") for d in registry.list_devices()],
                 }
             )
+        anomaly_response_coordinator.abort_if_robot_disconnected()
         await asyncio.sleep(interval_sec)
-
-
-async def run_dev_simulator(simulator: DevSimulator, tick_interval_sec: float) -> None:
-    while True:
-        try:
-            simulator.tick()
-        except Exception:
-            logger.exception("Dev simulator tick failed")
-        await asyncio.sleep(tick_interval_sec)
 
 
 @asynccontextmanager
@@ -61,28 +54,28 @@ async def lifespan(app: FastAPI):
     app.state.mission_execution_manager = services.mission_execution_manager
     app.state.device_registry = services.device_registry
     app.state.anomaly_registry = services.anomaly_registry
+    app.state.anomaly_response_coordinator = services.anomaly_response_coordinator
+    app.state.mission_drive_coordinator = services.mission_drive_coordinator
     app.state.websocket_manager = services.websocket_manager
     app.state.zenoh_gateway = services.zenoh_gateway
 
     services.websocket_manager.bind_loop(asyncio.get_running_loop())
 
     if settings.zenoh_enabled:
-        services.zenoh_gateway.start()
+        try:
+            services.zenoh_gateway.start()
+        except Exception:
+            logger.error("Failed to start Zenoh gateway; continuing without it", exc_info=True)
 
     monitor_task = asyncio.create_task(
         monitor_devices(
             services.device_registry,
             services.websocket_manager,
+            services.anomaly_response_coordinator,
             settings.device_offline_timeout_sec,
             settings.device_monitor_interval_sec,
         )
     )
-
-    simulator_task = None
-    if settings.simulator_enabled:
-        simulator_task = asyncio.create_task(
-            run_dev_simulator(services.dev_simulator, settings.simulator_tick_interval_sec)
-        )
 
     logger.info("[Backend] Started")
     try:
@@ -93,12 +86,6 @@ async def lifespan(app: FastAPI):
             await monitor_task
         except asyncio.CancelledError:
             pass
-        if simulator_task is not None:
-            simulator_task.cancel()
-            try:
-                await simulator_task
-            except asyncio.CancelledError:
-                pass
         services.zenoh_gateway.stop()
         logger.info("[Backend] Stopped")
 

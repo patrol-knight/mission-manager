@@ -2,10 +2,12 @@ import logging
 import threading
 from datetime import datetime, timezone
 
+from core.device_registry import DeviceRegistry
 from core.errors import (
     InsufficientWaypointsError,
     InvalidExecutionTransitionError,
     MissionExecutionLockedError,
+    NoConnectedRobotError,
     NoCurrentMissionError,
 )
 from core.mission_server import MissionServer
@@ -16,7 +18,12 @@ logger = logging.getLogger(__name__)
 
 MIN_WAYPOINTS_TO_START = 2
 
-_EDIT_LOCKED_STATUSES = (MissionStatus.RUNNING, MissionStatus.PAUSED, MissionStatus.RETURNING_HOME)
+_EDIT_LOCKED_STATUSES = (
+    MissionStatus.RUNNING,
+    MissionStatus.PAUSED,
+    MissionStatus.RETURNING_HOME,
+    MissionStatus.INVESTIGATING,
+)
 
 
 class MissionExecutionManager:
@@ -25,9 +32,12 @@ class MissionExecutionManager:
     mid-mission resets to READY, same precedent as DeviceRegistry. Not
     persisted to YAML, unlike `Mission` itself (see models/mission.py)."""
 
-    def __init__(self, mission_server: MissionServer, websocket_manager: WebSocketManager) -> None:
+    def __init__(
+        self, mission_server: MissionServer, websocket_manager: WebSocketManager, device_registry: DeviceRegistry
+    ) -> None:
         self._mission_server = mission_server
         self._websocket_manager = websocket_manager
+        self._device_registry = device_registry
         self._lock = threading.RLock()
         self._state: MissionExecutionState | None = None
 
@@ -82,6 +92,9 @@ class MissionExecutionManager:
                     f"Mission requires at least {MIN_WAYPOINTS_TO_START} waypoints to start"
                 )
 
+            if self._device_registry.get_connected_robot() is None:
+                raise NoConnectedRobotError("Cannot start mission: no connected robot device")
+
             return self._apply(
                 state.model_copy(
                     update={
@@ -113,14 +126,49 @@ class MissionExecutionManager:
             )
 
     def stop(self) -> MissionExecutionState:
+        """Allowed from INVESTIGATING as well as RUNNING/PAUSED -- Stop is
+        the one control that stays available during a robot diversion, an
+        escape hatch given there's no automatic timeout on one (see
+        core/anomaly_response.py). AnomalyResponseCoordinator.abort_if_active()
+        (called from the API layer right after this) tears down whatever
+        diversion bookkeeping was in flight."""
         with self._lock:
             state = self._require_state()
-            if state.status not in (MissionStatus.RUNNING, MissionStatus.PAUSED):
+            if state.status not in (MissionStatus.RUNNING, MissionStatus.PAUSED, MissionStatus.INVESTIGATING):
                 raise InvalidExecutionTransitionError(f"Cannot stop from status {state.status}")
             return self._apply(
                 state.model_copy(
                     update={"status": MissionStatus.RETURNING_HOME, "updated_at": datetime.now(timezone.utc)}
                 )
+            )
+
+    def enter_investigating(self) -> MissionExecutionState | None:
+        """Called by AnomalyResponseCoordinator right before it commits to
+        starting a diversion -- the authoritative gate, since this is the
+        only check done atomically under this manager's own lock (the
+        map/route lookups leading up to it aren't). Returns None (no-op)
+        if the mission isn't RUNNING right now, e.g. a pause()/stop() won
+        the race in the meantime -- the caller must treat that as "don't
+        start the diversion", not proceed anyway."""
+        with self._lock:
+            if self._state is None or self._state.status != MissionStatus.RUNNING:
+                return None
+            return self._apply(
+                self._state.model_copy(
+                    update={"status": MissionStatus.INVESTIGATING, "updated_at": datetime.now(timezone.utc)}
+                )
+            )
+
+    def exit_investigating(self) -> MissionExecutionState | None:
+        """Called whenever a diversion ends/aborts. No-op if the mission
+        isn't INVESTIGATING right now -- safe to call even when Stop
+        already moved status straight to RETURNING_HOME (the escape-hatch
+        path), since that isn't INVESTIGATING anymore either."""
+        with self._lock:
+            if self._state is None or self._state.status != MissionStatus.INVESTIGATING:
+                return None
+            return self._apply(
+                self._state.model_copy(update={"status": MissionStatus.RUNNING, "updated_at": datetime.now(timezone.utc)})
             )
 
     def record_waypoint_reached(self, waypoint_index: int) -> MissionExecutionState | None:
@@ -136,15 +184,14 @@ class MissionExecutionManager:
 
             if state.status == MissionStatus.RETURNING_HOME:
                 if waypoint_index == 0:
-                    return self._apply(
-                        state.model_copy(
-                            update={
-                                "status": MissionStatus.COMPLETED,
-                                "current_waypoint_index": 0,
-                                "updated_at": datetime.now(timezone.utc),
-                            }
-                        )
+                    completed_state = state.model_copy(
+                        update={
+                            "status": MissionStatus.COMPLETED,
+                            "current_waypoint_index": 0,
+                            "updated_at": datetime.now(timezone.utc),
+                        }
                     )
+                    return self._finish_mission(completed_state)
                 return state.model_copy(deep=True)
 
             if state.status != MissionStatus.RUNNING:
@@ -165,17 +212,27 @@ class MissionExecutionManager:
                 else:
                     current_loop += 1
 
-            return self._apply(
-                state.model_copy(
-                    update={
-                        "status": status,
-                        "current_loop": current_loop,
-                        "completed_loops": completed_loops,
-                        "current_waypoint_index": waypoint_index,
-                        "updated_at": datetime.now(timezone.utc),
-                    }
-                )
+            new_state = state.model_copy(
+                update={
+                    "status": status,
+                    "current_loop": current_loop,
+                    "completed_loops": completed_loops,
+                    "current_waypoint_index": waypoint_index,
+                    "updated_at": datetime.now(timezone.utc),
+                }
             )
+            if status == MissionStatus.COMPLETED:
+                return self._finish_mission(new_state)
+            return self._apply(new_state)
+
+    def _finish_mission(self, completed_state: MissionExecutionState) -> MissionExecutionState:
+        """Broadcasts the COMPLETED transition -- so a client can catch it
+        going by (e.g. MissionCompleteWatcher's toast, which reads the final
+        loop count off this exact message) -- then immediately resets to
+        READY. A finished mission should be exactly as startable as a brand
+        new one, not require a separate "completed" status/affordance."""
+        self._apply(completed_state)
+        return self._apply(self._fresh_state(completed_state.mission_id))
 
     def assert_editable(self, mission_id: str) -> None:
         """Raises if `mission_id` is the current mission and it's mid-execution.

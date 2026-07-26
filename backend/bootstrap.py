@@ -3,13 +3,14 @@ from dataclasses import dataclass
 
 from config import Settings
 from core.anomaly_registry import AnomalyRegistry
+from core.anomaly_response import AnomalyResponseCoordinator
 from core.device_registry import DeviceRegistry
 from core.errors import MapUnavailableError
 from core.map_server import MapServer
+from core.mission_drive import MissionDriveCoordinator
 from core.mission_execution import MissionExecutionManager
 from core.mission_server import MissionServer
 from core.websocket_manager import WebSocketManager
-from simulation.dev_simulator import DevSimulator
 from transport.zenoh_gateway import ZenohGateway
 
 logger = logging.getLogger(__name__)
@@ -22,9 +23,10 @@ class Services:
     mission_execution_manager: MissionExecutionManager
     device_registry: DeviceRegistry
     anomaly_registry: AnomalyRegistry
+    anomaly_response_coordinator: AnomalyResponseCoordinator
+    mission_drive_coordinator: MissionDriveCoordinator
     websocket_manager: WebSocketManager
     zenoh_gateway: ZenohGateway
-    dev_simulator: DevSimulator
 
 
 def build_services(settings: Settings) -> Services:
@@ -40,28 +42,38 @@ def build_services(settings: Settings) -> Services:
     device_registry = DeviceRegistry()
     anomaly_registry = AnomalyRegistry()
     websocket_manager = WebSocketManager()
-    zenoh_gateway = ZenohGateway(settings, device_registry, websocket_manager, anomaly_registry)
 
-    mission_execution_manager = MissionExecutionManager(mission_server, websocket_manager)
+    mission_execution_manager = MissionExecutionManager(mission_server, websocket_manager, device_registry)
     mission_execution_manager.sync_with_current()
 
-    dev_simulator = DevSimulator(
-        settings,
-        mission_server,
-        mission_execution_manager,
-        device_registry,
-        anomaly_registry,
-        websocket_manager,
+    # zenoh_gateway is constructed before the two coordinators below
+    # both need it to send commands through, and it needs them for its own
+    # ingest callbacks, so the two directions are wired up after the fact
+    # via bind_coordinators()/bind_mission_drive() to avoid a construction cycle.
+    zenoh_gateway = ZenohGateway(settings, device_registry, websocket_manager, anomaly_registry, map_server)
+
+    anomaly_response_coordinator = AnomalyResponseCoordinator(
+        anomaly_registry=anomaly_registry,
+        mission_execution_manager=mission_execution_manager,
+        mission_server=mission_server,
+        map_server=map_server,
+        device_registry=device_registry,
+        websocket_manager=websocket_manager,
+        zenoh_gateway=zenoh_gateway,
+        settings=settings,
     )
 
-    if settings.zenoh_enabled and settings.simulator_enabled:
-        logger.warning(
-            "Both ZENOH_ENABLED and SIMULATOR_ENABLED are true — the dev simulator's "
-            "device ids (%s, %s) must not collide with real Zenoh-published device ids, "
-            "or their updates will overwrite each other in DeviceRegistry.",
-            settings.simulator_robot_device_id,
-            settings.simulator_iot_device_ids,
-        )
+    mission_drive_coordinator = MissionDriveCoordinator(
+        mission_execution_manager=mission_execution_manager,
+        mission_server=mission_server,
+        device_registry=device_registry,
+        anomaly_response_coordinator=anomaly_response_coordinator,
+        zenoh_gateway=zenoh_gateway,
+        websocket_manager=websocket_manager,
+        settings=settings,
+    )
+    anomaly_response_coordinator.bind_mission_drive(mission_drive_coordinator)
+    zenoh_gateway.bind_coordinators(anomaly_response_coordinator, mission_drive_coordinator)
 
     return Services(
         map_server=map_server,
@@ -69,7 +81,8 @@ def build_services(settings: Settings) -> Services:
         mission_execution_manager=mission_execution_manager,
         device_registry=device_registry,
         anomaly_registry=anomaly_registry,
+        anomaly_response_coordinator=anomaly_response_coordinator,
+        mission_drive_coordinator=mission_drive_coordinator,
         websocket_manager=websocket_manager,
         zenoh_gateway=zenoh_gateway,
-        dev_simulator=dev_simulator,
     )

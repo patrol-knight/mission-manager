@@ -27,23 +27,19 @@ class Settings(BaseSettings):
     zenoh_router: str = "tcp/localhost:7447"
     zenoh_device_state_keyexpr: str = "mission-manager/devices/*/state"
     zenoh_anomaly_keyexpr: str = "mission-manager/anomalies/*/state"
+    # Outbound: {device_id} is substituted by ZenohGateway.publish_command().
+    zenoh_device_commands_keyexpr: str = "mission-manager/devices/{device_id}/commands"
 
-    # Dev-only simulator (backend/simulation/dev_simulator.py) — off by default.
-    # See .env.example / .env.demo for local-demo usage. If both this and
-    # ZENOH_ENABLED are true, keep simulator device ids disjoint from real
-    # Zenoh-published device ids (see bootstrap.py's startup warning).
-    simulator_enabled: bool = False
-    simulator_tick_interval_sec: float = 0.5
-    simulator_fixtures_path: str = "simulation/fixtures/devices.yaml"
+    # AnomalyResponseCoordinator (core/anomaly_response.py) -- kill switch.
+    anomaly_response_enabled: bool = True
+    # MissionDriveCoordinator (core/mission_drive.py) -- kill switch for
+    # autonomously driving the current mission's waypoints.
+    mission_drive_enabled: bool = True
 
-    simulator_robot_device_id: str = "sim-robot-01"
-    simulator_robot_speed_mps: float = 1.0
-
-    simulator_iot_device_ids: list[str] = ["sim-iot-01", "sim-iot-02", "sim-iot-03"]
-    simulator_iot_flap_min_sec: float = 15.0
-    simulator_iot_flap_max_sec: float = 45.0
-    simulator_iot_flap_duration_sec: float = 6.0
-
-    simulator_anomaly_min_interval_sec: float = 20.0
-    simulator_anomaly_max_interval_sec: float = 60.0
-    simulator_anomaly_offset_m: float = 1.5
+    # Shared by both coordinators above: how long to wait for the tracked
+    # robot's operational_state to report "arrived" after a navigate_to_goal
+    # command, before giving up (anomaly diversion reverts/clears; mission
+    # drive just retries). The robot itself is the source of truth for
+    # arrival -- this is only a safety net for a stuck/disconnected robot,
+    # not a simulated travel time.
+    navigation_timeout_sec: float = 60.0

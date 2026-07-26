@@ -14,6 +14,15 @@ class Pose2D(BaseModel):
     x: float
     y: float
     yaw: float = 0.0
+    # Computed once, server-side, at Zenoh ingest time (see
+    # transport/zenoh_gateway.py's ingest_device_payload) using MapServer's
+    # real lanelet2 projector -- never set by an incoming device payload
+    # itself (device_gateway only knows local x/y). Carried through every
+    # broadcast/REST response so the frontend never needs a per-marker
+    # xy-to-lnglat round trip for a continuously-updating device position.
+    # Null whenever the map service is unavailable.
+    lat: float | None = None
+    lon: float | None = None
 
 
 class DeviceState(BaseModel):
@@ -36,24 +45,3 @@ class DeviceState(BaseModel):
 class DeviceView(DeviceState):
     connected: bool
     last_seen: float
-
-
-class DeviceFixture(BaseModel):
-    """One entry in simulation/fixtures/devices.yaml — seeds the dev simulator's
-    initial device position/enabled-state instead of its hardcoded/random
-    defaults. Not used outside DevSimulator."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    device_id: str
-    type: DeviceType
-    enabled: bool = True
-    x: float = 0.0
-    y: float = 0.0
-    yaw: float = 0.0
-
-
-class DeviceFixtureFile(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    devices: list[DeviceFixture] = Field(default_factory=list)

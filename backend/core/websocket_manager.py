@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from typing import Coroutine
 
 from fastapi import WebSocket
 
@@ -44,3 +45,14 @@ class WebSocketManager:
             logger.warning("WebSocketManager loop not bound; dropping broadcast: %s", message)
             return
         asyncio.run_coroutine_threadsafe(self.broadcast(message), self._loop)
+
+    def run_coroutine_threadsafe(self, coro: Coroutine) -> None:
+        """Schedules an arbitrary coroutine on the bound event loop from any
+        thread -- same escape hatch as broadcast_threadsafe, but for
+        AnomalyResponseCoordinator's delayed-transition tasks rather than a
+        broadcast specifically."""
+        if self._loop is None:
+            logger.warning("WebSocketManager loop not bound; dropping scheduled coroutine")
+            coro.close()  # avoid "coroutine was never awaited" warning
+            return
+        asyncio.run_coroutine_threadsafe(coro, self._loop)

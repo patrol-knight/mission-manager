@@ -32,7 +32,29 @@ def verify_anomaly(anomaly_id: str, request: Request) -> Anomaly:
     except InvalidAnomalyTransitionError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
+    request.app.state.anomaly_response_coordinator.resolve(anomaly_id)
     request.app.state.websocket_manager.broadcast_threadsafe(
         {"type": "anomaly.updated", "data": verified.model_dump(mode="json")}
     )
     return verified
+
+
+@router.post("/{anomaly_id}/dismiss", response_model=Anomaly)
+def dismiss_anomaly(anomaly_id: str, request: Request) -> Anomaly:
+    """Operator dismissed the arrival toast without opening the inspector --
+    resolves the anomaly the same way verify() does (see
+    AnomalyRegistry._resolve's docstring: no false-positive classification
+    in this codebase) and, the same as verify, triggers the return-to-
+    mission leg."""
+    try:
+        dismissed = _registry(request).dismiss(anomaly_id)
+    except AnomalyNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except InvalidAnomalyTransitionError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    request.app.state.anomaly_response_coordinator.resolve(anomaly_id)
+    request.app.state.websocket_manager.broadcast_threadsafe(
+        {"type": "anomaly.updated", "data": dismissed.model_dump(mode="json")}
+    )
+    return dismissed

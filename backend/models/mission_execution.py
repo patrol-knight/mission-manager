@@ -10,6 +10,12 @@ class MissionStatus(str, Enum):
     PAUSED = "paused"
     RETURNING_HOME = "returning_home"
     COMPLETED = "completed"
+    # Set by AnomalyResponseCoordinator while a robot diversion is in
+    # flight (see core/anomaly_response.py's enter_investigating/
+    # exit_investigating). Pause/Resume are unavailable from this status
+    # (mirrors real prior status) -- Stop remains available as an escape
+    # hatch (see MissionExecutionManager.stop()).
+    INVESTIGATING = "investigating"
 
 
 class MissionExecutionState(BaseModel):

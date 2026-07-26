@@ -42,13 +42,23 @@ class AnomalyRegistry:
             self._anomalies[anomaly_id] = updated
             return updated.model_copy(deep=True)
 
-    def verify(self, anomaly_id: str) -> Anomaly:
+    def _resolve(self, anomaly_id: str) -> Anomaly:
+        """Shared by verify() and dismiss() -- both end anomaly review the
+        same way. This codebase treats false-positive classification as
+        out of scope (see the original frontend spec), so there's no
+        separate "dismissed" status to distinguish them."""
         with self._lock:
             existing = self._anomalies.get(anomaly_id)
             if existing is None:
                 raise AnomalyNotFoundError(f"Anomaly not found: {anomaly_id}")
             if existing.status != AnomalyStatus.ROBOT_ARRIVED:
                 raise InvalidAnomalyTransitionError(
-                    f"Cannot verify an anomaly with status {existing.status}"
+                    f"Cannot resolve an anomaly with status {existing.status}"
                 )
             return self.update_status(anomaly_id, AnomalyStatus.VERIFIED)
+
+    def verify(self, anomaly_id: str) -> Anomaly:
+        return self._resolve(anomaly_id)
+
+    def dismiss(self, anomaly_id: str) -> Anomaly:
+        return self._resolve(anomaly_id)

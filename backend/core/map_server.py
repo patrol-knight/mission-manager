@@ -151,10 +151,12 @@ class MapServer:
         self._ensure_available()
         ll = self._nearest_lanelet(x, y)
         if ll is None:
-            return MapPoint(x=x, y=y, frame_id=frame_id, lanelet_id=None)
+            lon, lat = self._to_latlon(x, y)
+            return MapPoint(x=x, y=y, frame_id=frame_id, lanelet_id=None, lat=lat, lon=lon)
         t = self._project_point_onto_centerline(ll, x, y)
         sx, sy = self._interp_centerline_xy_at(ll, t)
-        return MapPoint(x=sx, y=sy, frame_id=frame_id, lanelet_id=ll.id)
+        lon, lat = self._to_latlon(sx, sy)
+        return MapPoint(x=sx, y=sy, frame_id=frame_id, lanelet_id=ll.id, lat=lat, lon=lon)
 
     def project_reachable_goal(
         self, x: float, y: float, frame_id: str = "map"

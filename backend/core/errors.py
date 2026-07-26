@@ -30,6 +30,10 @@ class InsufficientWaypointsError(Exception):
     pass
 
 
+class NoConnectedRobotError(Exception):
+    pass
+
+
 class MissionExecutionLockedError(Exception):
     pass
 
