@@ -4,6 +4,9 @@ import random
 import time
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
+
+import yaml
 
 from config import Settings
 from core.anomaly_registry import AnomalyRegistry
@@ -13,10 +16,26 @@ from core.mission_execution import MissionExecutionManager
 from core.mission_server import MissionServer
 from core.websocket_manager import WebSocketManager
 from models.anomaly import Anomaly, AnomalyStatus
-from models.device import DeviceState, DeviceType, Pose2D
+from models.device import DeviceFixture, DeviceFixtureFile, DeviceState, DeviceType, Pose2D
 from models.mission_execution import MissionStatus
 
 logger = logging.getLogger(__name__)
+
+
+def _load_device_fixtures(path: str) -> list[DeviceFixture]:
+    """Loads simulation/fixtures/devices.yaml. This is a dev-convenience file,
+    not core app data like missions — a missing or malformed file logs a
+    warning and falls back to an empty list (callers then use their own
+    hardcoded/config-driven defaults) rather than crashing startup."""
+    file_path = Path(path)
+    if not file_path.exists():
+        return []
+    try:
+        raw = yaml.safe_load(file_path.read_text(encoding="utf-8")) or {}
+        return DeviceFixtureFile(**raw).devices
+    except Exception:
+        logger.warning("Failed to load device fixtures from %s; using defaults", path, exc_info=True)
+        return []
 
 
 def _publish_device_state(
@@ -64,16 +83,34 @@ class DevSimulator:
         self._anomaly_registry = anomaly_registry
         self._websocket_manager = websocket_manager
 
+        fixtures = _load_device_fixtures(settings.simulator_fixtures_path)
+        robot_fixture = next(
+            (f for f in fixtures if f.type == DeviceType.ROBOT and f.device_id == settings.simulator_robot_device_id),
+            None,
+        )
+        iot_fixtures = [f for f in fixtures if f.type == DeviceType.IOT]
+
         self._robot_id = settings.simulator_robot_device_id
-        self._robot_pose = Pose2D(frame_id="map", x=0.0, y=0.0, yaw=0.0)
+        self._robot_enabled = robot_fixture.enabled if robot_fixture is not None else True
+        if robot_fixture is not None:
+            self._robot_pose = Pose2D(frame_id="map", x=robot_fixture.x, y=robot_fixture.y, yaw=robot_fixture.yaw)
+        else:
+            self._robot_pose = Pose2D(frame_id="map", x=0.0, y=0.0, yaw=0.0)
         self._detour_target: tuple[float, float] | None = None
         self._active_anomaly_id: str | None = None
+
+        if iot_fixtures:
+            self._iot_anchors: dict[str, tuple[float, float]] = {
+                f.device_id: (f.x, f.y) for f in iot_fixtures if f.enabled
+            }
+        else:
+            self._iot_anchors = {iot_id: (0.0, 0.0) for iot_id in settings.simulator_iot_device_ids}
 
         now = time.time()
         self._iot_flap_until: dict[str, float] = {}
         self._iot_next_flap_at: dict[str, float] = {
             iot_id: now + random.uniform(settings.simulator_iot_flap_min_sec, settings.simulator_iot_flap_max_sec)
-            for iot_id in settings.simulator_iot_device_ids
+            for iot_id in self._iot_anchors
         }
         self._next_anomaly_at = now + random.uniform(
             settings.simulator_anomaly_min_interval_sec, settings.simulator_anomaly_max_interval_sec
@@ -87,16 +124,43 @@ class DevSimulator:
 
     # ---- robot ----
 
+    def _publish_robot(self, now: float, speed: float) -> None:
+        _publish_device_state(
+            DeviceState(
+                device_id=self._robot_id,
+                name="Simulated Robot",
+                type=DeviceType.ROBOT,
+                pose=self._robot_pose,
+                timestamp=now,
+                battery=95.0,
+                speed=speed,
+                status={},
+                capabilities=["camera"],
+            ),
+            self._device_registry,
+            self._websocket_manager,
+        )
+
     def _tick_robot(self, now: float) -> None:
+        if not self._robot_enabled:
+            return
+
+        # Publish the robot's current pose every tick regardless of mission
+        # state — a real Zenoh-connected robot reports its position whether
+        # idle/docked or mid-mission, so the simulator should too. Only the
+        # "step toward a target waypoint" logic below is gated on the mission
+        # actually running.
         execution = self._mission_execution.get_state()
         if execution is None or execution.status not in (
             MissionStatus.RUNNING,
             MissionStatus.RETURNING_HOME,
         ):
+            self._publish_robot(now, speed=0.0)
             return
 
         mission = self._mission_server.get_mission(execution.mission_id)
         if mission is None or not mission.waypoints:
+            self._publish_robot(now, speed=0.0)
             return
 
         target_index: int | None
@@ -113,22 +177,7 @@ class DevSimulator:
             target_x, target_y = target_wp.x, target_wp.y
 
         arrived = self._step_robot_towards(target_x, target_y)
-
-        _publish_device_state(
-            DeviceState(
-                device_id=self._robot_id,
-                name="Simulated Robot",
-                type=DeviceType.ROBOT,
-                pose=self._robot_pose,
-                timestamp=now,
-                battery=95.0,
-                speed=0.0 if arrived else self._settings.simulator_robot_speed_mps,
-                status={},
-                capabilities=["camera"],
-            ),
-            self._device_registry,
-            self._websocket_manager,
-        )
+        self._publish_robot(now, speed=0.0 if arrived else self._settings.simulator_robot_speed_mps)
 
         if not arrived:
             return
@@ -167,7 +216,7 @@ class DevSimulator:
     # ---- iot ----
 
     def _tick_iot(self, now: float) -> None:
-        for iot_id in self._settings.simulator_iot_device_ids:
+        for iot_id, (anchor_x, anchor_y) in self._iot_anchors.items():
             flap_until = self._iot_flap_until.get(iot_id)
             if flap_until is not None:
                 if now < flap_until:
@@ -186,7 +235,12 @@ class DevSimulator:
                     device_id=iot_id,
                     name=iot_id,
                     type=DeviceType.IOT,
-                    pose=Pose2D(frame_id="map", x=random.uniform(-0.05, 0.05), y=random.uniform(-0.05, 0.05), yaw=0.0),
+                    pose=Pose2D(
+                        frame_id="map",
+                        x=anchor_x + random.uniform(-0.05, 0.05),
+                        y=anchor_y + random.uniform(-0.05, 0.05),
+                        yaw=0.0,
+                    ),
                     timestamp=now,
                     battery=random.uniform(60.0, 100.0),
                     speed=None,

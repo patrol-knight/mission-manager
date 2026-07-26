@@ -1,0 +1,36 @@
+# Dev-simulator device fixtures — seeds DevSimulator's initial device
+# positions/enabled-state instead of its hardcoded/random defaults.
+#
+# This is a local dev/demo convenience, not core app data: if this file is
+# missing or fails to parse, DevSimulator logs a warning and falls back to
+# its old hardcoded behavior (robot at the origin, IoT ids from
+# SIMULATOR_IOT_DEVICE_IDS with origin-centered jitter) rather than crashing.
+#
+# Coordinates are in the map frame (meters), matching backend/storage/maps.
+# Set `enabled: false` to simulate a device that hasn't been deployed yet /
+# is offline from startup — it will never appear in the device registry.
+devices:
+  - device_id: sim-robot-01
+    type: robot
+    enabled: true
+    x: 0.0
+    y: 0.0
+    yaw: 0.0
+
+  - device_id: sim-iot-01
+    type: iot
+    enabled: true
+    x: -54.0
+    y: 68.0
+
+  - device_id: sim-iot-02
+    type: iot
+    enabled: true
+    x: -56.6
+    y: 73.1
+
+  - device_id: sim-iot-03
+    type: iot
+    enabled: false
+    x: -62.7
+    y: 52.5

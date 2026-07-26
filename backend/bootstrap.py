@@ -40,7 +40,7 @@ def build_services(settings: Settings) -> Services:
     device_registry = DeviceRegistry()
     anomaly_registry = AnomalyRegistry()
     websocket_manager = WebSocketManager()
-    zenoh_gateway = ZenohGateway(settings, device_registry, websocket_manager)
+    zenoh_gateway = ZenohGateway(settings, device_registry, websocket_manager, anomaly_registry)
 
     mission_execution_manager = MissionExecutionManager(mission_server, websocket_manager)
     mission_execution_manager.sync_with_current()

@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     zenoh_enabled: bool = False
     zenoh_router: str = "tcp/localhost:7447"
     zenoh_device_state_keyexpr: str = "mission-manager/devices/*/state"
+    zenoh_anomaly_keyexpr: str = "mission-manager/anomalies/*/state"
 
     # Dev-only simulator (backend/simulation/dev_simulator.py) — off by default.
     # See .env.example / .env.demo for local-demo usage. If both this and
@@ -33,6 +34,7 @@ class Settings(BaseSettings):
     # Zenoh-published device ids (see bootstrap.py's startup warning).
     simulator_enabled: bool = False
     simulator_tick_interval_sec: float = 0.5
+    simulator_fixtures_path: str = "simulation/fixtures/devices.yaml"
 
     simulator_robot_device_id: str = "sim-robot-01"
     simulator_robot_speed_mps: float = 1.0

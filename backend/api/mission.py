@@ -20,7 +20,7 @@ def _broadcast_current_mission(request: Request) -> None:
 
 @router.get("", response_model=list[MissionSummary])
 def list_missions(request: Request) -> list[MissionSummary]:
-    return request.app.state.mission_server.list_missions()
+    return request.app.state.mission_server.list_missions(request.app.state.map_server)
 
 
 @router.get("/current", response_model=Mission)

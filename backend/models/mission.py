@@ -69,6 +69,10 @@ class MissionSummary(BaseModel):
     map_name: str
     frame_id: str = "map"
     waypoint_count: int
+    loop_count: int = Field(default=1, ge=1)
+    home_x: float | None = None
+    home_y: float | None = None
+    distance_m: float | None = None
     time_slot: TimeSlot | None = None
     is_current: bool = False
     is_default: bool = False
