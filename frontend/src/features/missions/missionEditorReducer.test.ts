@@ -87,6 +87,24 @@ describe("missionEditorReducer", () => {
     expect(state.waypoints[0]).toMatchObject({ waypointId: id, x: 9, y: 9 });
   });
 
+  it("SNAP_WAYPOINTS replaces all waypoint coordinates as one undoable step", () => {
+    let state = addWaypoint(BLANK_STATE, 0, 0);
+    state = addWaypoint(state, 1, 1);
+    const historyLengthBefore = state.history.length;
+    const snapped = state.waypoints.map((wp) => ({ ...wp, x: wp.x + 100, y: wp.y + 100 }));
+
+    state = missionEditorReducer(state, { type: "SNAP_WAYPOINTS", waypoints: snapped });
+
+    expect(state.waypoints).toEqual(snapped);
+    expect(state.dirty).toBe(true);
+    expect(state.validationStale).toBe(true);
+    expect(state.history.length).toBe(historyLengthBefore + 1);
+
+    const undone = missionEditorReducer(state, { type: "UNDO" });
+    expect(undone.waypoints[0]).toMatchObject({ x: 0, y: 0 });
+    expect(undone.waypoints[1]).toMatchObject({ x: 1, y: 1 });
+  });
+
   it("undo reverts the last waypoint mutation and redo replays it", () => {
     let state = addWaypoint(BLANK_STATE, 0, 0);
     state = addWaypoint(state, 1, 1);

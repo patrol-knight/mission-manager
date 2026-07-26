@@ -44,6 +44,7 @@ export type MissionEditorAction =
   | { type: "MOVE_WAYPOINT"; id: string; x: number; y: number }
   | { type: "SELECT_WAYPOINT"; id: string | null }
   | { type: "DELETE_WAYPOINT"; id: string }
+  | { type: "SNAP_WAYPOINTS"; waypoints: Waypoint[] }
   | { type: "SET_TOOL"; tool: EditorTool }
   | { type: "UNDO" }
   | { type: "REDO" }
@@ -117,6 +118,9 @@ export function missionEditorReducer(
       const selectedWaypointId = state.selectedWaypointId === action.id ? null : state.selectedWaypointId;
       return { ...withWaypointChange(state, waypoints), selectedWaypointId };
     }
+
+    case "SNAP_WAYPOINTS":
+      return withWaypointChange(state, action.waypoints);
 
     case "SET_TOOL":
       return { ...state, tool: action.tool };

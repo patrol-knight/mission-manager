@@ -151,6 +151,10 @@ const rawSummary = {
   map_name: "demo",
   frame_id: "map",
   waypoint_count: 2,
+  loop_count: 2,
+  home_x: 0,
+  home_y: 0,
+  distance_m: 12.5,
   time_slot: null,
   is_current: true,
   is_default: false,
@@ -172,6 +176,10 @@ describe("missionApi mission picker calls", () => {
         mapName: "demo",
         frameId: "map",
         waypointCount: 2,
+        loopCount: 2,
+        homeX: 0,
+        homeY: 0,
+        distanceM: 12.5,
         timeSlot: null,
         isCurrent: true,
         isDefault: false,
@@ -203,6 +211,16 @@ describe("missionApi mission picker calls", () => {
       vi.fn().mockResolvedValue(new Response(JSON.stringify({ detail: "locked" }), { status: 409 })),
     );
     await expect(missionApi.deleteMission("x")).rejects.toMatchObject({ status: 409 });
+  });
+
+  it("activateMission POSTs to the activate endpoint", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(rawMission));
+    vi.stubGlobal("fetch", fetchMock);
+    const mission = await missionApi.activateMission("patrol-a-x1y2z3");
+    expect(mission.name).toBe("Patrol A");
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toContain("/api/missions/patrol-a-x1y2z3/activate");
+    expect(init.method).toBe("POST");
   });
 });
 

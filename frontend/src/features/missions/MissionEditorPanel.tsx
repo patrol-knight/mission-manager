@@ -1,12 +1,12 @@
 import { useState, type CSSProperties, type ReactNode } from "react";
 import { useMissionEditor } from "./useMissionEditor";
 import { parseLoopCount, isNameValid, canSave } from "./missionEditorReducer";
-import { MissionPicker } from "./MissionPicker";
 import { WaypointList } from "./WaypointList";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { useToast } from "../../components/useToast";
 import { useMissionStore } from "../../stores/missionStore";
 import { validateRoute, saveMission } from "../../api/missionApi";
+import { snapWaypoint } from "../../api/mapApi";
 
 const cardStyle: CSSProperties = {
   background: "#fff",
@@ -78,15 +78,41 @@ export function MissionEditorPanel({ onCancel, onSaved }: MissionEditorPanelProp
   const loopCountError = loopCount === null ? "Loop count must be a whole number, 1 or greater" : null;
   const waypointCountError = state.waypoints.length < 2 ? "At least two waypoints are required" : null;
 
+  // Explicitly reset the shared editor context on cancel rather than leaving
+  // the draft dangling until the next OPEN dispatch overwrites it -- that
+  // "cleared implicitly next time" gap is exactly the kind of thing that
+  // could look like "cancel didn't really discard" if anything ever reads
+  // editor state before the next entry point dispatches OPEN.
+  const discard = () => {
+    dispatch({ type: "OPEN", mission: null });
+    onCancel();
+  };
+
   const handleCancelClick = () => {
     if (state.dirty) setShowDiscardConfirm(true);
-    else onCancel();
+    else discard();
   };
 
   const handleValidate = async () => {
     setValidating(true);
     try {
-      const result = await validateRoute(state.waypoints);
+      // Snap each waypoint onto its nearest lanelet centerline first, so saved
+      // waypoints line up cleanly on the road instead of sitting slightly off
+      // to one side of it. A per-waypoint snap failure keeps that waypoint's
+      // original click rather than aborting the whole validate action.
+      const snapped = await Promise.all(
+        state.waypoints.map(async (wp) => {
+          try {
+            const point = await snapWaypoint(wp.x, wp.y);
+            return { ...wp, x: point.x, y: point.y };
+          } catch {
+            return wp;
+          }
+        }),
+      );
+      dispatch({ type: "SNAP_WAYPOINTS", waypoints: snapped });
+
+      const result = await validateRoute(snapped);
       dispatch({ type: "SET_VALIDATION_RESULT", result });
       if (result.valid) show("success", "Route valid", "The waypoints form a reachable route.");
       else show("warning", "Route invalid", result.errors[0]?.message);
@@ -121,8 +147,6 @@ export function MissionEditorPanel({ onCancel, onSaved }: MissionEditorPanelProp
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <MissionPicker />
-
       <div style={cardStyle}>
         <label style={labelStyle}>
           Mission name
@@ -194,7 +218,7 @@ export function MissionEditorPanel({ onCancel, onSaved }: MissionEditorPanelProp
           cancelLabel="Stay"
           onConfirm={() => {
             setShowDiscardConfirm(false);
-            onCancel();
+            discard();
           }}
           onCancel={() => setShowDiscardConfirm(false)}
         />
