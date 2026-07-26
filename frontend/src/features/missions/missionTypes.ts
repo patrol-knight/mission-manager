@@ -7,6 +7,13 @@ export interface Waypoint {
   yaw: number | null;
   label: string | null;
   type: WaypointType;
+  /** Computed once server-side (backend/api/mission.py's WaypointGeo) --
+   * response-only (never part of what gets saved back), and null only when
+   * the map service was unavailable. Undefined for a waypoint that only
+   * exists in the editor's local draft and hasn't round-tripped through the
+   * backend yet (see missionEditorReducer's ADD_WAYPOINT/MOVE_WAYPOINT). */
+  lat?: number | null;
+  lon?: number | null;
 }
 
 export interface TimeSlot {
@@ -33,7 +40,7 @@ export interface MissionDefinition {
   metadata: Record<string, unknown>;
 }
 
-export type MissionStatus = "ready" | "running" | "paused" | "returning_home" | "completed";
+export type MissionStatus = "ready" | "running" | "paused" | "returning_home" | "completed" | "investigating";
 
 /** Runtime execution progress — see backend/models/mission_execution.py::MissionExecutionState. */
 export interface MissionExecutionState {
@@ -87,6 +94,8 @@ interface RawWaypoint {
   yaw: number | null;
   label: string | null;
   type: WaypointType;
+  lat?: number | null;
+  lon?: number | null;
 }
 
 interface RawTimeSlot {
@@ -124,6 +133,8 @@ export function missionDefinitionFromRaw(raw: RawMission): MissionDefinition {
       yaw: wp.yaw,
       label: wp.label,
       type: wp.type,
+      lat: wp.lat,
+      lon: wp.lon,
     })),
     loopCount: raw.loop_count ?? 1,
     createdAt: raw.created_at,
@@ -132,13 +143,18 @@ export function missionDefinitionFromRaw(raw: RawMission): MissionDefinition {
   };
 }
 
-/** Lightweight entry for the mission picker — see backend/models/mission.py::MissionSummary. */
+/** Lightweight entry for the mission library — see backend/models/mission.py::MissionSummary. */
 export interface MissionSummary {
   missionId: string;
   name: string;
   mapName: string;
   frameId: string;
   waypointCount: number;
+  loopCount: number;
+  homeX: number | null;
+  homeY: number | null;
+  /** Loop-closed, lanelet-routed path length in meters; null if unroutable or <2 waypoints. */
+  distanceM: number | null;
   timeSlot: TimeSlot | null;
   isCurrent: boolean;
   isDefault: boolean;
@@ -151,6 +167,10 @@ export interface RawMissionSummary {
   map_name: string;
   frame_id: string;
   waypoint_count: number;
+  loop_count: number;
+  home_x: number | null;
+  home_y: number | null;
+  distance_m: number | null;
   time_slot: RawTimeSlot | null;
   is_current: boolean;
   is_default: boolean;
@@ -164,6 +184,10 @@ export function missionSummaryFromRaw(raw: RawMissionSummary): MissionSummary {
     mapName: raw.map_name,
     frameId: raw.frame_id,
     waypointCount: raw.waypoint_count,
+    loopCount: raw.loop_count,
+    homeX: raw.home_x,
+    homeY: raw.home_y,
+    distanceM: raw.distance_m,
     timeSlot: raw.time_slot ? { start: raw.time_slot.start, end: raw.time_slot.end } : null,
     isCurrent: raw.is_current,
     isDefault: raw.is_default,

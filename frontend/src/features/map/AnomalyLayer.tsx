@@ -3,7 +3,6 @@ import { useShallow } from "zustand/react/shallow";
 import { MapContext } from "./MapContext";
 import { useMarkerList, type UseMarkerListOptions } from "./mapMarkers";
 import { useDeviceStore, selectAnomalyList } from "../../stores/deviceStore";
-import { xyToLngLat } from "../../api/mapApi";
 import type { Anomaly } from "../anomalies/anomalyTypes";
 
 function buildAnomalyElement(anomaly: Anomaly): HTMLElement {
@@ -15,36 +14,32 @@ function buildAnomalyElement(anomaly: Anomaly): HTMLElement {
     box-shadow:0 1px 5px rgba(0,0,0,0.5);
     display:flex;align-items:center;justify-content:center;
     color:white;font-size:12px;font-weight:bold;
+    animation: anomaly-pulse 1.4s ease-out infinite;
+    z-index:2;
   `;
   el.textContent = "!";
   el.title = anomaly.description ?? "Anomaly";
-  if (anomaly.status !== "verified") {
-    el.style.animation = "anomaly-pulse 1.4s ease-out infinite";
-  }
   return el;
 }
 
 /** Display-only per plan §8.4 — anomaly markers aren't clickable; the
- * arrival-toast -> inspector flow is the intended interaction path. */
+ * arrival-toast -> verify-window flow is the intended interaction path.
+ * Resolved anomalies ("verified" covers both Verify and Dismiss -- see
+ * backend AnomalyRegistry._resolve's docstring) drop off the map entirely
+ * rather than sitting there unpulsing -- once resolved, there's nothing
+ * left to look at. */
 export function AnomalyLayer() {
   const { map } = useContext(MapContext);
-  const anomalies = useDeviceStore(useShallow(selectAnomalyList));
+  const anomalies = useDeviceStore(useShallow((s) => selectAnomalyList(s).filter((a) => a.status !== "verified")));
 
   const options = useMemo<UseMarkerListOptions<Anomaly>>(
     () => ({
       keyOf: (a) => a.anomalyId,
-      project: async (a) => {
-        try {
-          const { lat, lon } = await xyToLngLat(a.x, a.y, a.frameId);
-          return { lng: lon, lat };
-        } catch {
-          return null;
-        }
-      },
+      dependsOn: (a) => [a.lat, a.lon],
+      // Computed once, server-side, at Zenoh ingest time (see
+      // backend/models/anomaly.py::Anomaly.lat/lon) -- no xy-to-lnglat call.
+      project: async (a) => (a.lat != null && a.lon != null ? { lng: a.lon, lat: a.lat } : null),
       buildElement: buildAnomalyElement,
-      updateElement: (el, a) => {
-        el.style.animation = a.status !== "verified" ? "anomaly-pulse 1.4s ease-out infinite" : "";
-      },
     }),
     [],
   );

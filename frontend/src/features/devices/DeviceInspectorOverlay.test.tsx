@@ -11,7 +11,7 @@ const fakeDevice: Device = {
   deviceId: "sim-robot-01",
   name: "Robot 1",
   type: "robot",
-  pose: { frameId: "map", x: 0, y: 0, yaw: 0 },
+  pose: { frameId: "map", x: 0, y: 0, yaw: 0, lat: 37.0, lon: -122.0 },
   timestamp: 0,
   battery: 80,
   speed: 0,

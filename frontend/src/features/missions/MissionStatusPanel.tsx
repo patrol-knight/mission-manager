@@ -1,7 +1,21 @@
 import type { CSSProperties } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { useApiConnection } from "../../hooks/useApiConnection";
 import { useMissionStore } from "../../stores/missionStore";
+import { useDeviceStore, selectAnomalyList } from "../../stores/deviceStore";
+import { useAnomalyVerify } from "../anomalies/useAnomalyVerify";
 import { MissionControls } from "./MissionControls";
+
+const reviewButtonStyle: CSSProperties = {
+  padding: "10px 14px",
+  borderRadius: 8,
+  border: "none",
+  background: "#f08c00",
+  color: "#fff",
+  fontWeight: 600,
+  fontSize: 13,
+  cursor: "pointer",
+};
 
 const cardStyle: CSSProperties = {
   background: "#fff",
@@ -28,16 +42,23 @@ const STATUS_LABEL: Record<string, string> = {
   paused: "PAUSED",
   returning_home: "RETURNING HOME",
   completed: "COMPLETED",
+  investigating: "INVESTIGATING",
 };
 
 interface MissionStatusPanelProps {
-  onEnterEditor: () => void;
+  onOpenLibrary: () => void;
 }
 
-export function MissionStatusPanel({ onEnterEditor }: MissionStatusPanelProps) {
+export function MissionStatusPanel({ onOpenLibrary }: MissionStatusPanelProps) {
   const { status } = useApiConnection();
   const definition = useMissionStore((s) => s.definition);
   const execution = useMissionStore((s) => s.execution);
+  const anomalies = useDeviceStore(useShallow(selectAnomalyList));
+  const { open: openVerify } = useAnomalyVerify();
+  // Always derived from anomaly state, never from toast/modal history -- so
+  // closing the verify window without deciding can never lose the way back
+  // in (see AnomalyVerifyModal's docstring for the bug this fixes).
+  const arrivedAnomaly = anomalies.find((a) => a.status === "robot_arrived") ?? null;
 
   // Editing is blocked only while the robot is executing or returning home
   // (plan §10.1) — ready/completed (or no execution data yet) are editable.
@@ -55,7 +76,7 @@ export function MissionStatusPanel({ onEnterEditor }: MissionStatusPanelProps) {
       ) : definition === null ? (
         <>
           <p style={{ margin: 0, fontSize: 13, color: "#6c757d" }}>No mission loaded</p>
-          <button onClick={onEnterEditor} style={editButtonStyle}>
+          <button onClick={onOpenLibrary} style={editButtonStyle}>
             New Mission
           </button>
         </>
@@ -81,7 +102,7 @@ export function MissionStatusPanel({ onEnterEditor }: MissionStatusPanelProps) {
               <Row label="Waypoints" value={String(definition.waypoints.length)} />
               <Row label="Loops" value={String(definition.loopCount)} />
             </>
-          ) : execution.status === "running" || execution.status === "paused" ? (
+          ) : execution.status === "running" || execution.status === "paused" || execution.status === "investigating" ? (
             <>
               <Row label="Current Loop" value={`${execution.currentLoop} / ${definition.loopCount}`} />
               <Row
@@ -97,10 +118,16 @@ export function MissionStatusPanel({ onEnterEditor }: MissionStatusPanelProps) {
             </>
           ) : null}
 
+          {arrivedAnomaly && (
+            <button onClick={() => openVerify(arrivedAnomaly.anomalyId)} style={reviewButtonStyle}>
+              Review Anomaly
+            </button>
+          )}
+
           <MissionControls />
 
           {showEditButton && (
-            <button onClick={onEnterEditor} disabled={!canEdit} style={editButtonStyle}>
+            <button onClick={onOpenLibrary} disabled={!canEdit} style={editButtonStyle}>
               Edit Mission
             </button>
           )}

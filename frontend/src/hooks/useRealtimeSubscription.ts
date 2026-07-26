@@ -9,6 +9,7 @@ import {
   type RawMissionExecutionState,
 } from "../features/missions/missionTypes";
 import { anomalyFromRaw, type RawAnomaly } from "../features/anomalies/anomalyTypes";
+import type { RawDiversionReturning, RawDiversionStarted } from "../features/anomalies/diversionTypes";
 
 /**
  * Mounted once (in AppShell). Bridges the singleton realtime connection into
@@ -24,6 +25,9 @@ export function useRealtimeSubscription(): void {
   const upsertDevice = useDeviceStore((s) => s.upsertDevice);
   const setAnomalies = useDeviceStore((s) => s.setAnomalies);
   const upsertAnomaly = useDeviceStore((s) => s.upsertAnomaly);
+  const setDiversionStarted = useDeviceStore((s) => s.setDiversionStarted);
+  const setDiversionReturning = useDeviceStore((s) => s.setDiversionReturning);
+  const clearDiversion = useDeviceStore((s) => s.clearDiversion);
   const setDefinition = useMissionStore((s) => s.setDefinition);
   const setExecution = useMissionStore((s) => s.setExecution);
 
@@ -46,10 +50,23 @@ export function useRealtimeSubscription(): void {
       client.onAnomalyUpdate((raw) => {
         upsertAnomaly(anomalyFromRaw(raw as RawAnomaly));
       }),
+      client.onDiversionStarted((raw) => setDiversionStarted(raw as RawDiversionStarted)),
+      client.onDiversionReturning((raw) => setDiversionReturning(raw as RawDiversionReturning)),
+      client.onDiversionCleared(() => clearDiversion()),
     ];
 
     return () => {
       unsubscribers.forEach((unsub) => unsub());
     };
-  }, [setDevices, upsertDevice, setAnomalies, upsertAnomaly, setDefinition, setExecution]);
+  }, [
+    setDevices,
+    upsertDevice,
+    setAnomalies,
+    upsertAnomaly,
+    setDiversionStarted,
+    setDiversionReturning,
+    clearDiversion,
+    setDefinition,
+    setExecution,
+  ]);
 }

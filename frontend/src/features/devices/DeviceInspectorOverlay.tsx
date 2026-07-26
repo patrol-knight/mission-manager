@@ -2,20 +2,22 @@ import { useEffect, useRef } from "react";
 import { useDeviceInspector } from "./useDeviceInspector";
 import { useDeviceStore } from "../../stores/deviceStore";
 import { useCameraSession } from "./useCameraSession";
+import { useApiConnection } from "../../hooks/useApiConnection";
 import { CameraGrid } from "./CameraGrid";
 import { CameraFocusView } from "./CameraFocusView";
 import { DeviceStatusPanel } from "./DeviceStatusPanel";
-import { AnomalyVerifyButton } from "../anomalies/AnomalyVerifyButton";
 import { connectivityStatus } from "../../types/domain";
 
 const FOCUSABLE_SELECTOR = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
 
+/** General device/camera browsing only -- anomaly verification lives in
+ * its own AnomalyVerifyModal (see features/anomalies), not here. */
 export function DeviceInspectorOverlay() {
-  const { inspectorOpen, selectedDeviceId, selectedCameraId, anomalyContext, closeInspector, focusCamera } =
-    useDeviceInspector();
+  const { inspectorOpen, selectedDeviceId, selectedCameraId, closeInspector, focusCamera } = useDeviceInspector();
   const device = useDeviceStore((s) => (selectedDeviceId ? s.devices[selectedDeviceId] : undefined));
   const hasCameraCapability = device?.capabilities.includes("camera") ?? false;
   const { cameras, error } = useCameraSession(inspectorOpen ? (selectedDeviceId ?? null) : null, hasCameraCapability);
+  const { status: wsStatus } = useApiConnection();
 
   const dialogRef = useRef<HTMLDivElement>(null);
   const previouslyFocusedRef = useRef<HTMLElement | null>(null);
@@ -55,7 +57,9 @@ export function DeviceInspectorOverlay() {
   if (!inspectorOpen || !device) return null;
 
   const focusedCamera = cameras.find((c) => c.id === selectedCameraId) ?? null;
-  const connected = connectivityStatus(device) === "connected";
+  const backendConnected = wsStatus === "connected";
+  const connected = backendConnected && connectivityStatus(device) === "connected";
+  const connectivityLabel = !backendConnected ? "Unknown (backend disconnected)" : connected ? "Connected" : "Disconnected";
 
   return (
     <div
@@ -90,9 +94,24 @@ export function DeviceInspectorOverlay() {
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 20px", borderBottom: "1px solid #343a40" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <span style={{ fontSize: 16, fontWeight: 600, color: "#fff" }}>{device.name ?? device.deviceId}</span>
-            <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: connected ? "#51cf66" : "#ff6b6b" }}>
-              <span style={{ width: 7, height: 7, borderRadius: "50%", background: connected ? "#51cf66" : "#ff6b6b" }} />
-              {connected ? "Connected" : "Disconnected"}
+            <span
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
+                fontSize: 12,
+                color: !backendConnected ? "#adb5bd" : connected ? "#51cf66" : "#ff6b6b",
+              }}
+            >
+              <span
+                style={{
+                  width: 7,
+                  height: 7,
+                  borderRadius: "50%",
+                  background: !backendConnected ? "#adb5bd" : connected ? "#51cf66" : "#ff6b6b",
+                }}
+              />
+              {connectivityLabel}
             </span>
           </div>
           <button
@@ -115,13 +134,8 @@ export function DeviceInspectorOverlay() {
           </div>
           <div style={{ flex: 1, display: "flex", flexDirection: "column", borderLeft: "1px solid #343a40", minWidth: 220 }}>
             <div style={{ flex: 1, padding: 16, overflowY: "auto" }}>
-              <DeviceStatusPanel device={device} />
+              <DeviceStatusPanel device={device} backendConnected={backendConnected} />
             </div>
-            {anomalyContext && (
-              <div style={{ padding: 16, borderTop: "1px solid #343a40", display: "flex", justifyContent: "flex-end" }}>
-                <AnomalyVerifyButton />
-              </div>
-            )}
           </div>
         </div>
       </div>

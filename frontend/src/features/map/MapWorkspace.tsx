@@ -19,11 +19,9 @@ interface MapWorkspaceProps {
  * special-casing.
  */
 export function MapWorkspace({ containerRef, map, ready, children }: MapWorkspaceProps) {
-  // duration: 0 (no animation), deliberately, for both the initial fit and the
-  // "F" recenter shortcut — maplibre-gl's animated fitBounds/easeTo path has a
-  // reproducible internal bug (throws from its own render loop; reproduces
-  // with duration>0 regardless of StrictMode or load timing) under this
-  // environment's rendering conditions. An instant jump carries no such risk.
+  // The "F" recenter shortcut animates (matching the original app's feel);
+  // the initial auto-fit below stays an instant duration:0 jump since there's
+  // nothing to animate *from* on first paint.
   const fitToMap = useCallback(async () => {
     if (!map) return;
     try {
@@ -33,7 +31,7 @@ export function MapWorkspace({ containerRef, map, ready, children }: MapWorkspac
           [bounds.west, bounds.south],
           [bounds.east, bounds.north],
         ],
-        { padding: 60, duration: 0 },
+        { padding: 60, duration: 600 },
       );
     } catch {
       // Map bounds unavailable (e.g. Lanelet2 map not loaded server-side) — keep the default view.
@@ -111,6 +109,11 @@ export function MapWorkspace({ containerRef, map, ready, children }: MapWorkspac
           0%   { box-shadow: 0 0 0 0 rgba(224,49,49,0.7); }
           70%  { box-shadow: 0 0 0 10px rgba(224,49,49,0); }
           100% { box-shadow: 0 0 0 0 rgba(224,49,49,0); }
+        }
+        @keyframes diversion-target-pulse {
+          0%   { box-shadow: 0 0 0 0 rgba(255,215,0,0.8); }
+          70%  { box-shadow: 0 0 0 12px rgba(255,215,0,0); }
+          100% { box-shadow: 0 0 0 0 rgba(255,215,0,0); }
         }
       `}</style>
     </div>

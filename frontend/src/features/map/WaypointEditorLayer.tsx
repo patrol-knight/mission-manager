@@ -29,6 +29,7 @@ export function WaypointEditorLayer() {
   const options = useMemo<UseMarkerListOptions<Waypoint>>(
     () => ({
       keyOf: (wp) => wp.waypointId,
+      dependsOn: (wp) => [wp.x, wp.y],
       project: async (wp) => {
         try {
           const { lat, lon } = await xyToLngLat(wp.x, wp.y);
@@ -40,9 +41,7 @@ export function WaypointEditorLayer() {
       buildElement: buildWaypointMarkerElement,
       updateElement: (el, wp) => {
         const index = state.waypoints.findIndex((w) => w.waypointId === wp.waypointId);
-        const home = isHomeWaypoint(state.waypoints, wp.waypointId);
-        const selected = state.selectedWaypointId === wp.waypointId;
-        el.style.background = waypointMarkerColor(home, selected);
+        el.style.background = waypointMarkerColor();
         el.textContent = String(index + 1);
       },
       draggable: () => state.tool === "modify",
@@ -82,7 +81,7 @@ export function WaypointEditorLayer() {
         dispatch({ type: "SELECT_WAYPOINT", id: wp.waypointId });
       },
     }),
-    [state.waypoints, state.selectedWaypointId, state.tool, dispatch, show],
+    [state.waypoints, state.tool, dispatch, show],
   );
 
   useMarkerList(map, state.waypoints, options);

@@ -30,6 +30,9 @@ class RealtimeClient {
   private missionExecutionListeners = new Set<Listener<unknown>>();
   private anomalySnapshotListeners = new Set<Listener<unknown[]>>();
   private anomalyUpdateListeners = new Set<Listener<unknown>>();
+  private diversionStartedListeners = new Set<Listener<unknown>>();
+  private diversionReturningListeners = new Set<Listener<unknown>>();
+  private diversionClearedListeners = new Set<Listener<unknown>>();
 
   connect(): void {
     if (this.ws || this.destroyed) return;
@@ -81,6 +84,24 @@ class RealtimeClient {
   onAnomalyUpdate(fn: Listener<unknown>): Unsubscribe {
     this.anomalyUpdateListeners.add(fn);
     return () => this.anomalyUpdateListeners.delete(fn);
+  }
+
+  /** Fed by `anomaly.diversion.started` — robot begins diverting to an anomaly. */
+  onDiversionStarted(fn: Listener<unknown>): Unsubscribe {
+    this.diversionStartedListeners.add(fn);
+    return () => this.diversionStartedListeners.delete(fn);
+  }
+
+  /** Fed by `anomaly.diversion.returning` — robot heads back to the mission. */
+  onDiversionReturning(fn: Listener<unknown>): Unsubscribe {
+    this.diversionReturningListeners.add(fn);
+    return () => this.diversionReturningListeners.delete(fn);
+  }
+
+  /** Fed by `anomaly.diversion.cleared` — diversion fully resolved (or aborted). */
+  onDiversionCleared(fn: Listener<unknown>): Unsubscribe {
+    this.diversionClearedListeners.add(fn);
+    return () => this.diversionClearedListeners.delete(fn);
   }
 
   send(msg: { type: "ping" }): void {
@@ -151,6 +172,15 @@ class RealtimeClient {
       case "anomaly.created":
       case "anomaly.updated":
         this.anomalyUpdateListeners.forEach((fn) => fn(msg.data));
+        break;
+      case "anomaly.diversion.started":
+        this.diversionStartedListeners.forEach((fn) => fn(msg.data));
+        break;
+      case "anomaly.diversion.returning":
+        this.diversionReturningListeners.forEach((fn) => fn(msg.data));
+        break;
+      case "anomaly.diversion.cleared":
+        this.diversionClearedListeners.forEach((fn) => fn(msg.data));
         break;
       case "connection.ready":
       case "pong":

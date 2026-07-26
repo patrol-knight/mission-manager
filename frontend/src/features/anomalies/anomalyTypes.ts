@@ -10,6 +10,10 @@ export interface Anomaly {
   updatedAt: string;
   sourceDeviceId: string | null;
   description: string | null;
+  /** Computed once server-side (backend/models/anomaly.py::Anomaly.lat/lon) --
+   * null only when the map service was unavailable at ingest time. */
+  lat: number | null;
+  lon: number | null;
 }
 
 /** Wire shape — see backend/models/anomaly.py::Anomaly. */
@@ -23,6 +27,8 @@ export interface RawAnomaly {
   updated_at: string;
   source_device_id: string | null;
   description: string | null;
+  lat: number | null;
+  lon: number | null;
 }
 
 export function anomalyFromRaw(raw: RawAnomaly): Anomaly {
@@ -36,5 +42,7 @@ export function anomalyFromRaw(raw: RawAnomaly): Anomaly {
     updatedAt: raw.updated_at,
     sourceDeviceId: raw.source_device_id,
     description: raw.description,
+    lat: raw.lat,
+    lon: raw.lon,
   };
 }

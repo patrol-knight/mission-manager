@@ -1,14 +1,23 @@
 import { MissionStatusPanel } from "../features/missions/MissionStatusPanel";
+import { MissionLibraryPanel } from "../features/missions/MissionLibraryPanel";
 import { MissionEditorPanel } from "../features/missions/MissionEditorPanel";
 import { DeviceConnectivityPanel } from "../features/devices/DeviceConnectivityPanel";
 
 interface RightPanelProps {
-  view: "monitor" | "editor";
+  view: "monitor" | "library" | "editor";
+  onOpenLibrary: () => void;
+  onCloseLibrary: () => void;
   onEnterEditor: () => void;
-  onExitEditor: () => void;
+  onExitEditorToLibrary: () => void;
 }
 
-export function RightPanel({ view, onEnterEditor, onExitEditor }: RightPanelProps) {
+export function RightPanel({
+  view,
+  onOpenLibrary,
+  onCloseLibrary,
+  onEnterEditor,
+  onExitEditorToLibrary,
+}: RightPanelProps) {
   return (
     <div
       style={{
@@ -27,11 +36,13 @@ export function RightPanel({ view, onEnterEditor, onExitEditor }: RightPanelProp
     >
       {view === "monitor" ? (
         <>
-          <MissionStatusPanel onEnterEditor={onEnterEditor} />
+          <MissionStatusPanel onOpenLibrary={onOpenLibrary} />
           <DeviceConnectivityPanel />
         </>
+      ) : view === "library" ? (
+        <MissionLibraryPanel onBack={onCloseLibrary} onEnterEditor={onEnterEditor} />
       ) : (
-        <MissionEditorPanel onCancel={onExitEditor} onSaved={onExitEditor} />
+        <MissionEditorPanel onCancel={onExitEditorToLibrary} onSaved={onExitEditorToLibrary} />
       )}
     </div>
   );

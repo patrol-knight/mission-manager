@@ -1,18 +1,17 @@
 import { useEffect, useRef } from "react";
 import { useDeviceStore } from "../../stores/deviceStore";
-import { useDeviceInspector } from "../devices/useDeviceInspector";
 import { useToast } from "../../components/useToast";
 
 /**
  * Renderless — watches deviceStore's anomalies for a detected -> robot_arrived
- * transition and shows a persistent toast (plan doc §12.3). Mounted once,
- * always active (not gated by monitor/editor view), inside both
- * DeviceInspectorProvider and ToastProvider so it can drive both.
+ * transition and shows a one-time informational toast. Purely a heads-up:
+ * the only way to actually open the verify window is MissionStatusPanel's
+ * "Review Anomaly" button, which is always available while an anomaly is at
+ * robot_arrived regardless of whether this toast was seen or dismissed.
  */
 export function AnomalyArrivalWatcher() {
   const anomalies = useDeviceStore((s) => s.anomalies);
-  const { openInspectorForAnomaly } = useDeviceInspector();
-  const { show, dismiss } = useToast();
+  const { show } = useToast();
   const notifiedRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
@@ -21,25 +20,9 @@ export function AnomalyArrivalWatcher() {
         continue;
       }
       notifiedRef.current.add(anomaly.anomalyId);
-
-      let toastId = 0;
-      toastId = show("warning", "Robot arrived at anomaly location.", undefined, {
-        persistent: true,
-        actions: [
-          {
-            label: "Open Robot Inspector",
-            onClick: () => {
-              if (anomaly.sourceDeviceId) {
-                openInspectorForAnomaly(anomaly.sourceDeviceId, anomaly.anomalyId);
-              }
-              dismiss(toastId);
-            },
-          },
-          { label: "Dismiss", onClick: () => dismiss(toastId) },
-        ],
-      });
+      show("warning", "Robot arrived at anomaly location. Verify it.");
     }
-  }, [anomalies, openInspectorForAnomaly, show, dismiss]);
+  }, [anomalies, show]);
 
   return null;
 }
