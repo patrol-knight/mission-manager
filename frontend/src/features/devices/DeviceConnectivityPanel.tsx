@@ -2,6 +2,7 @@ import type { CSSProperties } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useDeviceStore, selectDeviceList } from "../../stores/deviceStore";
 import { useDeviceInspector } from "./useDeviceInspector";
+import { useApiConnection } from "../../hooks/useApiConnection";
 import { connectivityStatus } from "../../types/domain";
 
 const cardStyle: CSSProperties = {
@@ -14,6 +15,13 @@ const cardStyle: CSSProperties = {
 export function DeviceConnectivityPanel() {
   const devices = useDeviceStore(useShallow(selectDeviceList));
   const { openInspector } = useDeviceInspector();
+  // Each device's own `connected` field is only as fresh as the last
+  // websocket message we received -- if the backend connection itself is
+  // down, that field is stale and green/red would both lie. Backend-down
+  // gets its own third color rather than folding into red, since "we know
+  // it's offline" and "we can't tell" are different facts.
+  const { status: wsStatus } = useApiConnection();
+  const backendConnected = wsStatus === "connected";
 
   return (
     <div style={cardStyle}>
@@ -26,7 +34,9 @@ export function DeviceConnectivityPanel() {
       ) : (
         <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 4 }}>
           {devices.map((device) => {
-            const connected = connectivityStatus(device) === "connected";
+            const connected = backendConnected && connectivityStatus(device) === "connected";
+            const dotColor = !backendConnected ? "#adb5bd" : connected ? "#28a745" : "#dc3545";
+            const label = !backendConnected ? "unknown (backend disconnected)" : connected ? "connected" : "disconnected";
             return (
               <li key={device.deviceId}>
                 <button
@@ -47,12 +57,12 @@ export function DeviceConnectivityPanel() {
                 >
                   <span
                     role="status"
-                    aria-label={connected ? "connected" : "disconnected"}
+                    aria-label={label}
                     style={{
                       width: 8,
                       height: 8,
                       borderRadius: "50%",
-                      background: connected ? "#28a745" : "#dc3545",
+                      background: dotColor,
                       flexShrink: 0,
                     }}
                   />

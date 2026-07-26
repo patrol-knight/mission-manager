@@ -2,9 +2,14 @@ import type { Device } from "../../types/domain";
 
 interface DeviceStatusPanelProps {
   device: Device;
+  /** Whether the backend/websocket connection itself is up -- when it
+   * isn't, device.connected is stale (no fresh telemetry to refute or
+   * confirm it), so this row should read "Unknown," not a possibly-wrong
+   * "Connected." */
+  backendConnected: boolean;
 }
 
-export function DeviceStatusPanel({ device }: DeviceStatusPanelProps) {
+export function DeviceStatusPanel({ device, backendConnected }: DeviceStatusPanelProps) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8, fontSize: 13 }}>
       <Row label="Position X" value={device.pose.x.toFixed(2)} />
@@ -18,7 +23,12 @@ export function DeviceStatusPanel({ device }: DeviceStatusPanelProps) {
         </>
       )}
 
-      {device.type === "iot" && <Row label="Connectivity" value={device.connected ? "Connected" : "Disconnected"} />}
+      {device.type === "iot" && (
+        <Row
+          label="Connectivity"
+          value={!backendConnected ? "Unknown (backend disconnected)" : device.connected ? "Connected" : "Disconnected"}
+        />
+      )}
 
       {device.battery !== null && <Row label="Battery" value={`${device.battery.toFixed(0)}%`} />}
 
