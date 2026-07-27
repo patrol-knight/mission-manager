@@ -1,4 +1,5 @@
 import logging
+import math
 import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -33,7 +34,31 @@ class _ActiveDiversion:
     target_waypoint_id: str
     target_waypoint_xy: tuple[float, float]
     started_payload: dict
+    # The tracked robot's own DeviceState.timestamp at the moment the
+    # current leg's navigate_to_goal was issued -- an "arrived" sample only
+    # completes this leg if its timestamp is strictly newer. Same fix as
+    # MissionDriveCoordinator._ActiveGoal.issued_after_timestamp, and for
+    # the identical reason: without this, a stale "arrived" sample left
+    # over from whatever the robot was doing *before* this leg started
+    # (most notably: finishing a mission waypoint at the same moment this
+    # diversion begins, or reaching the anomaly right as the return leg
+    # begins) satisfies a goal that was never actually acted on --
+    # silently advancing this phase past OUTBOUND/RETURNING before the
+    # robot has moved at all, so the real arrival later is never recognized.
+    issued_after_timestamp: float
     returning_payload: dict | None = None
+
+
+# "arrived" alone doesn't say arrived at WHAT -- DeviceState carries no
+# goal/request-id to correlate against. If MissionDriveCoordinator's "go to
+# the next waypoint" command physically races with this diversion's own "go
+# to the anomaly" command (both can be in flight within the same instant --
+# see abort()'s call site in on_anomaly_detected), whichever reaches the
+# robot last wins, and the robot can genuinely, freshly arrive at the WRONG
+# place. issued_after_timestamp alone can't catch that (the sample is
+# legitimately new, just for a different goal), so on_device_state also
+# checks the robot's reported position against this leg's actual target.
+ARRIVAL_POSITION_TOLERANCE_M = 2.0
 
 
 class AnomalyResponseCoordinator:
@@ -192,6 +217,7 @@ class AnomalyResponseCoordinator:
                 target_waypoint_id=target_wp.waypoint_id,
                 target_waypoint_xy=(target_wp.x, target_wp.y),
                 started_payload=started_payload,
+                issued_after_timestamp=robot.timestamp,
             )
 
         # This diversion now owns the robot -- release any mission-driven
@@ -228,7 +254,30 @@ class AnomalyResponseCoordinator:
                 return
             if view.status.get("operational_state") != "arrived":
                 return
+            if view.timestamp <= active.issued_after_timestamp:
+                return  # stale sample from before this leg's goal was issued
             phase = active.phase
+            # AWAITING_RESOLUTION has no active navigation goal at all -- the
+            # robot is just parked at the anomaly waiting on the operator, so
+            # there's nothing to position-check here (and no reason for
+            # on_device_state to do anything else either; the dispatch below
+            # only acts on OUTBOUND/RETURNING).
+            if phase in (DiversionPhase.OUTBOUND, DiversionPhase.RETURNING):
+                target_x, target_y = (
+                    active.anomaly_target_xy if phase == DiversionPhase.OUTBOUND else active.target_waypoint_xy
+                )
+                distance = math.hypot(view.pose.x - target_x, view.pose.y - target_y)
+                if distance > ARRIVAL_POSITION_TOLERANCE_M:
+                    # Genuinely new "arrived" sample, but not at this leg's
+                    # target -- most likely a mission-drive goal that raced
+                    # with this diversion's own command and reached the
+                    # robot last (see abort()'s call site in
+                    # on_anomaly_detected). Not this leg's arrival; ignore.
+                    logger.warning(
+                        "Anomaly %s: robot reported arrived %.1fm from expected %s target; ignoring",
+                        active.anomaly_id, distance, phase.value,
+                    )
+                    return
             token = active.token
             anomaly_id = active.anomaly_id
 
@@ -290,6 +339,15 @@ class AnomalyResponseCoordinator:
                 returning_payload = returning.model_dump(mode="json")
                 active.phase = DiversionPhase.RETURNING
                 active.returning_payload = returning_payload
+                # Same staleness guard as the outbound leg (see
+                # _ActiveDiversion.issued_after_timestamp) -- otherwise a
+                # stale "arrived" sample left over from reaching the
+                # anomaly (the outbound leg's own destination) would
+                # immediately satisfy the return leg too, before the robot
+                # has moved at all.
+                current_view = self._device_registry.get(active.robot_device_id)
+                if current_view is not None:
+                    active.issued_after_timestamp = current_view.timestamp
                 token = active.token
                 robot_device_id = active.robot_device_id
                 wx, wy = active.target_waypoint_xy
