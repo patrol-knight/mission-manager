@@ -184,14 +184,16 @@ class MissionExecutionManager:
 
             if state.status == MissionStatus.RETURNING_HOME:
                 if waypoint_index == 0:
-                    completed_state = state.model_copy(
-                        update={
-                            "status": MissionStatus.COMPLETED,
-                            "current_waypoint_index": 0,
-                            "updated_at": datetime.now(timezone.utc),
-                        }
-                    )
-                    return self._finish_mission(completed_state)
+                    # Unlike finishing all configured loops naturally (below),
+                    # a manual Stop never reports COMPLETED -- that status
+                    # (and MissionCompleteWatcher's "Mission Complete!" toast)
+                    # is reserved for a mission that actually ran to
+                    # completion. completed_loops is never incremented on
+                    # this path, so reusing COMPLETED here would show a
+                    # misleading "Mission Complete! 1 / 3 loops" for a mission
+                    # stopped early. Straight back to a fresh READY state,
+                    # no pulse, no toast.
+                    return self._apply(self._fresh_state(state.mission_id))
                 return state.model_copy(deep=True)
 
             if state.status != MissionStatus.RUNNING:
@@ -226,11 +228,15 @@ class MissionExecutionManager:
             return self._apply(new_state)
 
     def _finish_mission(self, completed_state: MissionExecutionState) -> MissionExecutionState:
-        """Broadcasts the COMPLETED transition -- so a client can catch it
-        going by (e.g. MissionCompleteWatcher's toast, which reads the final
-        loop count off this exact message) -- then immediately resets to
-        READY. A finished mission should be exactly as startable as a brand
-        new one, not require a separate "completed" status/affordance."""
+        """Only reached by naturally finishing all configured loops while
+        RUNNING (see record_waypoint_reached) -- a manual Stop's
+        RETURNING_HOME->READY path deliberately does NOT call this, since
+        that's not the same outcome. Broadcasts the COMPLETED transition --
+        so a client can catch it going by (e.g. MissionCompleteWatcher's
+        toast, which reads the final loop count off this exact message) --
+        then immediately resets to READY. A finished mission should be
+        exactly as startable as a brand new one, not require a separate
+        "completed" status/affordance."""
         self._apply(completed_state)
         return self._apply(self._fresh_state(completed_state.mission_id))
 

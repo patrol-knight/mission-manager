@@ -102,7 +102,9 @@ class MissionDriveCoordinator:
                 return
 
             # RETURNING_HOME (after Stop) always heads for waypoint 0 --
-            # record_waypoint_reached(0) is what flips it to COMPLETED.
+            # record_waypoint_reached(0) is what resets it straight to READY
+            # (not COMPLETED -- that's reserved for finishing all configured
+            # loops naturally, see mission_execution.py::_finish_mission).
             next_index = (
                 0
                 if exec_state.status == MissionStatus.RETURNING_HOME

@@ -1,7 +1,6 @@
 # Mission Manager
 
-###### tags: `k7-autoware`, `react-vite`, `fastapi`, `cmu-svd`
-A web-based user interface for monitoring and controlling autonomous robots. It consists of a FastAPI backend and a React-TypeScript frontend, containerized and orchestrated using Docker Compose. This project is developed for the `k7-autoware` robot simulation system as part of the Spring Validation Demo, providing a centralized interface for mission management, robot monitoring, and system interaction.
+A web-based user interface for monitoring and controlling autonomous robots. It consists of a FastAPI backend and a React-TypeScript frontend, containerized and orchestrated using Docker Compose. This project is developed for the `k7-autoware` robot simulation system, providing a centralized interface for mission management, robot monitoring, and system interaction.
 
 
 ## Running with Docker Compose
@@ -40,3 +39,71 @@ cd backend && .venv/bin/uvicorn app:app --host 0.0.0.0 --port 8000
 # terminal 2
 cd frontend && npm run dev   # http://localhost:5173
 ```
+
+## Mission & Anomaly State Machine
+
+The diagram below reflects the actual backend state machine (`backend/core/mission_execution.py`'s
+`MissionExecutionManager`, `MissionStatus` in `backend/models/mission_execution.py`) and the
+matching frontend gating (`MissionControls.tsx`/`MissionStatusPanel.tsx`), not just the UI flow —
+useful context before adding new functionality that touches mission or anomaly state.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Ready : docker compose up (launches system, loads current/default mission + map)
+
+    state "Library / Editor" as Editing {
+        [*] --> Library
+        Library --> Editor : select mission to edit
+        Editor --> [*] : Save
+        Library --> [*] : Set as current mission
+    }
+
+    Ready --> Editing : New / Edit Mission
+    Editing --> Ready : Save mission
+
+    Ready --> Running : Start
+    note right of Ready
+        Start is disabled in the UI whenever no
+        robot device is connected -- there is no
+        separate "rejected" state, the button
+        itself is just disabled.
+    end note
+
+    Running --> Paused : Pause
+    Paused --> Running : Resume
+
+    Running --> ReturningHome : Stop
+    Paused --> ReturningHome : Stop
+    ReturningHome --> Ready : robot reaches home (no toast, see note)
+
+    Running --> Investigating : anomaly detected
+    Investigating --> Running : resolved, robot returns to mission
+    Investigating --> ReturningHome : Stop (escape hatch, still allowed)
+
+    state Investigating {
+        [*] --> EnRoute
+        EnRoute --> Arrived : robot reports arrival
+        Arrived --> VerifyWindow : operator opens "Review Anomaly"
+        VerifyWindow --> [*] : Confirm Real / Mark False Positive
+    }
+    note right of Investigating
+        Pause, Resume, and Edit are all blocked
+        while investigating -- Stop is the only
+        control shown besides the verify flow.
+    end note
+
+    Running --> Completed : all configured loops finished
+    Completed --> Ready : automatic, immediate
+```
+
+Notes on states that aren't obvious from the diagram alone:
+- **Library/Editor is a frontend view state** (`AppShell.tsx`'s `view`), not a backend `MissionStatus`
+  value -- entering/exiting it never changes the backend's status away from `READY`.
+- **`COMPLETED` is a one-shot broadcast, not a persisted state** (`MissionExecutionManager._finish_mission`)
+  -- by the time any client could act on it, the real state is already `READY` again. The frontend's
+  `MissionControls.tsx`/`assert_editable`'s guard still nominally accept `COMPLETED` as if it were
+  actionable (same as `READY`), but that's defensive/vestigial code for a race window that in
+  practice never has time to open, not a real reachable interaction.
+- If the robot disconnects mid-investigation, the diversion aborts back toward `Running`/`Ready`
+  the same way Stop does (`AnomalyResponseCoordinator.abort_if_robot_disconnected`) -- not shown
+  above to keep the happy-path readable.
