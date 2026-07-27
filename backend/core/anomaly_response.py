@@ -201,6 +201,7 @@ class AnomalyResponseCoordinator:
         if self._mission_drive_coordinator is not None:
             self._mission_drive_coordinator.abort()
 
+        self._anomaly_registry.record_mission_context(anomaly.anomaly_id, exec_state.mission_id)
         updated = self._anomaly_registry.update_status(anomaly.anomaly_id, AnomalyStatus.ROBOT_EN_ROUTE)
         self._websocket_manager.broadcast_threadsafe(
             {"type": "anomaly.updated", "data": updated.model_dump(mode="json")}

@@ -41,11 +41,9 @@ def verify_anomaly(anomaly_id: str, request: Request) -> Anomaly:
 
 @router.post("/{anomaly_id}/dismiss", response_model=Anomaly)
 def dismiss_anomaly(anomaly_id: str, request: Request) -> Anomaly:
-    """Operator dismissed the arrival toast without opening the inspector --
-    resolves the anomaly the same way verify() does (see
-    AnomalyRegistry._resolve's docstring: no false-positive classification
-    in this codebase) and, the same as verify, triggers the return-to-
-    mission leg."""
+    """Operator inspected the robot's camera feed (AnomalyVerifyModal.tsx)
+    and judged the anomaly a false positive -- see AnomalyRegistry._resolve's
+    docstring. Same return-to-mission trigger as verify()."""
     try:
         dismissed = _registry(request).dismiss(anomaly_id)
     except AnomalyNotFoundError as exc:

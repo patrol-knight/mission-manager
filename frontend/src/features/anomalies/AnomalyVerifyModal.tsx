@@ -192,7 +192,7 @@ export function AnomalyVerifyModal() {
               cursor: busy ? "not-allowed" : "pointer",
             }}
           >
-            {pending === "dismiss" ? "Dismissing…" : "Dismiss"}
+            {pending === "dismiss" ? "Marking…" : "Mark False Positive"}
           </button>
           <button
             onClick={() => void handle("verify")}
@@ -208,7 +208,7 @@ export function AnomalyVerifyModal() {
               cursor: busy ? "not-allowed" : "pointer",
             }}
           >
-            {resolved ? "Verified" : pending === "verify" ? "Verifying…" : "Verify"}
+            {resolved ? "Confirmed Real" : pending === "verify" ? "Confirming…" : "Confirm Real"}
           </button>
         </div>
       </div>

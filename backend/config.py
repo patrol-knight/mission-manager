@@ -23,6 +23,13 @@ class Settings(BaseSettings):
     device_offline_timeout_sec: float = 3.0
     device_monitor_interval_sec: float = 1.0
 
+    # Durable anomaly-detection history (backend/core/anomaly_repository.py).
+    # None means persistence is skipped entirely -- e.g. bare `uvicorn` local
+    # dev with no Postgres running -- same optional-service posture as
+    # zenoh_enabled/map loading below. Example:
+    # postgresql://mission_manager:mission_manager@localhost:5432/mission_manager
+    database_url: str | None = None
+
     zenoh_enabled: bool = False
     zenoh_router: str = "tcp/localhost:7447"
     zenoh_device_state_keyexpr: str = "mission-manager/devices/*/state"

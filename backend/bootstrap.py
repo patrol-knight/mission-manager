@@ -3,6 +3,7 @@ from dataclasses import dataclass
 
 from config import Settings
 from core.anomaly_registry import AnomalyRegistry
+from core.anomaly_repository import AnomalyRepository
 from core.anomaly_response import AnomalyResponseCoordinator
 from core.device_registry import DeviceRegistry
 from core.errors import MapUnavailableError
@@ -23,6 +24,7 @@ class Services:
     mission_execution_manager: MissionExecutionManager
     device_registry: DeviceRegistry
     anomaly_registry: AnomalyRegistry
+    anomaly_repository: AnomalyRepository | None
     anomaly_response_coordinator: AnomalyResponseCoordinator
     mission_drive_coordinator: MissionDriveCoordinator
     websocket_manager: WebSocketManager
@@ -40,7 +42,15 @@ def build_services(settings: Settings) -> Services:
     mission_server.load()
 
     device_registry = DeviceRegistry()
-    anomaly_registry = AnomalyRegistry()
+
+    anomaly_repository: AnomalyRepository | None = None
+    if settings.database_url:
+        anomaly_repository = AnomalyRepository(settings.database_url)
+        try:
+            anomaly_repository.init_schema()
+        except Exception:
+            logger.warning("Failed to initialize anomaly history schema; continuing without it", exc_info=True)
+    anomaly_registry = AnomalyRegistry(repository=anomaly_repository)
     websocket_manager = WebSocketManager()
 
     mission_execution_manager = MissionExecutionManager(mission_server, websocket_manager, device_registry)
@@ -81,6 +91,7 @@ def build_services(settings: Settings) -> Services:
         mission_execution_manager=mission_execution_manager,
         device_registry=device_registry,
         anomaly_registry=anomaly_registry,
+        anomaly_repository=anomaly_repository,
         anomaly_response_coordinator=anomaly_response_coordinator,
         mission_drive_coordinator=mission_drive_coordinator,
         websocket_manager=websocket_manager,

@@ -11,6 +11,7 @@ from api import device as device_api
 from api import map as map_api
 from api import mission as mission_api
 from api import mission_execution as mission_execution_api
+from api import system as system_api
 from api import websocket as websocket_api
 from bootstrap import Services, build_services
 from config import Settings
@@ -54,6 +55,7 @@ async def lifespan(app: FastAPI):
     app.state.mission_execution_manager = services.mission_execution_manager
     app.state.device_registry = services.device_registry
     app.state.anomaly_registry = services.anomaly_registry
+    app.state.anomaly_repository = services.anomaly_repository
     app.state.anomaly_response_coordinator = services.anomaly_response_coordinator
     app.state.mission_drive_coordinator = services.mission_drive_coordinator
     app.state.websocket_manager = services.websocket_manager
@@ -110,6 +112,7 @@ def create_app() -> FastAPI:
     fastapi_app.include_router(anomaly_api.router, prefix="/api/anomalies", tags=["anomalies"])
     fastapi_app.include_router(map_api.router, prefix="/api/map", tags=["map"])
     fastapi_app.include_router(camera_api.router, prefix="/api/cameras", tags=["cameras"])
+    fastapi_app.include_router(system_api.router, prefix="/api/system", tags=["system"])
     fastapi_app.include_router(websocket_api.router, tags=["websocket"])
 
     return fastapi_app
