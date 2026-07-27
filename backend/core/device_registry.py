@@ -4,7 +4,7 @@ import time
 
 from core.device import BaseDevice
 from core.errors import DeviceTypeMismatchError
-from models.device import DeviceState, DeviceView
+from models.device import DeviceState, DeviceType, DeviceView
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +46,15 @@ class DeviceRegistry:
         with self._lock:
             views = [device.to_view() for device in self._devices.values()]
         return sorted(views, key=lambda v: v.device_id)
+
+    def get_connected_robot(self) -> DeviceView | None:
+        """First connected robot device, by device_id -- deterministic
+        tie-break if more than one is ever connected at once. Used to gate
+        mission start and to source a robot's current pose for anomaly
+        diversion routing."""
+        return next(
+            (d for d in self.list_devices() if d.type == DeviceType.ROBOT and d.connected), None
+        )
 
     def mark_offline_devices(
         self, timeout_sec: float, now: float | None = None

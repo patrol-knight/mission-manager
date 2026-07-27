@@ -6,6 +6,9 @@ window.RUNTIME_CONFIG = {
   API_BASE_URL: "${API_BASE_URL}",
   // WebSocket endpoint. "ws://robot-host:8000/ws"
   WS_URL: "${WS_URL}",
+  // Camera/WebRTC adapter: "mock" or "real". Defaults to "mock" until the backend
+  // camera endpoint is implemented for real (see backend/api/camera.py).
+  CAMERA_MODE: "${CAMERA_MODE}",
 };
 
 if (!window.RUNTIME_CONFIG.API_BASE_URL) {
@@ -15,4 +18,8 @@ if (!window.RUNTIME_CONFIG.API_BASE_URL) {
 
 if (!window.RUNTIME_CONFIG.WS_URL) {
   window.RUNTIME_CONFIG.WS_URL = "ws://localhost:8000/ws";
+}
+
+if (!window.RUNTIME_CONFIG.CAMERA_MODE) {
+  window.RUNTIME_CONFIG.CAMERA_MODE = "mock";
 }

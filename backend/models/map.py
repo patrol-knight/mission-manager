@@ -25,6 +25,12 @@ class MapPoint(BaseModel):
     y: float
     frame_id: str = "map"
     lanelet_id: int | None = None
+    # Computed alongside x/y by MapServer.snap_to_lanelet() itself (single
+    # computation point) -- lets consumers like AnomalyResponseCoordinator's
+    # DiversionStarted.target reach the frontend with lat/lon already
+    # attached, no separate xy-to-lnglat round trip needed to render it.
+    lat: float | None = None
+    lon: float | None = None
 
 
 class ReachableGoal(BaseModel):
@@ -37,6 +43,12 @@ class ReachableGoal(BaseModel):
 class PointQuery(BaseModel):
     x: float
     y: float
+    frame_id: str = "map"
+
+
+class LatLonQuery(BaseModel):
+    lat: float
+    lon: float
     frame_id: str = "map"
 
 

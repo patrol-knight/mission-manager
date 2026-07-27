@@ -1,3 +1,4 @@
+import logging
 import os
 import re
 import threading
@@ -11,7 +12,10 @@ from core.errors import (
     MissionNotFoundError,
     MissionValidationError,
 )
+from core.map_server import MapServer
 from models.mission import Mission, MissionSummary
+
+logger = logging.getLogger(__name__)
 
 _HHMM_RE = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)$")
 
@@ -106,22 +110,45 @@ class MissionServer:
     def _persist_mission(self, mission: Mission) -> None:
         _atomic_write_yaml(self._mission_path(mission.mission_id), mission.model_dump(mode="json"))
 
-    def list_missions(self) -> list[MissionSummary]:
+    def _loop_distance_m(self, mission: Mission, map_server: MapServer) -> float | None:
+        if len(mission.waypoints) < 2:
+            return None
+        looped = list(mission.waypoints) + [mission.waypoints[0]]
+        try:
+            route = map_server.get_route([{"x": wp.x, "y": wp.y} for wp in looped])
+        except Exception:
+            logger.warning(
+                "Failed to compute route distance for mission %s", mission.mission_id, exc_info=True
+            )
+            return None
+        if route is None:
+            return None
+        return route["properties"]["length_m"]
+
+    def list_missions(self, map_server: MapServer | None = None) -> list[MissionSummary]:
         with self._lock:
-            summaries = [
-                MissionSummary(
-                    mission_id=m.mission_id,
-                    name=m.name,
-                    map_name=m.map_name,
-                    frame_id=m.frame_id,
-                    waypoint_count=len(m.waypoints),
-                    time_slot=m.time_slot,
-                    is_current=(m.mission_id == self._current_id),
-                    is_default=(m.mission_id == self._default_id),
-                    updated_at=m.updated_at,
+            summaries = []
+            for m in self._missions.values():
+                home_x = m.waypoints[0].x if m.waypoints else None
+                home_y = m.waypoints[0].y if m.waypoints else None
+                distance_m = self._loop_distance_m(m, map_server) if map_server is not None else None
+                summaries.append(
+                    MissionSummary(
+                        mission_id=m.mission_id,
+                        name=m.name,
+                        map_name=m.map_name,
+                        frame_id=m.frame_id,
+                        waypoint_count=len(m.waypoints),
+                        loop_count=m.loop_count,
+                        home_x=home_x,
+                        home_y=home_y,
+                        distance_m=distance_m,
+                        time_slot=m.time_slot,
+                        is_current=(m.mission_id == self._current_id),
+                        is_default=(m.mission_id == self._default_id),
+                        updated_at=m.updated_at,
+                    )
                 )
-                for m in self._missions.values()
-            ]
             return sorted(summaries, key=lambda s: s.mission_id)
 
     def get_mission(self, mission_id: str) -> Mission | None:

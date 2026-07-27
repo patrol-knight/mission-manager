@@ -1,13 +1,5 @@
 import * as React from "react";
-
-export type ToastType = "success" | "error" | "info" | "warning";
-
-export type ToastMessage = {
-  id: number;
-  type: ToastType;
-  title: string;
-  subtitle?: string;
-};
+import { ToastContext, type ToastMessage, type ToastOptions, type ToastType } from "./toastContextObject";
 
 const COLORS: Record<ToastType, { bg: string; icon: string; border: string }> = {
   success: {
@@ -48,6 +40,9 @@ function ToastItem({
     const show = requestAnimationFrame(() =>
       requestAnimationFrame(() => setVisible(true))
     );
+    if (toast.persistent) {
+      return () => cancelAnimationFrame(show);
+    }
     const hide = setTimeout(() => setVisible(false), DURATION);
     const remove = setTimeout(() => onDismiss(toast.id), DURATION + 400);
 
@@ -56,11 +51,12 @@ function ToastItem({
       clearTimeout(hide);
       clearTimeout(remove);
     };
-  }, [toast.id, onDismiss]);
+  }, [toast.id, toast.persistent, onDismiss]);
 
   return (
     <div
       onClick={() => {
+        if (toast.persistent) return; // persistent toasts only close via an explicit action
         setVisible(false);
         setTimeout(() => onDismiss(toast.id), 400);
       }}
@@ -73,7 +69,7 @@ function ToastItem({
         border: `1px solid ${color.border}`,
         borderRadius: 12,
         padding: "14px 18px",
-        cursor: "pointer",
+        cursor: toast.persistent ? "default" : "pointer",
         boxShadow: "0 8px 32px rgba(0,0,0,0.35)",
         minWidth: 280,
         maxWidth: 360,
@@ -111,21 +107,34 @@ function ToastItem({
             {toast.subtitle}
           </div>
         )}
+        {toast.actions && toast.actions.length > 0 && (
+          <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+            {toast.actions.map((action, i) => (
+              <button
+                key={i}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  action.onClick();
+                }}
+                style={{
+                  padding: "6px 12px",
+                  borderRadius: 8,
+                  border: "1px solid rgba(255,255,255,0.2)",
+                  background: i === 0 ? "rgba(255,255,255,0.15)" : "transparent",
+                  color: "#f8f9fa",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                {action.label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
-}
-
-// ── Context ───────────────────────────────────────────────────────────────────
-
-type ToastContextValue = {
-  show: (type: ToastType, title: string, subtitle?: string) => void;
-};
-
-const ToastContext = React.createContext<ToastContextValue>({ show: () => {} });
-
-export function useToast() {
-  return React.useContext(ToastContext);
 }
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
@@ -133,9 +142,13 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   const counter = React.useRef(0);
 
   const show = React.useCallback(
-    (type: ToastType, title: string, subtitle?: string) => {
+    (type: ToastType, title: string, subtitle?: string, options?: ToastOptions): number => {
       const id = ++counter.current;
-      setToasts((prev) => [...prev, { id, type, title, subtitle }]);
+      setToasts((prev) => [
+        ...prev,
+        { id, type, title, subtitle, persistent: options?.persistent, actions: options?.actions },
+      ]);
+      return id;
     },
     []
   );
@@ -145,7 +158,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <ToastContext.Provider value={{ show }}>
+    <ToastContext.Provider value={{ show, dismiss }}>
       {children}
       <div
         style={{

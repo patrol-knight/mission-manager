@@ -151,10 +151,12 @@ class MapServer:
         self._ensure_available()
         ll = self._nearest_lanelet(x, y)
         if ll is None:
-            return MapPoint(x=x, y=y, frame_id=frame_id, lanelet_id=None)
+            lon, lat = self._to_latlon(x, y)
+            return MapPoint(x=x, y=y, frame_id=frame_id, lanelet_id=None, lat=lat, lon=lon)
         t = self._project_point_onto_centerline(ll, x, y)
         sx, sy = self._interp_centerline_xy_at(ll, t)
-        return MapPoint(x=sx, y=sy, frame_id=frame_id, lanelet_id=ll.id)
+        lon, lat = self._to_latlon(sx, sy)
+        return MapPoint(x=sx, y=sy, frame_id=frame_id, lanelet_id=ll.id, lat=lat, lon=lon)
 
     def project_reachable_goal(
         self, x: float, y: float, frame_id: str = "map"
@@ -271,6 +273,13 @@ class MapServer:
             arc.append(arc[-1] + math.sqrt(dx*dx + dy*dy))
         return arc
 
+    def _centerline_arc_length_between(self, ll, t_start: float, t_end: float) -> float:
+        pts = list(ll.centerline)
+        if len(pts) < 2:
+            return 0.0
+        total = self._build_arc(pts)[-1]
+        return max(0.0, t_end - t_start) * total
+
     def _sample_centerline_between(self, ll, t_start: float, t_end: float) -> list:
         pts = list(ll.centerline)
         if len(pts) < 2:
@@ -321,6 +330,7 @@ class MapServer:
             return None
 
         full_coords = []
+        total_length = 0.0
 
         for seg in range(len(waypoints) - 1):
             wx0, wy0 = waypoints[seg]["x"],   waypoints[seg]["y"]
@@ -363,13 +373,17 @@ class MapServer:
             for i, ll in enumerate(ll_sequence):
                 if i == 0 and i == len(ll_sequence) - 1:
                     coords.extend(self._sample_centerline_between(ll, t0, t1))
+                    total_length += self._centerline_arc_length_between(ll, t0, t1)
                 elif i == 0:
                     coords.extend(self._sample_centerline_from(ll, t0)[:-1])
+                    total_length += self._centerline_arc_length_between(ll, t0, 1.0)
                 elif i == len(ll_sequence) - 1:
                     coords.extend(self._sample_centerline_to(ll, t1))
+                    total_length += self._centerline_arc_length_between(ll, 0.0, t1)
                 else:
                     pts = list(ll.centerline)
                     coords.extend(self._to_latlon(p.x, p.y) for p in pts[:-1])
+                    total_length += self._centerline_arc_length_between(ll, 0.0, 1.0)
 
             if full_coords and coords:
                 coords = coords[1:]
@@ -378,7 +392,7 @@ class MapServer:
         return {
             "type": "Feature",
             "geometry": {"type": "LineString", "coordinates": full_coords},
-            "properties": {"type": "route"},
+            "properties": {"type": "route", "length_m": total_length},
         }
 
     def get_route_preview(self, waypoints: list[RouteWaypoint]) -> dict | None:

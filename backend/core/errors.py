@@ -16,3 +16,31 @@ class MapUnavailableError(Exception):
 
 class DeviceTypeMismatchError(Exception):
     pass
+
+
+class NoCurrentMissionError(Exception):
+    pass
+
+
+class InvalidExecutionTransitionError(Exception):
+    pass
+
+
+class InsufficientWaypointsError(Exception):
+    pass
+
+
+class NoConnectedRobotError(Exception):
+    pass
+
+
+class MissionExecutionLockedError(Exception):
+    pass
+
+
+class AnomalyNotFoundError(Exception):
+    pass
+
+
+class InvalidAnomalyTransitionError(Exception):
+    pass
