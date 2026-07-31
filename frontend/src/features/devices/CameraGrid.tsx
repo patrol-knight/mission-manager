@@ -3,10 +3,11 @@ import { CameraTile } from "./CameraTile";
 
 interface CameraGridProps {
   cameras: CameraInfo[];
+  streams: Record<string, MediaStream>;
   onFocusCamera: (id: string) => void;
 }
 
-export function CameraGrid({ cameras, onFocusCamera }: CameraGridProps) {
+export function CameraGrid({ cameras, streams, onFocusCamera }: CameraGridProps) {
   if (cameras.length === 0) {
     return (
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "#868e96", fontSize: 14 }}>
@@ -29,7 +30,12 @@ export function CameraGrid({ cameras, onFocusCamera }: CameraGridProps) {
       }}
     >
       {cameras.map((camera) => (
-        <CameraTile key={camera.id} camera={camera} onFocus={() => onFocusCamera(camera.id)} />
+        <CameraTile
+          key={camera.id}
+          camera={camera}
+          stream={streams[camera.id] ?? null}
+          onFocus={() => onFocusCamera(camera.id)}
+        />
       ))}
     </div>
   );

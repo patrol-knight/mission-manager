@@ -13,6 +13,7 @@ export interface CameraApiImpl {
     deviceId: string,
     hasCameraCapability: boolean,
     onUpdate: (cameras: CameraInfo[]) => void,
+    onStream: (cameraId: string, stream: MediaStream | null) => void,
   ): Promise<InspectionSession>;
   closeInspectionSession(sessionId: string): Promise<void>;
 }
@@ -23,8 +24,9 @@ export function openInspectionSession(
   deviceId: string,
   hasCameraCapability: boolean,
   onUpdate: (cameras: CameraInfo[]) => void,
+  onStream: (cameraId: string, stream: MediaStream | null) => void,
 ): Promise<InspectionSession> {
-  return impl.openInspectionSession(deviceId, hasCameraCapability, onUpdate);
+  return impl.openInspectionSession(deviceId, hasCameraCapability, onUpdate, onStream);
 }
 
 export function closeInspectionSession(sessionId: string): Promise<void> {

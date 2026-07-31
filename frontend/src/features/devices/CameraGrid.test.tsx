@@ -9,7 +9,7 @@ function cams(n: number): CameraInfo[] {
 
 describe("CameraGrid", () => {
   it("shows an empty state for 0 cameras", () => {
-    render(<CameraGrid cameras={[]} onFocusCamera={vi.fn()} />);
+    render(<CameraGrid cameras={[]} streams={{}} onFocusCamera={vi.fn()} />);
     expect(screen.getByText(/no cameras available/i)).toBeInTheDocument();
   });
 
@@ -21,7 +21,7 @@ describe("CameraGrid", () => {
     [5, 3],
     [8, 3],
   ])("renders %i camera(s) in a %i-column grid", (count, expectedColumns) => {
-    const { container } = render(<CameraGrid cameras={cams(count)} onFocusCamera={vi.fn()} />);
+    const { container } = render(<CameraGrid cameras={cams(count)} streams={{}} onFocusCamera={vi.fn()} />);
     const grid = container.firstElementChild as HTMLElement;
     expect(grid.style.gridTemplateColumns).toBe(`repeat(${expectedColumns}, 1fr)`);
     expect(screen.getAllByRole("button")).toHaveLength(count);
@@ -29,7 +29,7 @@ describe("CameraGrid", () => {
 
   it("invokes onFocusCamera with the clicked camera's id", async () => {
     const onFocusCamera = vi.fn();
-    render(<CameraGrid cameras={cams(2)} onFocusCamera={onFocusCamera} />);
+    render(<CameraGrid cameras={cams(2)} streams={{}} onFocusCamera={onFocusCamera} />);
     screen.getByText("Camera 1").closest("button")!.click();
     expect(onFocusCamera).toHaveBeenCalledWith("cam-0");
   });

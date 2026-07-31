@@ -54,6 +54,7 @@ async def lifespan(app: FastAPI):
     app.state.mission_server = services.mission_server
     app.state.mission_execution_manager = services.mission_execution_manager
     app.state.device_registry = services.device_registry
+    app.state.camera_registry = services.camera_registry
     app.state.anomaly_registry = services.anomaly_registry
     app.state.anomaly_repository = services.anomaly_repository
     app.state.anomaly_response_coordinator = services.anomaly_response_coordinator

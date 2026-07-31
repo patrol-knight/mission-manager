@@ -1,6 +1,26 @@
 import { WS_URL } from "./config";
-import { deviceFromRaw, type Device, type RawDevice } from "../types/domain";
+import {
+  cameraStateFromRaw,
+  deviceFromRaw,
+  type CameraState,
+  type Device,
+  type RawCameraState,
+  type RawDevice,
+} from "../types/domain";
 import type { ConnectionStatus, WsEnvelope } from "../types/ws";
+
+/** Wire shape of a `camera.signal` message's `data` -- see
+ * backend/transport/zenoh_gateway.py::ingest_camera_signal_payload and
+ * backend/models/camera.py::WebRtcSignal. */
+export interface RawCameraSignal {
+  device_id: string;
+  camera_id: string;
+  session_id: string;
+  type: "offer" | "answer" | "ice-candidate";
+  sdp?: string | null;
+  candidate?: string | null;
+  sdp_mline_index?: number | null;
+}
 
 type Unsubscribe = () => void;
 type Listener<T> = (payload: T) => void;
@@ -33,6 +53,9 @@ class RealtimeClient {
   private diversionStartedListeners = new Set<Listener<unknown>>();
   private diversionReturningListeners = new Set<Listener<unknown>>();
   private diversionClearedListeners = new Set<Listener<unknown>>();
+  private cameraUpdateListeners = new Set<Listener<CameraState>>();
+  private camerasSnapshotListeners = new Set<Listener<CameraState[]>>();
+  private cameraSignalListeners = new Set<Listener<RawCameraSignal>>();
 
   connect(): void {
     if (this.ws || this.destroyed) return;
@@ -104,7 +127,25 @@ class RealtimeClient {
     return () => this.diversionClearedListeners.delete(fn);
   }
 
-  send(msg: { type: "ping" }): void {
+  /** Fed by `camera.updated` — a camera's stream_state changed (idle/connecting/live/no_signal/offline/error). */
+  onCameraUpdate(fn: Listener<CameraState>): Unsubscribe {
+    this.cameraUpdateListeners.add(fn);
+    return () => this.cameraUpdateListeners.delete(fn);
+  }
+
+  /** Fed by `cameras.snapshot` — sent once on connect, mirrors devices.snapshot. */
+  onCamerasSnapshot(fn: Listener<CameraState[]>): Unsubscribe {
+    this.camerasSnapshotListeners.add(fn);
+    return () => this.camerasSnapshotListeners.delete(fn);
+  }
+
+  /** Fed by `camera.signal` — WebRTC offer/ICE relayed from the device's gateway. */
+  onCameraSignal(fn: Listener<RawCameraSignal>): Unsubscribe {
+    this.cameraSignalListeners.add(fn);
+    return () => this.cameraSignalListeners.delete(fn);
+  }
+
+  send(msg: { type: "ping" } | { type: "camera.signal"; data: RawCameraSignal }): void {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(msg));
     }
@@ -181,6 +222,17 @@ class RealtimeClient {
         break;
       case "anomaly.diversion.cleared":
         this.diversionClearedListeners.forEach((fn) => fn(msg.data));
+        break;
+      case "camera.updated":
+        this.cameraUpdateListeners.forEach((fn) => fn(cameraStateFromRaw(msg.data as RawCameraState)));
+        break;
+      case "cameras.snapshot":
+        this.camerasSnapshotListeners.forEach((fn) =>
+          fn((msg.data as RawCameraState[]).map(cameraStateFromRaw)),
+        );
+        break;
+      case "camera.signal":
+        this.cameraSignalListeners.forEach((fn) => fn(msg.data as RawCameraSignal));
         break;
       case "connection.ready":
       case "pong":

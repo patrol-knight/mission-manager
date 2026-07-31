@@ -5,6 +5,7 @@ from config import Settings
 from core.anomaly_registry import AnomalyRegistry
 from core.anomaly_repository import AnomalyRepository
 from core.anomaly_response import AnomalyResponseCoordinator
+from core.camera_registry import CameraRegistry
 from core.device_registry import DeviceRegistry
 from core.errors import MapUnavailableError
 from core.map_server import MapServer
@@ -23,6 +24,7 @@ class Services:
     mission_server: MissionServer
     mission_execution_manager: MissionExecutionManager
     device_registry: DeviceRegistry
+    camera_registry: CameraRegistry
     anomaly_registry: AnomalyRegistry
     anomaly_repository: AnomalyRepository | None
     anomaly_response_coordinator: AnomalyResponseCoordinator
@@ -42,6 +44,7 @@ def build_services(settings: Settings) -> Services:
     mission_server.load()
 
     device_registry = DeviceRegistry()
+    camera_registry = CameraRegistry()
 
     anomaly_repository: AnomalyRepository | None = None
     if settings.database_url:
@@ -60,7 +63,9 @@ def build_services(settings: Settings) -> Services:
     # both need it to send commands through, and it needs them for its own
     # ingest callbacks, so the two directions are wired up after the fact
     # via bind_coordinators()/bind_mission_drive() to avoid a construction cycle.
-    zenoh_gateway = ZenohGateway(settings, device_registry, websocket_manager, anomaly_registry, map_server)
+    zenoh_gateway = ZenohGateway(
+        settings, device_registry, websocket_manager, anomaly_registry, map_server, camera_registry
+    )
 
     anomaly_response_coordinator = AnomalyResponseCoordinator(
         anomaly_registry=anomaly_registry,
@@ -90,6 +95,7 @@ def build_services(settings: Settings) -> Services:
         mission_server=mission_server,
         mission_execution_manager=mission_execution_manager,
         device_registry=device_registry,
+        camera_registry=camera_registry,
         anomaly_registry=anomaly_registry,
         anomaly_repository=anomaly_repository,
         anomaly_response_coordinator=anomaly_response_coordinator,

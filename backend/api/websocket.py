@@ -13,6 +13,8 @@ router = APIRouter()
 async def websocket_endpoint(websocket: WebSocket) -> None:
     manager = websocket.app.state.websocket_manager
     device_registry = websocket.app.state.device_registry
+    camera_registry = getattr(websocket.app.state, "camera_registry", None)
+    zenoh_gateway = getattr(websocket.app.state, "zenoh_gateway", None)
     mission_server = getattr(websocket.app.state, "mission_server", None)
     map_server = getattr(websocket.app.state, "map_server", None)
     mission_execution_manager = getattr(websocket.app.state, "mission_execution_manager", None)
@@ -54,6 +56,18 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 },
             )
 
+        if camera_registry is not None:
+            # Lets a freshly-opened tab learn a device's camera_id/stream_state
+            # immediately, without waiting for the next camera.updated event --
+            # same rationale as devices.snapshot above.
+            await manager.send_json(
+                websocket,
+                {
+                    "type": "cameras.snapshot",
+                    "data": [c.model_dump(mode="json") for c in camera_registry.list()],
+                },
+            )
+
         if anomaly_registry is not None:
             await manager.send_json(
                 websocket,
@@ -82,6 +96,18 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 continue
             if message.get("type") == "ping":
                 await manager.send_json(websocket, {"type": "pong"})
+            elif message.get("type") == "camera.signal":
+                # Browser's answer/ICE candidates for a WebRTC negotiation it
+                # started via POST /api/cameras/{device}/{camera}/stream --
+                # relayed to the device's gateway over Zenoh, never handled
+                # here directly (see transport/zenoh_gateway.py::publish_camera_signal).
+                data = message.get("data")
+                if zenoh_gateway is not None and isinstance(data, dict):
+                    device_id = data.get("device_id")
+                    camera_id = data.get("camera_id")
+                    if isinstance(device_id, str) and isinstance(camera_id, str):
+                        signal = {k: v for k, v in data.items() if k not in ("device_id", "camera_id")}
+                        zenoh_gateway.publish_camera_signal(device_id, camera_id, signal)
             # Unknown message types are ignored without closing the connection.
     finally:
         await manager.disconnect(websocket)

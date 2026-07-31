@@ -37,6 +37,18 @@ class Settings(BaseSettings):
     # Outbound: {device_id} is substituted by ZenohGateway.publish_command().
     zenoh_device_commands_keyexpr: str = "mission-manager/devices/{device_id}/commands"
 
+    # Video streaming (see ../zenoh_bridge/docs/video_streaming_pipeline.md).
+    # start_camera_stream/stop_camera_stream commands ride the existing
+    # zenoh_device_commands_keyexpr above -- no separate outbound key needed.
+    zenoh_camera_state_keyexpr: str = "mission-manager/devices/*/cameras/*/state"
+    zenoh_camera_webrtc_to_backend_keyexpr: str = (
+        "mission-manager/devices/*/cameras/*/webrtc/to-backend"
+    )
+    # Outbound: {device_id}/{camera_id} substituted by ZenohGateway.publish_camera_signal().
+    zenoh_camera_webrtc_to_device_keyexpr: str = (
+        "mission-manager/devices/{device_id}/cameras/{camera_id}/webrtc/to-device"
+    )
+
     # AnomalyResponseCoordinator (core/anomaly_response.py) -- kill switch.
     anomaly_response_enabled: bool = True
     # MissionDriveCoordinator (core/mission_drive.py) -- kill switch for

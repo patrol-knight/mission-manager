@@ -1,16 +1,26 @@
 import json
 import logging
+import re
 import time
 from typing import TYPE_CHECKING
 
 from config import Settings
 from core.anomaly_registry import AnomalyRegistry
+from core.camera_registry import CameraRegistry
 from core.device_registry import DeviceRegistry
 from core.errors import DeviceTypeMismatchError, MapUnavailableError
 from core.map_server import MapServer
 from core.websocket_manager import WebSocketManager
 from models.anomaly import Anomaly
+from models.camera import CameraState, WebRtcSignal
 from models.device import DeviceState
+
+# Matches mission-manager/devices/{device_id}/cameras/{camera_id}/webrtc/to-backend --
+# WebRtcSignalPayload's own JSON body carries only session_id/type/sdp/candidate, so
+# device_id/camera_id have to come from the sample's key expression itself.
+_CAMERA_SIGNAL_KEY_RE = re.compile(
+    r"^mission-manager/devices/(?P<device_id>[^/]+)/cameras/(?P<camera_id>[^/]+)/webrtc/to-backend$"
+)
 
 if TYPE_CHECKING:
     from core.anomaly_response import AnomalyResponseCoordinator
@@ -41,17 +51,21 @@ class ZenohGateway:
         websocket_manager: WebSocketManager,
         anomaly_registry: AnomalyRegistry,
         map_server: MapServer,
+        camera_registry: CameraRegistry,
     ) -> None:
         self._settings = settings
         self._device_registry = device_registry
         self._websocket_manager = websocket_manager
         self._anomaly_registry = anomaly_registry
         self._map_server = map_server
+        self._camera_registry = camera_registry
         self._anomaly_response_coordinator: "AnomalyResponseCoordinator | None" = None
         self._mission_drive_coordinator: "MissionDriveCoordinator | None" = None
         self._session = None
         self._device_subscriber = None
         self._anomaly_subscriber = None
+        self._camera_state_subscriber = None
+        self._camera_signal_subscriber = None
 
     def bind_coordinators(
         self,
@@ -83,16 +97,28 @@ class ZenohGateway:
                 self._settings.zenoh_anomaly_keyexpr,
                 self._on_zenoh_anomaly_sample,
             )
+            self._camera_state_subscriber = self._session.declare_subscriber(
+                self._settings.zenoh_camera_state_keyexpr,
+                self._on_zenoh_camera_state_sample,
+            )
+            self._camera_signal_subscriber = self._session.declare_subscriber(
+                self._settings.zenoh_camera_webrtc_to_backend_keyexpr,
+                self._on_zenoh_camera_signal_sample,
+            )
             logger.info(
-                "Zenoh session opened on %s; subscribed to %s and %s",
+                "Zenoh session opened on %s; subscribed to %s, %s, %s, and %s",
                 self._settings.zenoh_router,
                 self._settings.zenoh_device_state_keyexpr,
                 self._settings.zenoh_anomaly_keyexpr,
+                self._settings.zenoh_camera_state_keyexpr,
+                self._settings.zenoh_camera_webrtc_to_backend_keyexpr,
             )
         except Exception:
             self._session = None
             self._device_subscriber = None
             self._anomaly_subscriber = None
+            self._camera_state_subscriber = None
+            self._camera_signal_subscriber = None
             logger.error("Failed to start Zenoh gateway", exc_info=True)
             raise
 
@@ -103,6 +129,12 @@ class ZenohGateway:
         if self._anomaly_subscriber is not None:
             self._anomaly_subscriber.undeclare()
             self._anomaly_subscriber = None
+        if self._camera_state_subscriber is not None:
+            self._camera_state_subscriber.undeclare()
+            self._camera_state_subscriber = None
+        if self._camera_signal_subscriber is not None:
+            self._camera_signal_subscriber.undeclare()
+            self._camera_signal_subscriber = None
         if self._session is not None:
             self._session.close()
             self._session = None
@@ -114,6 +146,12 @@ class ZenohGateway:
 
     def _on_zenoh_anomaly_sample(self, sample) -> None:
         self.ingest_anomaly_payload(bytes(sample.payload))
+
+    def _on_zenoh_camera_state_sample(self, sample) -> None:
+        self.ingest_camera_state_payload(bytes(sample.payload))
+
+    def _on_zenoh_camera_signal_sample(self, sample) -> None:
+        self.ingest_camera_signal_payload(bytes(sample.payload), str(sample.key_expr))
 
     def _project_latlon(self, x: float, y: float, frame_id: str) -> tuple[float, float] | None:
         """Best-effort lat/lon for an incoming x/y -- None (not an
@@ -217,6 +255,74 @@ class ZenohGateway:
             # re-published update to an already-known one must not retrigger it.
             self._anomaly_response_coordinator.on_anomaly_detected(stored)
 
+        return True
+
+    def ingest_camera_state_payload(self, payload: bytes | str | dict) -> bool:
+        """CameraStatePayload from zenoh_bridge's per-camera frame-arrival
+        watchdog (idle/connecting/live/no_signal/offline/error). Same
+        conditional-broadcast pattern as device state."""
+        try:
+            state = CameraState(**self._decode_json_payload(payload))
+        except Exception as exc:
+            logger.warning("Discarding malformed camera state payload: %s", exc)
+            return False
+
+        changed = self._camera_registry.upsert(state)
+        if changed:
+            self._websocket_manager.broadcast_threadsafe(
+                {"type": "camera.updated", "data": state.model_dump(mode="json")}
+            )
+        return changed
+
+    def ingest_camera_signal_payload(self, payload: bytes | str | dict, key_expr: str) -> bool:
+        """WebRtcSignalPayload (offer/answer/ice-candidate) relayed from
+        zenoh_bridge's WebRtcSignalingBridge -- forwarded to the browser
+        over the existing WebSocket rather than a new REST endpoint, per
+        the design doc. device_id/camera_id come from the key expression,
+        not the payload body (see _CAMERA_SIGNAL_KEY_RE)."""
+        match = _CAMERA_SIGNAL_KEY_RE.match(key_expr)
+        if match is None:
+            logger.warning("Discarding camera signal on unrecognized key: %s", key_expr)
+            return False
+
+        try:
+            signal = WebRtcSignal(**self._decode_json_payload(payload))
+        except Exception as exc:
+            logger.warning("Discarding malformed camera signal payload: %s", exc)
+            return False
+
+        self._websocket_manager.broadcast_threadsafe(
+            {
+                "type": "camera.signal",
+                "data": {
+                    "device_id": match.group("device_id"),
+                    "camera_id": match.group("camera_id"),
+                    **signal.model_dump(mode="json"),
+                },
+            }
+        )
+        return True
+
+    def publish_camera_signal(self, device_id: str, camera_id: str, signal: dict) -> bool:
+        """Outbound counterpart to ingest_camera_signal_payload: relays the
+        browser's answer/ICE (received over the WebSocket) to the device's
+        gateway. Same never-raises, log-and-return-False contract as
+        publish_command -- the frontend's own negotiation timeout is what
+        handles a signal that never arrives."""
+        if self._session is None:
+            logger.warning(
+                "Cannot publish camera signal to %s/%s: Zenoh session not open", device_id, camera_id
+            )
+            return False
+
+        key = self._settings.zenoh_camera_webrtc_to_device_keyexpr.format(
+            device_id=device_id, camera_id=camera_id
+        )
+        try:
+            self._session.put(key, json.dumps(signal).encode("utf-8"))
+        except Exception:
+            logger.error("Failed to publish camera signal to %s/%s", device_id, camera_id, exc_info=True)
+            return False
         return True
 
     def publish_command(

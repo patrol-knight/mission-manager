@@ -70,10 +70,38 @@ export function connectivityStatus(device: Pick<Device, "connected">): Connectiv
   return device.connected ? "connected" : "disconnected";
 }
 
-export type CameraStreamStatus = "idle" | "connecting" | "live" | "offline" | "error";
+export type CameraStreamStatus = "idle" | "connecting" | "live" | "no_signal" | "offline" | "error";
 
 export interface CameraInfo {
   id: string;
   name: string;
   status: CameraStreamStatus;
+}
+
+/** Wire shape pushed over WS as `camera.updated` -- see backend/models/camera.py::CameraState. */
+export interface RawCameraState {
+  device_id: string;
+  camera_id: string;
+  stream_state: CameraStreamStatus;
+  failure_reason: string | null;
+  timestamp: string;
+}
+
+/** App-facing camera state (camelCase). Built from RawCameraState via cameraStateFromRaw. */
+export interface CameraState {
+  deviceId: string;
+  cameraId: string;
+  streamState: CameraStreamStatus;
+  failureReason: string | null;
+  timestamp: string;
+}
+
+export function cameraStateFromRaw(raw: RawCameraState): CameraState {
+  return {
+    deviceId: raw.device_id,
+    cameraId: raw.camera_id,
+    streamState: raw.stream_state,
+    failureReason: raw.failure_reason,
+    timestamp: raw.timestamp,
+  };
 }

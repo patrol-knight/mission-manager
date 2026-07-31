@@ -28,6 +28,7 @@ export function useRealtimeSubscription(): void {
   const setDiversionStarted = useDeviceStore((s) => s.setDiversionStarted);
   const setDiversionReturning = useDeviceStore((s) => s.setDiversionReturning);
   const clearDiversion = useDeviceStore((s) => s.clearDiversion);
+  const upsertCamera = useDeviceStore((s) => s.upsertCamera);
   const setDefinition = useMissionStore((s) => s.setDefinition);
   const setExecution = useMissionStore((s) => s.setExecution);
 
@@ -53,6 +54,8 @@ export function useRealtimeSubscription(): void {
       client.onDiversionStarted((raw) => setDiversionStarted(raw as RawDiversionStarted)),
       client.onDiversionReturning((raw) => setDiversionReturning(raw as RawDiversionReturning)),
       client.onDiversionCleared(() => clearDiversion()),
+      client.onCamerasSnapshot((cameras) => cameras.forEach(upsertCamera)),
+      client.onCameraUpdate(upsertCamera),
     ];
 
     return () => {
@@ -66,6 +69,7 @@ export function useRealtimeSubscription(): void {
     setDiversionStarted,
     setDiversionReturning,
     clearDiversion,
+    upsertCamera,
     setDefinition,
     setExecution,
   ]);

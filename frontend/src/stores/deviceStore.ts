@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { Device } from "../types/domain";
+import type { CameraState, Device } from "../types/domain";
 import type { Anomaly } from "../features/anomalies/anomalyTypes";
 import {
   NO_DIVERSION,
@@ -13,6 +13,11 @@ interface DeviceStoreState {
   /** Anomalies live alongside devices — both are WS-pushed field-telemetry
    * collections consumed by the same map surface and inspector UI. */
   anomalies: Record<string, Anomaly>;
+  /** One entry per device -- every device deployed today has at most one
+   * camera (see ../../../zenoh_bridge/docs/video_streaming_pipeline.md's
+   * scope note), keyed by deviceId so the inspector/verify modal can join a
+   * device to its camera locally without the backend embedding it. */
+  cameras: Record<string, CameraState>;
   /** At most one active diversion at a time — same "single current mission"
    * precedent the backend coordinator itself follows. */
   diversion: Diversion;
@@ -20,6 +25,7 @@ interface DeviceStoreState {
   upsertDevice: (device: Device) => void;
   setAnomalies: (anomalies: Anomaly[]) => void;
   upsertAnomaly: (anomaly: Anomaly) => void;
+  upsertCamera: (camera: CameraState) => void;
   setDiversionStarted: (raw: RawDiversionStarted) => void;
   setDiversionReturning: (raw: RawDiversionReturning) => void;
   clearDiversion: () => void;
@@ -28,6 +34,7 @@ interface DeviceStoreState {
 export const useDeviceStore = create<DeviceStoreState>((set) => ({
   devices: {},
   anomalies: {},
+  cameras: {},
   diversion: NO_DIVERSION,
 
   setDevices: (devices) =>
@@ -35,6 +42,9 @@ export const useDeviceStore = create<DeviceStoreState>((set) => ({
 
   upsertDevice: (device) =>
     set((s) => ({ devices: { ...s.devices, [device.deviceId]: device } })),
+
+  upsertCamera: (camera) =>
+    set((s) => ({ cameras: { ...s.cameras, [camera.deviceId]: camera } })),
 
   setAnomalies: (anomalies) =>
     set({ anomalies: Object.fromEntries(anomalies.map((a) => [a.anomalyId, a])) }),

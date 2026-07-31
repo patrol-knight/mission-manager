@@ -2,60 +2,11 @@ import { useEffect, useRef, useState } from "react";
 import { useAnomalyVerify } from "./useAnomalyVerify";
 import { useDeviceStore } from "../../stores/deviceStore";
 import { useCameraSession } from "../devices/useCameraSession";
+import { CameraStreamView } from "../cameras/CameraStreamView";
 import { useToast } from "../../components/useToast";
 import { verifyAnomaly, dismissAnomaly } from "../../api/anomalyApi";
-import type { CameraInfo } from "../../types/domain";
 
 const FOCUSABLE_SELECTOR = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
-
-const CAMERA_STATUS_LABEL: Record<CameraInfo["status"], string> = {
-  idle: "Idle",
-  connecting: "Connecting…",
-  live: "Live",
-  offline: "Offline",
-  error: "Error",
-};
-
-/** Single fixed camera view -- deliberately not CameraGrid/CameraFocusView:
- * this window shows exactly one camera, no grid-of-many or click-to-focus
- * interaction, since verifying an anomaly only ever needs "the" relevant
- * feed, not a browsing experience. */
-function SingleCameraView({ camera }: { camera: CameraInfo | null }) {
-  if (!camera) {
-    return (
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "#868e96", fontSize: 14 }}>
-        No camera available for this device.
-      </div>
-    );
-  }
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", gap: 8 }}>
-      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", background: "#111317", borderRadius: 8, color: "#fff" }}>
-        {camera.status === "live" ? (
-          <span style={{ fontSize: 48 }}>🎥</span>
-        ) : camera.status === "connecting" ? (
-          <div
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: "50%",
-              border: "3px solid rgba(255,255,255,0.2)",
-              borderTopColor: "#fff",
-              animation: "camera-tile-spin 0.8s linear infinite",
-            }}
-          />
-        ) : (
-          <span style={{ fontSize: 32 }}>{camera.status === "error" ? "⚠" : "📴"}</span>
-        )}
-      </div>
-      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "#adb5bd" }}>
-        <span>{camera.name}</span>
-        <span>{CAMERA_STATUS_LABEL[camera.status]}</span>
-      </div>
-    </div>
-  );
-}
 
 /** Standalone verify/dismiss window for an anomaly the robot has arrived
  * at -- deliberately separate from DeviceInspectorOverlay (general device/
@@ -77,7 +28,7 @@ export function AnomalyVerifyModal() {
   // stationary sensor's. Single-robot system, same assumption the backend's
   // get_connected_robot() makes.
   const robotDeviceId = useDeviceStore((s) => Object.values(s.devices).find((d) => d.type === "robot")?.deviceId ?? null);
-  const { cameras, error } = useCameraSession(robotDeviceId, true);
+  const { cameras, streams, error } = useCameraSession(robotDeviceId, true);
   const { show } = useToast();
   const [pending, setPending] = useState<"verify" | "dismiss" | null>(null);
 
@@ -174,7 +125,10 @@ export function AnomalyVerifyModal() {
           {error ? (
             <div style={{ color: "#ff8787", fontSize: 13 }}>{error}</div>
           ) : (
-            <SingleCameraView camera={cameras[0] ?? null} />
+            <CameraStreamView
+              camera={cameras[0] ?? null}
+              stream={cameras[0] ? (streams[cameras[0].id] ?? null) : null}
+            />
           )}
         </div>
         <div style={{ padding: 16, borderTop: "1px solid #343a40", display: "flex", justifyContent: "flex-end", gap: 8 }}>

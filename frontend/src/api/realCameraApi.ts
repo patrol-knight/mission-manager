@@ -1,23 +1,88 @@
-/* eslint-disable @typescript-eslint/no-unused-vars -- signature matches CameraApiImpl;
-   hasCameraCapability/onUpdate/sessionId will be used once real WebRTC signaling lands. */
-import { http } from "./httpClient";
+import { startWebrtcSession, type WebrtcSession } from "./webrtcClient";
+import { useDeviceStore } from "../stores/deviceStore";
 import type { CameraInfo } from "../types/domain";
 import type { InspectionSession } from "./cameraApi";
 
+interface ActiveSession {
+  session: WebrtcSession;
+  unsubscribeStore: () => void;
+}
+
+const activeSessions = new Map<string, ActiveSession>();
+
+function toCameraInfo(deviceId: string): CameraInfo | null {
+  const camera = useDeviceStore.getState().cameras[deviceId];
+  return camera ? { id: camera.cameraId, name: camera.cameraId, status: camera.streamState } : null;
+}
+
+/** One camera per device (see the design doc's scope note) -- resolves
+ * immediately if the device's camera_id/stream_state is already known
+ * (populated by `cameras.snapshot` on WS connect, or a prior camera.updated),
+ * otherwise waits for the next store update carrying it. */
+function waitForCameraId(deviceId: string): Promise<string | null> {
+  const existing = useDeviceStore.getState().cameras[deviceId];
+  if (existing) return Promise.resolve(existing.cameraId);
+
+  return new Promise((resolve) => {
+    const unsubscribe = useDeviceStore.subscribe((state) => {
+      const camera = state.cameras[deviceId];
+      if (camera) {
+        unsubscribe();
+        clearTimeout(timeout);
+        resolve(camera.cameraId);
+      }
+    });
+    const timeout = setTimeout(() => {
+      unsubscribe();
+      resolve(null);
+    }, 5_000);
+  });
+}
+
 /**
- * Real adapter — calls the actual backend endpoint and lets whatever it returns
- * (currently a 501, since backend/api/camera.py is a stub) surface as a normal
- * error. Never falls back to the mock automatically; CAMERA_MODE selects this
- * adapter explicitly (see cameraConfig.ts).
+ * Real adapter -- opens an actual WebRTC session against the device's
+ * zenoh_bridge gateway (see api/webrtcClient.ts). `openInspectionSession`
+ * reads the device's one camera from the already-synced deviceStore rather
+ * than making a network call (no separate "enumerate cameras" round trip,
+ * per ../../zenoh_bridge/docs/video_streaming_pipeline.md §3).
  */
 export async function openInspectionSession(
   deviceId: string,
-  _hasCameraCapability: boolean,
-  _onUpdate: (cameras: CameraInfo[]) => void,
+  hasCameraCapability: boolean,
+  onUpdate: (cameras: CameraInfo[]) => void,
+  onStream: (cameraId: string, stream: MediaStream | null) => void,
 ): Promise<InspectionSession> {
-  return http.post<InspectionSession>(`/api/cameras/${encodeURIComponent(deviceId)}/session`);
+  if (!hasCameraCapability) return { sessionId: "", cameras: [] };
+
+  const cameraId = await waitForCameraId(deviceId);
+  if (!cameraId) return { sessionId: "", cameras: [] };
+
+  const unsubscribeStore = useDeviceStore.subscribe(() => {
+    const info = toCameraInfo(deviceId);
+    onUpdate(info ? [info] : []);
+  });
+
+  let session: WebrtcSession;
+  try {
+    session = await startWebrtcSession(deviceId, cameraId, {
+      onTrack: (stream) => onStream(cameraId, stream),
+    });
+  } catch (err) {
+    unsubscribeStore();
+    throw err;
+  }
+
+  activeSessions.set(session.sessionId, { session, unsubscribeStore });
+
+  const info = toCameraInfo(deviceId);
+  return { sessionId: session.sessionId, cameras: info ? [info] : [] };
 }
 
-export async function closeInspectionSession(_sessionId: string): Promise<void> {
-  // No corresponding "end session" endpoint exists on the backend yet.
+export async function closeInspectionSession(sessionId: string): Promise<void> {
+  if (!sessionId) return;
+  const active = activeSessions.get(sessionId);
+  if (!active) return;
+  activeSessions.delete(sessionId);
+  active.unsubscribeStore();
+  await active.session.stop();
 }

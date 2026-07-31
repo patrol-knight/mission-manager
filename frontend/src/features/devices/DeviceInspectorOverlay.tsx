@@ -15,8 +15,19 @@ const FOCUSABLE_SELECTOR = 'button, [href], input, select, textarea, [tabindex]:
 export function DeviceInspectorOverlay() {
   const { inspectorOpen, selectedDeviceId, selectedCameraId, closeInspector, focusCamera } = useDeviceInspector();
   const device = useDeviceStore((s) => (selectedDeviceId ? s.devices[selectedDeviceId] : undefined));
-  const hasCameraCapability = device?.capabilities.includes("camera") ?? false;
-  const { cameras, error } = useCameraSession(inspectorOpen ? (selectedDeviceId ?? null) : null, hasCameraCapability);
+  const hasKnownCamera = useDeviceStore((s) => (selectedDeviceId ? Boolean(s.cameras[selectedDeviceId]) : false));
+  // zenoh_bridge doesn't actually populate DeviceState.capabilities today (no
+  // field on the ROS message, nothing derives "camera" from a configured
+  // camera before relaying to Zenoh -- see gateway_msgs/msg/DeviceState.msg
+  // and ros_state_relay.cpp), so capabilities alone would never gate this
+  // camera session open for a real device. The cameras store slice (fed by
+  // the separate camera-state relay) is a more reliable signal -- fall back
+  // to it whenever capabilities hasn't caught up.
+  const hasCameraCapability = (device?.capabilities.includes("camera") ?? false) || hasKnownCamera;
+  const { cameras, streams, error } = useCameraSession(
+    inspectorOpen ? (selectedDeviceId ?? null) : null,
+    hasCameraCapability,
+  );
   const { status: wsStatus } = useApiConnection();
 
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -127,9 +138,13 @@ export function DeviceInspectorOverlay() {
             {error ? (
               <div style={{ color: "#ff8787", fontSize: 13 }}>{error}</div>
             ) : focusedCamera ? (
-              <CameraFocusView camera={focusedCamera} onBack={() => focusCamera(null)} />
+              <CameraFocusView
+                camera={focusedCamera}
+                stream={streams[focusedCamera.id] ?? null}
+                onBack={() => focusCamera(null)}
+              />
             ) : (
-              <CameraGrid cameras={cameras} onFocusCamera={focusCamera} />
+              <CameraGrid cameras={cameras} streams={streams} onFocusCamera={focusCamera} />
             )}
           </div>
           <div style={{ flex: 1, display: "flex", flexDirection: "column", borderLeft: "1px solid #343a40", minWidth: 220 }}>

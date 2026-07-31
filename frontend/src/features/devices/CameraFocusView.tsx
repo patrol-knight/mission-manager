@@ -3,10 +3,11 @@ import { CameraTile } from "./CameraTile";
 
 interface CameraFocusViewProps {
   camera: CameraInfo;
+  stream: MediaStream | null;
   onBack: () => void;
 }
 
-export function CameraFocusView({ camera, onBack }: CameraFocusViewProps) {
+export function CameraFocusView({ camera, stream, onBack }: CameraFocusViewProps) {
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", gap: 8 }}>
       <button
@@ -25,7 +26,7 @@ export function CameraFocusView({ camera, onBack }: CameraFocusViewProps) {
         ← Back to all cameras
       </button>
       <div style={{ flex: 1 }}>
-        <CameraTile camera={camera} onFocus={onBack} />
+        <CameraTile camera={camera} stream={stream} onFocus={onBack} />
       </div>
     </div>
   );

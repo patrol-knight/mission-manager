@@ -13,6 +13,8 @@ export async function openInspectionSession(
   deviceId: string,
   hasCameraCapability: boolean,
   onUpdate: (cameras: CameraInfo[]) => void,
+  // Mock never produces a real MediaStream -- signature still matches CameraApiImpl.
+  _onStream: (cameraId: string, stream: MediaStream | null) => void,
 ): Promise<InspectionSession> {
   const sessionId = `mock-session-${deviceId}-${Date.now()}`;
   if (!hasCameraCapability) return { sessionId, cameras: [] };
