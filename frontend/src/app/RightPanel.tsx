@@ -2,6 +2,7 @@ import { MissionStatusPanel } from "../features/missions/MissionStatusPanel";
 import { MissionLibraryPanel } from "../features/missions/MissionLibraryPanel";
 import { MissionEditorPanel } from "../features/missions/MissionEditorPanel";
 import { DeviceConnectivityPanel } from "../features/devices/DeviceConnectivityPanel";
+import { TopBar } from "./TopBar";
 
 interface RightPanelProps {
   view: "monitor" | "library" | "editor";
@@ -34,6 +35,7 @@ export function RightPanel({
         flexShrink: 0,
       }}
     >
+      <TopBar />
       {view === "monitor" ? (
         <>
           <MissionStatusPanel onOpenLibrary={onOpenLibrary} />

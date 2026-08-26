@@ -22,6 +22,17 @@ const primary: CSSProperties = { ...buttonStyle, background: "#1c7ed6", color: "
 const danger: CSSProperties = { ...buttonStyle, background: "#fff", color: "#dc3545", border: "1px solid #f5c6cb" };
 const neutral: CSSProperties = { ...buttonStyle, background: "#fff", color: "#212529", border: "1px solid #dee2e6" };
 
+const disabledStyle: CSSProperties = {
+  opacity: 0.5,
+  cursor: "not-allowed",
+  background: "#adb5bd",
+  color: "#f1f3f5",
+};
+
+function withDisabled(style: CSSProperties, disabled: boolean): CSSProperties {
+  return disabled ? { ...style, ...disabledStyle } : style;
+}
+
 /** Renders the Start/Pause/Resume/Stop controls for whatever the current
  * execution status is. Only mission controls — Edit/New Mission entry lives
  * in MissionStatusPanel since it's available in more statuses than these are. */
@@ -57,7 +68,7 @@ export function MissionControls() {
         <button
           disabled={pending || !hasConnectedRobot}
           onClick={() => run(startMission, "Start")}
-          style={primary}
+          style={withDisabled(primary, pending || !hasConnectedRobot)}
           title={startTitle}
         >
           Start Mission
@@ -67,10 +78,10 @@ export function MissionControls() {
     case "running":
       return (
         <div style={{ display: "flex", gap: 8 }}>
-          <button disabled={pending} onClick={() => run(pauseMission, "Pause")} style={neutral}>
+          <button disabled={pending} onClick={() => run(pauseMission, "Pause")} style={withDisabled(neutral, pending)}>
             Pause
           </button>
-          <button disabled={pending} onClick={() => run(stopMission, "Stop")} style={danger}>
+          <button disabled={pending} onClick={() => run(stopMission, "Stop")} style={withDisabled(danger, pending)}>
             Stop
           </button>
         </div>
@@ -79,10 +90,10 @@ export function MissionControls() {
     case "paused":
       return (
         <div style={{ display: "flex", gap: 8 }}>
-          <button disabled={pending} onClick={() => run(resumeMission, "Resume")} style={primary}>
+          <button disabled={pending} onClick={() => run(resumeMission, "Resume")} style={withDisabled(primary, pending)}>
             Resume
           </button>
-          <button disabled={pending} onClick={() => run(stopMission, "Stop")} style={danger}>
+          <button disabled={pending} onClick={() => run(stopMission, "Stop")} style={withDisabled(danger, pending)}>
             Stop
           </button>
         </div>
@@ -97,7 +108,7 @@ export function MissionControls() {
           <p style={{ margin: 0, fontSize: 13, color: "#6c757d" }}>
             Robot is investigating an anomaly. Pause/Resume disabled.
           </p>
-          <button disabled={pending} onClick={() => run(stopMission, "Stop")} style={danger}>
+          <button disabled={pending} onClick={() => run(stopMission, "Stop")} style={withDisabled(danger, pending)}>
             Stop
           </button>
         </div>
@@ -113,7 +124,7 @@ export function MissionControls() {
         <button
           disabled={pending || !hasConnectedRobot}
           onClick={() => run(startMission, "Start")}
-          style={primary}
+          style={withDisabled(primary, pending || !hasConnectedRobot)}
           title={startTitle}
         >
           Start Mission

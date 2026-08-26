@@ -1,5 +1,4 @@
 import { useRef, useState } from "react";
-import { TopBar } from "./TopBar";
 import { RightPanel } from "./RightPanel";
 import { useRealtimeSubscription } from "../hooks/useRealtimeSubscription";
 import { useMapInstance } from "../features/map/useMapInstance";
@@ -33,7 +32,6 @@ export function AppShell() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh", width: "100vw" }}>
-      <TopBar />
       <MapContext.Provider value={{ map, ready }}>
         <MissionEditorProvider>
           <DeviceInspectorProvider>

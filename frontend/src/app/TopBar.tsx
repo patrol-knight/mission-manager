@@ -10,9 +10,8 @@ export function TopBar() {
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
-        padding: "12px 20px",
-        background: "linear-gradient(180deg, #f8f9fa 0%, #e9ecef 100%)",
-        boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+        paddingBottom: 12,
+        borderBottom: "1px solid #dee2e6",
         flexShrink: 0,
       }}
     >
