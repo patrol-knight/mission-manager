@@ -15,11 +15,11 @@ from models.anomaly import Anomaly
 from models.camera import CameraState, WebRtcSignal
 from models.device import DeviceState
 
-# Matches mission-manager/devices/{device_id}/cameras/{camera_id}/webrtc/to-backend --
+# Matches devices/{device_id}/cameras/{camera_id}/webrtc/to-backend --
 # WebRtcSignalPayload's own JSON body carries only session_id/type/sdp/candidate, so
 # device_id/camera_id have to come from the sample's key expression itself.
 _CAMERA_SIGNAL_KEY_RE = re.compile(
-    r"^mission-manager/devices/(?P<device_id>[^/]+)/cameras/(?P<camera_id>[^/]+)/webrtc/to-backend$"
+    r"^devices/(?P<device_id>[^/]+)/cameras/(?P<camera_id>[^/]+)/webrtc/to-backend$"
 )
 
 if TYPE_CHECKING:
@@ -225,10 +225,10 @@ class ZenohGateway:
         return changed
 
     def ingest_anomaly_payload(self, payload: bytes | str | dict) -> bool:
-        """Lets a real (or simulated -- see backend/tools/anomaly_simulator.py)
-        anomaly-detection service publish anomalies via Zenoh, same
-        conditional-broadcast pattern as device state. Expects the same JSON
-        shape as `Anomaly.model_dump(mode="json")` (see models/anomaly.py)."""
+        """Lets the anomaly-detection service (../anomaly_detection) publish
+        anomalies via Zenoh, same conditional-broadcast pattern as device
+        state. Expects the same JSON shape as
+        `Anomaly.model_dump(mode="json")` (see models/anomaly.py)."""
         try:
             anomaly = Anomaly(**self._decode_json_payload(payload))
         except Exception as exc:

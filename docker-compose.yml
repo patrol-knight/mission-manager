@@ -63,7 +63,7 @@ services:
       # and connected to the same zenohd. Set to true in a root .env once one is.
       - ZENOH_ENABLED=${ZENOH_ENABLED:-false}
       - ZENOH_ROUTER=${ZENOH_ROUTER:-tcp/zenohd:7447}
-      - ZENOH_DEVICE_STATE_KEYEXPR=mission-manager/devices/*/state
+      - ZENOH_DEVICE_STATE_KEYEXPR=devices/*/state
       - DATABASE_URL=postgresql://${POSTGRES_USER:-mission_manager}:${POSTGRES_PASSWORD:-mission_manager}@postgres:5432/${POSTGRES_DB:-mission_manager}
     volumes:
       # Whole storage/ dir, read-write, persisted on the host -- missions and

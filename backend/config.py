@@ -32,21 +32,21 @@ class Settings(BaseSettings):
 
     zenoh_enabled: bool = False
     zenoh_router: str = "tcp/localhost:7447"
-    zenoh_device_state_keyexpr: str = "mission-manager/devices/*/state"
-    zenoh_anomaly_keyexpr: str = "mission-manager/anomalies/*/state"
+    zenoh_device_state_keyexpr: str = "devices/*/state"
+    zenoh_anomaly_keyexpr: str = "anomalies/*/state"
     # Outbound: {device_id} is substituted by ZenohGateway.publish_command().
-    zenoh_device_commands_keyexpr: str = "mission-manager/devices/{device_id}/commands"
+    zenoh_device_commands_keyexpr: str = "devices/{device_id}/commands"
 
     # Video streaming (see ../zenoh_bridge/docs/video_streaming_pipeline.md).
     # start_camera_stream/stop_camera_stream commands ride the existing
     # zenoh_device_commands_keyexpr above -- no separate outbound key needed.
-    zenoh_camera_state_keyexpr: str = "mission-manager/devices/*/cameras/*/state"
+    zenoh_camera_state_keyexpr: str = "devices/*/cameras/*/state"
     zenoh_camera_webrtc_to_backend_keyexpr: str = (
-        "mission-manager/devices/*/cameras/*/webrtc/to-backend"
+        "devices/*/cameras/*/webrtc/to-backend"
     )
     # Outbound: {device_id}/{camera_id} substituted by ZenohGateway.publish_camera_signal().
     zenoh_camera_webrtc_to_device_keyexpr: str = (
-        "mission-manager/devices/{device_id}/cameras/{camera_id}/webrtc/to-device"
+        "devices/{device_id}/cameras/{camera_id}/webrtc/to-device"
     )
 
     # AnomalyResponseCoordinator (core/anomaly_response.py) -- kill switch.

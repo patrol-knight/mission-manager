@@ -7,7 +7,7 @@ CameraStreamStatus = Literal["idle", "connecting", "live", "no_signal", "offline
 
 class CameraState(BaseModel):
     """Mirrors zenoh_bridge's CameraStatePayload (contract/types.hpp), published on
-    mission-manager/devices/{device_id}/cameras/{camera_id}/state."""
+    devices/{device_id}/cameras/{camera_id}/state."""
 
     model_config = ConfigDict(extra="forbid")
 
