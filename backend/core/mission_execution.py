@@ -129,9 +129,9 @@ class MissionExecutionManager:
         """Allowed from INVESTIGATING as well as RUNNING/PAUSED -- Stop is
         the one control that stays available during a robot diversion, an
         escape hatch given there's no automatic timeout on one (see
-        core/anomaly_response.py). AnomalyResponseCoordinator.abort_if_active()
+        core/anomaly_response.py). AnomalyResponseCoordinator.end_run()
         (called from the API layer right after this) tears down whatever
-        diversion bookkeeping was in flight."""
+        diversion bookkeeping was in flight and clears the anomaly queue."""
         with self._lock:
             state = self._require_state()
             if state.status not in (MissionStatus.RUNNING, MissionStatus.PAUSED, MissionStatus.INVESTIGATING):

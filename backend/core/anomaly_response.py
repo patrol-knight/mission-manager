@@ -1,6 +1,7 @@
 import logging
 import math
 import threading
+from collections import deque
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
@@ -23,6 +24,11 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# The statuses that make up one mission run, from Start until Stop/switch/
+# completion. Only anomalies detected during a run are investigated by it --
+# see on_anomaly_detected(), begin_run() and end_run().
+_RUN_STATUSES = (MissionStatus.RUNNING, MissionStatus.INVESTIGATING, MissionStatus.PAUSED)
+
 
 @dataclass
 class _ActiveDiversion:
@@ -31,8 +37,6 @@ class _ActiveDiversion:
     robot_device_id: str
     phase: DiversionPhase
     anomaly_target_xy: tuple[float, float]
-    target_waypoint_id: str
-    target_waypoint_xy: tuple[float, float]
     started_payload: dict
     # The tracked robot's own DeviceState.timestamp at the moment the
     # current leg's navigate_to_goal was issued -- an "arrived" sample only
@@ -46,6 +50,11 @@ class _ActiveDiversion:
     # silently advancing this phase past OUTBOUND/RETURNING before the
     # robot has moved at all, so the real arrival later is never recognized.
     issued_after_timestamp: float
+    # Set only once the RETURNING leg starts (see resolve()): the mission
+    # waypoint the robot is heading back to, chosen as the one closest to
+    # the last investigated anomaly by lanelet route distance.
+    return_waypoint_index: int | None = None
+    return_waypoint_xy: tuple[float, float] | None = None
     returning_payload: dict | None = None
 
 
@@ -63,14 +72,27 @@ ARRIVAL_POSITION_TOLERANCE_M = 2.0
 
 class AnomalyResponseCoordinator:
     """Drives the anomaly -> robot-diverts -> operator-resolves -> robot-
-    returns workflow. Single active diversion at a time, same "one current
-    mission" precedent as MissionExecutionManager -- a second anomaly while
-    one is in flight is still recorded (visible on the map) but doesn't
-    trigger a new diversion (known limitation, not a bug).
+    returns workflow, over a FIFO queue of anomalies awaiting investigation.
+
+    The queue belongs to the current mission run: only anomalies detected
+    while one is in progress (RUNNING/INVESTIGATING/PAUSED) are queued, and
+    it's cleared whenever a run starts or ends (begin_run()/end_run()) --
+    an anomaly detected outside a run is only recorded (visible on the map
+    as DETECTED), never investigated.
+
+    Every anomaly detected during a run is appended to the queue. Whenever the
+    queue is non-empty and the mission is RUNNING, the robot diverts to the
+    head of the queue (the mission enters INVESTIGATING). Once the operator
+    verifies/dismisses it, the robot goes straight on to the next queued
+    anomaly if there is one; only when the queue is empty does it return to
+    the mission, at the waypoint closest to where it is by lanelet route
+    distance (see _closest_waypoint). An anomaly detected during that
+    return leg interrupts it the same way. Anomalies detected while PAUSED
+    wait in the queue until the mission is resumed (see dispatch_pending).
 
     Sends the robot a `navigate_to_goal` command (see ZenohGateway.
-    publish_command) for both the outbound (to the anomaly) and return
-    (back to the mission) legs, then waits for the tracked robot's own
+    publish_command) for each outbound (to an anomaly) and return (back to
+    the mission) leg, then waits for the tracked robot's own
     reported arrival (DeviceState.status.operational_state == "arrived",
     delivered via on_device_state()) -- the robot (dummy_robot today, a
     real onboard nav stack later) plans its own path there, this class
@@ -122,6 +144,7 @@ class AnomalyResponseCoordinator:
 
         self._lock = threading.RLock()
         self._active: _ActiveDiversion | None = None
+        self._queue: deque[str] = deque()
         self._next_token = 0
 
     def bind_mission_drive(self, mission_drive_coordinator: "MissionDriveCoordinator") -> None:
@@ -137,89 +160,120 @@ class AnomalyResponseCoordinator:
 
     def on_anomaly_detected(self, anomaly: Anomaly) -> None:
         """Call once per newly-created anomaly (not on re-published updates
-        to an already-known one) -- see zenoh_gateway.py's is_new gate."""
+        to an already-known one) -- see zenoh_gateway.py's is_new gate.
+        Queues it if a mission run is in progress, then starts
+        investigating right away if nothing else is holding the robot."""
+        if not self._settings.anomaly_response_enabled:
+            return
+
+        exec_state = self._mission_execution_manager.get_state()
+        if exec_state is None or exec_state.status not in _RUN_STATUSES:
+            logger.info("Anomaly %s detected outside a mission run; not queued", anomaly.anomaly_id)
+            return
+
+        with self._lock:
+            active_id = self._active.anomaly_id if self._active is not None else None
+            if anomaly.anomaly_id in self._queue or anomaly.anomaly_id == active_id:
+                return
+            self._queue.append(anomaly.anomaly_id)
+            logger.info("Anomaly %s queued for investigation (%d in queue)", anomaly.anomaly_id, len(self._queue))
+
+        self.dispatch_pending()
+
+    def dispatch_pending(self) -> None:
+        """Starts investigating the head of the queue if the robot is free
+        to: the mission is RUNNING (or INVESTIGATING but only returning to
+        the mission, which a queued anomaly interrupts). Always safe to
+        call speculatively -- a no-op whenever the queue is empty or the
+        preconditions don't hold. Called on every new anomaly, after
+        resume() (api/mission_execution.py), and whenever the robot
+        reports state with no diversion active (so a queue left waiting on
+        a disconnected robot picks back up once it reconnects)."""
         if not self._settings.anomaly_response_enabled:
             return
 
         with self._lock:
-            if self._active is not None:
-                logger.info(
-                    "Anomaly %s detected while already responding to %s; ignoring",
-                    anomaly.anomaly_id, self._active.anomaly_id,
-                )
+            if not self._queue:
                 return
+            active = self._active
+            if active is not None and active.phase != DiversionPhase.RETURNING:
+                return  # already investigating; the queue waits its turn
 
             exec_state = self._mission_execution_manager.get_state()
-            if exec_state is None or exec_state.status != MissionStatus.RUNNING:
-                logger.info("Anomaly %s detected but no RUNNING mission; not diverting", anomaly.anomaly_id)
+            if exec_state is None:
+                return
+            if active is None and exec_state.status != MissionStatus.RUNNING:
+                return
+            if active is not None and exec_state.status != MissionStatus.INVESTIGATING:
                 return
 
             robot = self._device_registry.get_connected_robot()
-            if robot is None:
-                logger.info("Anomaly %s detected but no connected robot; not diverting", anomaly.anomaly_id)
+            if robot is None or not self._map_server.is_available():
                 return
 
-            mission = self._mission_server.get_mission(exec_state.mission_id)
-            if mission is None or not mission.waypoints:
-                logger.info(
-                    "Anomaly %s detected but current mission has no waypoints; not diverting", anomaly.anomaly_id
-                )
-                return
-            # current_waypoint_index tracks the LAST-REACHED waypoint (see
-            # MissionExecutionManager.record_waypoint_reached) -- the next
-            # target is the following one, wrapping around the loop.
-            target_wp = mission.waypoints[(exec_state.current_waypoint_index + 1) % len(mission.waypoints)]
+            started = self._start_next_outbound(robot, exec_state.mission_id, enter_investigating=active is None)
 
-            if not self._map_server.is_available():
-                logger.info("Anomaly %s detected but map service unavailable; not diverting", anomaly.anomaly_id)
-                return
+        if started is not None:
+            self._announce_outbound(*started)
+
+    def _start_next_outbound(
+        self, robot: DeviceView, mission_id: str, *, enter_investigating: bool
+    ) -> tuple[Anomaly, DeviceView, str, int, dict] | None:
+        """Must be called with self._lock held. Pops queued anomalies until
+        one is routable, and makes it the active OUTBOUND diversion.
+        Returns what _announce_outbound() needs (to run outside the lock),
+        or None if nothing could be started."""
+        while self._queue:
+            anomaly_id = self._queue[0]
+            anomaly = self._anomaly_registry.get(anomaly_id)
+            if anomaly is None or anomaly.status != AnomalyStatus.DETECTED:
+                self._queue.popleft()  # resolved or gone in the meantime
+                continue
 
             target_point = self._map_server.snap_to_lanelet(anomaly.x, anomaly.y, anomaly.frame_id)
             route = self._map_server.get_route(
                 [{"x": robot.pose.x, "y": robot.pose.y}, {"x": target_point.x, "y": target_point.y}]
             )
             if route is None:
-                logger.info(
-                    "Anomaly %s detected but no route from robot to anomaly; not diverting", anomaly.anomaly_id
-                )
-                return
+                # Left at DETECTED, but no longer queued -- retrying it
+                # would block every anomaly behind it on the same failure.
+                self._queue.popleft()
+                logger.warning("Anomaly %s: no route from robot to anomaly; dropped from queue", anomaly_id)
+                continue
 
-            # Authoritative commit gate, re-checked as late as possible: the
-            # map/route lookups just above don't hold this lock, so a
-            # pause()/stop() could have landed in the meantime and already
-            # moved the mission off RUNNING. enter_investigating() re-checks
-            # status atomically under MissionExecutionManager's own lock and
-            # returns None if it's no longer RUNNING -- if so, back out
-            # entirely rather than starting a diversion against a mission
-            # that isn't running anymore.
-            if self._mission_execution_manager.enter_investigating() is None:
-                logger.info(
-                    "Anomaly %s: mission status changed before diversion could start; not diverting",
-                    anomaly.anomaly_id,
-                )
-                return
+            # Authoritative commit gate, re-checked as late as possible:
+            # enter_investigating() re-checks status atomically under
+            # MissionExecutionManager's own lock and returns None if it's no
+            # longer RUNNING (a pause()/stop() won the race) -- if so, leave
+            # the anomaly queued and back out.
+            if enter_investigating and self._mission_execution_manager.enter_investigating() is None:
+                logger.info("Anomaly %s: mission status changed before diversion could start", anomaly_id)
+                return None
 
+            self._queue.popleft()
             token = self._next_token = self._next_token + 1
-            started = DiversionStarted(
-                anomaly_id=anomaly.anomaly_id,
+            started_payload = DiversionStarted(
+                anomaly_id=anomaly_id,
                 robot_device_id=robot.device_id,
                 route=route,
                 target=target_point,
                 started_at=datetime.now(timezone.utc),
-            )
-            started_payload = started.model_dump(mode="json")
+            ).model_dump(mode="json")
             self._active = _ActiveDiversion(
                 token=token,
-                anomaly_id=anomaly.anomaly_id,
+                anomaly_id=anomaly_id,
                 robot_device_id=robot.device_id,
                 phase=DiversionPhase.OUTBOUND,
                 anomaly_target_xy=(target_point.x, target_point.y),
-                target_waypoint_id=target_wp.waypoint_id,
-                target_waypoint_xy=(target_wp.x, target_wp.y),
                 started_payload=started_payload,
                 issued_after_timestamp=robot.timestamp,
             )
+            return anomaly, robot, mission_id, token, started_payload
+        return None
 
+    def _announce_outbound(
+        self, anomaly: Anomaly, robot: DeviceView, mission_id: str, token: int, started_payload: dict
+    ) -> None:
         # This diversion now owns the robot -- release any mission-driven
         # waypoint goal in flight (it was just physically superseded by the
         # navigate_to_goal command below, but MissionDriveCoordinator's own
@@ -227,17 +281,18 @@ class AnomalyResponseCoordinator:
         if self._mission_drive_coordinator is not None:
             self._mission_drive_coordinator.abort()
 
-        self._anomaly_registry.record_mission_context(anomaly.anomaly_id, exec_state.mission_id)
+        self._anomaly_registry.record_mission_context(anomaly.anomaly_id, mission_id)
         updated = self._anomaly_registry.update_status(anomaly.anomaly_id, AnomalyStatus.ROBOT_EN_ROUTE)
         self._websocket_manager.broadcast_threadsafe(
             {"type": "anomaly.updated", "data": updated.model_dump(mode="json")}
         )
         self._websocket_manager.broadcast_threadsafe({"type": "anomaly.diversion.started", "data": started_payload})
 
+        target = started_payload["target"]
         sent = self._zenoh_gateway.publish_command(
             robot.device_id, "navigate_to_goal",
             request_id=f"anomaly-{anomaly.anomaly_id}-outbound-{token}",
-            fields={"x": target_point.x, "y": target_point.y, "frame_id": target_point.frame_id},
+            fields={"x": target["x"], "y": target["y"], "frame_id": target["frame_id"]},
         )
         if not sent:
             logger.warning("Anomaly %s: failed to publish navigate_to_goal command", anomaly.anomaly_id)
@@ -248,6 +303,13 @@ class AnomalyResponseCoordinator:
         """Called by ZenohGateway for every meaningfully-changed device
         state -- a cheap no-op unless this device is the one an active
         diversion is waiting on."""
+        with self._lock:
+            active = self._active
+            idle_with_queue = active is None and bool(self._queue)
+        if idle_with_queue:
+            self.dispatch_pending()
+            return
+
         with self._lock:
             active = self._active
             if active is None or active.robot_device_id != view.device_id:
@@ -264,7 +326,7 @@ class AnomalyResponseCoordinator:
             # only acts on OUTBOUND/RETURNING).
             if phase in (DiversionPhase.OUTBOUND, DiversionPhase.RETURNING):
                 target_x, target_y = (
-                    active.anomaly_target_xy if phase == DiversionPhase.OUTBOUND else active.target_waypoint_xy
+                    active.anomaly_target_xy if phase == DiversionPhase.OUTBOUND else active.return_waypoint_xy
                 )
                 distance = math.hypot(view.pose.x - target_x, view.pose.y - target_y)
                 if distance > ARRIVAL_POSITION_TOLERANCE_M:
@@ -304,55 +366,43 @@ class AnomalyResponseCoordinator:
         with self._lock:
             if self._active is None or self._active.token != token or self._active.phase != DiversionPhase.RETURNING:
                 return
+            waypoint_index = self._active.return_waypoint_index
             self._active = None
         self._websocket_manager.broadcast_threadsafe(
             {"type": "anomaly.diversion.cleared", "data": {"anomaly_id": anomaly_id, "reason": "return_complete"}}
         )
         logger.info("Anomaly %s: diversion cleared (return_complete)", anomaly_id)
-        self._end_diversion()
+        self._end_diversion(reached_waypoint_index=waypoint_index)
 
     def resolve(self, anomaly_id: str) -> None:
         """Call after verify() or dismiss() succeeds -- both resolve an
-        anomaly identically (see anomaly_registry._resolve's docstring)."""
+        anomaly identically (see anomaly_registry._resolve's docstring).
+        Moves on to the next queued anomaly if there is one; otherwise
+        heads back to the mission."""
         with self._lock:
             active = self._active
             if active is None or active.anomaly_id != anomaly_id or active.phase != DiversionPhase.AWAITING_RESOLUTION:
                 logger.info("Anomaly %s resolved but no matching in-flight diversion; no-op", anomaly_id)
                 return
 
-            route = None
-            if self._map_server.is_available():
-                tx, ty = active.anomaly_target_xy
-                wx, wy = active.target_waypoint_xy
-                route = self._map_server.get_route([{"x": tx, "y": ty}, {"x": wx, "y": wy}])
-
-            if route is None:
+            robot = self._device_registry.get(active.robot_device_id)
+            exec_state = self._mission_execution_manager.get_state()
+            next_started = None
+            if self._queue and robot is not None and robot.connected and exec_state is not None:
                 self._active = None
-            else:
-                returning = DiversionReturning(
-                    anomaly_id=anomaly_id,
-                    robot_device_id=active.robot_device_id,
-                    route=route,
-                    target_waypoint_id=active.target_waypoint_id,
-                    started_at=datetime.now(timezone.utc),
-                )
-                returning_payload = returning.model_dump(mode="json")
-                active.phase = DiversionPhase.RETURNING
-                active.returning_payload = returning_payload
-                # Same staleness guard as the outbound leg (see
-                # _ActiveDiversion.issued_after_timestamp) -- otherwise a
-                # stale "arrived" sample left over from reaching the
-                # anomaly (the outbound leg's own destination) would
-                # immediately satisfy the return leg too, before the robot
-                # has moved at all.
-                current_view = self._device_registry.get(active.robot_device_id)
-                if current_view is not None:
-                    active.issued_after_timestamp = current_view.timestamp
-                token = active.token
-                robot_device_id = active.robot_device_id
-                wx, wy = active.target_waypoint_xy
+                next_started = self._start_next_outbound(robot, exec_state.mission_id, enter_investigating=False)
+                if next_started is None:
+                    self._active = active  # nothing routable left; fall through to the return leg
 
-        if route is None:
+            if next_started is None:
+                returning = self._start_return(active, exec_state.mission_id if exec_state else None)
+
+        if next_started is not None:
+            logger.info("Anomaly %s resolved; moving on to the next queued anomaly", anomaly_id)
+            self._announce_outbound(*next_started)
+            return
+
+        if returning is None:
             self._websocket_manager.broadcast_threadsafe(
                 {"type": "anomaly.diversion.cleared", "data": {"anomaly_id": anomaly_id, "reason": "return_route_unavailable"}}
             )
@@ -360,6 +410,7 @@ class AnomalyResponseCoordinator:
             self._end_diversion()
             return
 
+        robot_device_id, token, returning_payload, (wx, wy) = returning
         self._websocket_manager.broadcast_threadsafe({"type": "anomaly.diversion.returning", "data": returning_payload})
 
         sent = self._zenoh_gateway.publish_command(
@@ -372,16 +423,93 @@ class AnomalyResponseCoordinator:
 
         logger.info("Anomaly %s: robot returning to mission", anomaly_id)
 
+    def _start_return(
+        self, active: _ActiveDiversion, mission_id: str | None
+    ) -> tuple[str, int, dict, tuple[float, float]] | None:
+        """Must be called with self._lock held. Switches `active` to the
+        RETURNING leg, toward the mission waypoint closest to the anomaly
+        the robot is parked at. Clears it and returns None if there's no
+        mission/map/route to return along."""
+        mission = self._mission_server.get_mission(mission_id) if mission_id else None
+        closest = None
+        if mission is not None and mission.waypoints and self._map_server.is_available():
+            closest = self._closest_waypoint(active.anomaly_target_xy, mission.waypoints)
+        if closest is None:
+            self._active = None
+            return None
+
+        waypoint_index, route = closest
+        waypoint = mission.waypoints[waypoint_index]
+        returning_payload = DiversionReturning(
+            anomaly_id=active.anomaly_id,
+            robot_device_id=active.robot_device_id,
+            route=route,
+            target_waypoint_id=waypoint.waypoint_id,
+            started_at=datetime.now(timezone.utc),
+        ).model_dump(mode="json")
+        active.phase = DiversionPhase.RETURNING
+        active.return_waypoint_index = waypoint_index
+        active.return_waypoint_xy = (waypoint.x, waypoint.y)
+        active.returning_payload = returning_payload
+        # Same staleness guard as the outbound leg (see
+        # _ActiveDiversion.issued_after_timestamp) -- otherwise a stale
+        # "arrived" sample left over from reaching the anomaly (the
+        # outbound leg's own destination) would immediately satisfy the
+        # return leg too, before the robot has moved at all.
+        current_view = self._device_registry.get(active.robot_device_id)
+        if current_view is not None:
+            active.issued_after_timestamp = current_view.timestamp
+        return active.robot_device_id, active.token, returning_payload, (waypoint.x, waypoint.y)
+
+    def _closest_waypoint(self, from_xy: tuple[float, float], waypoints: list) -> tuple[int, dict] | None:
+        """(index, route) of the mission waypoint with the shortest lanelet
+        route from `from_xy` -- not straight-line distance: lanelets are
+        one-way, so a waypoint a few meters behind the robot can be a full
+        lap away. None if no waypoint is routable."""
+        fx, fy = from_xy
+        best = None
+        for index, waypoint in enumerate(waypoints):
+            route = self._map_server.get_route([{"x": fx, "y": fy}, {"x": waypoint.x, "y": waypoint.y}])
+            if route is None:
+                continue
+            length = route["properties"]["length_m"]
+            if best is None or length < best[0]:
+                best = (length, index, route)
+        return (best[1], best[2]) if best is not None else None
+
+    def begin_run(self) -> None:
+        """Call on Start (api/mission_execution.py), before mission drive
+        sends the first waypoint -- a new run starts with an empty queue.
+        Normally already empty (end_run() clears it on Stop/switch, and a
+        run only completes once the queue is empty); this is the backstop."""
+        with self._lock:
+            if self._queue:
+                logger.info("Mission run starting; dropping %d anomalies left from a previous run", len(self._queue))
+            self._queue.clear()
+
+    def end_run(self, reason: str) -> None:
+        """Call when the mission run ends early: stopped (the escape hatch --
+        see MissionExecutionManager.stop()) or switched to another mission.
+        Aborts any in-flight diversion without requeueing it and clears the
+        queue -- anomalies not investigated during this run stay DETECTED
+        on the map, but no later run will go to them."""
+        with self._lock:
+            dropped = len(self._queue)
+            self._queue.clear()
+        if dropped:
+            logger.info("Mission run ended (%s); dropped %d queued anomalies", reason, dropped)
+        self._abort(reason, requeue=False)
+
     def abort_if_active(self, reason: str) -> None:
-        """Called from the API layer when something makes an in-flight
-        diversion's frozen state stale: mission stopped (the escape hatch --
-        see MissionExecutionManager.stop()) or the robot disconnected (see
-        abort_if_robot_disconnected below). Reverts the anomaly to DETECTED
-        if the robot hadn't reached it yet (so it isn't stuck at
-        ROBOT_EN_ROUTE with no path to resolution); leaves it ROBOT_ARRIVED
-        otherwise, since it's still independently verifiable/dismissable
-        via REST regardless of whether this coordinator is still tracking
-        it."""
+        """Called when the robot disconnects mid-investigation (see
+        abort_if_robot_disconnected below). The run is still in progress, so
+        an anomaly the operator hadn't resolved yet goes back to DETECTED at
+        the front of the queue -- the robot has left it, so it needs
+        revisiting before it can be verified -- and is picked up again once
+        the robot reconnects (see dispatch_pending)."""
+        self._abort(reason, requeue=True)
+
+    def _abort(self, reason: str, *, requeue: bool) -> None:
         with self._lock:
             active = self._active
             if active is None:
@@ -389,9 +517,17 @@ class AnomalyResponseCoordinator:
             anomaly_id = active.anomaly_id
             phase = active.phase
             self._active = None
+            # An anomaly already resolved (RETURNING) has nothing to undo.
+            unresolved = phase in (DiversionPhase.OUTBOUND, DiversionPhase.AWAITING_RESOLUTION)
+            if unresolved:
+                # Status reset under the lock, before it's requeued -- a
+                # dispatch_pending() in between would otherwise see it still
+                # ROBOT_EN_ROUTE/ARRIVED and drop it as already handled.
+                updated = self._anomaly_registry.update_status(anomaly_id, AnomalyStatus.DETECTED)
+                if requeue:
+                    self._queue.appendleft(anomaly_id)
 
-        if phase == DiversionPhase.OUTBOUND:
-            updated = self._anomaly_registry.update_status(anomaly_id, AnomalyStatus.DETECTED)
+        if unresolved:
             self._websocket_manager.broadcast_threadsafe(
                 {"type": "anomaly.updated", "data": updated.model_dump(mode="json")}
             )
@@ -415,14 +551,19 @@ class AnomalyResponseCoordinator:
         if device is None or not device.connected:
             self.abort_if_active("robot_disconnected")
 
-    def _end_diversion(self) -> None:
+    def _end_diversion(self, reached_waypoint_index: int | None = None) -> None:
         """A diversion just ended/aborted -- restore normal mission status
         (INVESTIGATING -> RUNNING) and let mission-driven waypoint goals
-        resume. Both steps re-check their own preconditions and no-op
-        harmlessly if there's nothing to do (e.g. Stop already moved status
-        past INVESTIGATING directly to RETURNING_HOME), so it's always safe
-        to call this from every diversion-ending path."""
+        resume. `reached_waypoint_index` is the waypoint the return leg just
+        arrived at: recorded as reached, so the mission carries on from the
+        one after it instead of re-sending the robot to where it already
+        is. All steps re-check their own preconditions and no-op harmlessly
+        if there's nothing to do (e.g. Stop already moved status past
+        INVESTIGATING directly to RETURNING_HOME), so it's always safe to
+        call this from every diversion-ending path."""
         self._mission_execution_manager.exit_investigating()
+        if reached_waypoint_index is not None:
+            self._mission_execution_manager.record_waypoint_reached(reached_waypoint_index)
         if self._mission_drive_coordinator is not None:
             self._mission_drive_coordinator.advance()
 

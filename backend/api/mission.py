@@ -135,7 +135,7 @@ def activate_mission(mission_id: str, request: Request) -> MissionGeo:
         activated = request.app.state.mission_server.activate(mission_id)
         request.app.state.mission_execution_manager.on_activated(mission_id)
         _broadcast_current_mission(request)
-        request.app.state.anomaly_response_coordinator.abort_if_active("mission_switched")
+        request.app.state.anomaly_response_coordinator.end_run("mission_switched")
         return _with_geo(activated, request.app.state.map_server)
     except MissionNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

@@ -76,15 +76,18 @@ stateDiagram-v2
     Paused --> ReturningHome : Stop
     ReturningHome --> Ready : robot reaches home (no toast, see note)
 
-    Running --> Investigating : anomaly detected
-    Investigating --> Running : resolved, robot returns to mission
+    Running --> Investigating : anomaly detected (queue not empty)
+    Investigating --> Running : queue empty, robot back at closest waypoint
     Investigating --> ReturningHome : Stop (escape hatch, still allowed)
 
     state Investigating {
         [*] --> EnRoute
         EnRoute --> Arrived : robot reports arrival
         Arrived --> VerifyWindow : operator opens "Review Anomaly"
-        VerifyWindow --> [*] : Confirm Real / Mark False Positive
+        VerifyWindow --> EnRoute : resolved, next anomaly in queue
+        VerifyWindow --> ReturningToMission : resolved, queue empty
+        ReturningToMission --> EnRoute : new anomaly detected
+        ReturningToMission --> [*] : robot reaches the waypoint
     }
     note right of Investigating
         Pause, Resume, and Edit are all blocked
@@ -104,6 +107,19 @@ Notes on states that aren't obvious from the diagram alone:
   `MissionControls.tsx`/`assert_editable`'s guard still nominally accept `COMPLETED` as if it were
   actionable (same as `READY`), but that's defensive/vestigial code for a race window that in
   practice never has time to open, not a real reachable interaction.
-- If the robot disconnects mid-investigation, the diversion aborts back toward `Running`/`Ready`
-  the same way Stop does (`AnomalyResponseCoordinator.abort_if_robot_disconnected`) -- not shown
-  above to keep the happy-path readable.
+- **Anomalies are investigated from a FIFO queue** (`AnomalyResponseCoordinator`) that belongs to
+  the current mission run, from Start until Stop/switch/completion. Only anomalies detected during
+  a run (`Running`, `Investigating`, `Paused`) are queued; the robot visits them one at a time,
+  going straight from one to the next. Anomalies detected while `Paused` are investigated on
+  Resume. Anomalies detected outside a run (`Ready`, `ReturningHome`) are shown on the map but
+  never investigated.
+- **Returning to the mission** goes to the waypoint closest to the last anomaly by lanelet route
+  distance (lanelets are one-way, so straight-line distance can be misleading), not necessarily
+  the next one in sequence. That waypoint counts as reached, and the mission carries on from the
+  one after it.
+- **Stop or switching missions ends the run** (`AnomalyResponseCoordinator.end_run`): the queue is
+  cleared, and an anomaly the robot was heading to or parked at goes back to `detected`. None of
+  them are carried over to the next run.
+- **If the robot disconnects mid-investigation**, the run continues: the unresolved anomaly goes
+  back to the front of the queue and is revisited once the robot reconnects. There is no timeout
+  on an investigation leg -- not shown above to keep the happy-path readable.

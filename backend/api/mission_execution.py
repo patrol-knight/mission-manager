@@ -38,6 +38,7 @@ def start_mission(request: Request) -> MissionExecutionState:
     except InvalidExecutionTransitionError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
+    request.app.state.anomaly_response_coordinator.begin_run()
     request.app.state.mission_drive_coordinator.advance()
     return result
 
@@ -75,6 +76,7 @@ def resume_mission(request: Request) -> MissionExecutionState:
     except InvalidExecutionTransitionError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
+    request.app.state.anomaly_response_coordinator.dispatch_pending()  # anomalies queued while paused
     request.app.state.mission_drive_coordinator.advance()
     return result
 
@@ -89,6 +91,6 @@ def stop_mission(request: Request) -> MissionExecutionState:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     request.app.state.mission_drive_coordinator.abort()
-    request.app.state.anomaly_response_coordinator.abort_if_active("mission_stopped")
+    request.app.state.anomaly_response_coordinator.end_run("mission_stopped")
     request.app.state.mission_drive_coordinator.advance()  # drives the return-to-home leg (RETURNING_HOME)
     return result
