@@ -2,10 +2,10 @@
 """Exports anomaly-detection history (backend/core/anomaly_repository.py)
 to CSV, for a teammate to inspect or feed into model training.
 
-Deliberately has no import from the backend package -- same reasoning as
-tools/anomaly_simulator.py: a plain psycopg + DATABASE_URL script that runs
-without the full backend installed or configured (no pydantic-settings
-needed), portable to whoever's machine is doing the training.
+Deliberately has no import from the backend package -- a plain psycopg +
+DATABASE_URL script that runs without the full backend installed or
+configured (no pydantic-settings needed), portable to whoever's machine
+is doing the training.
 
 Examples:
     # Everything, to stdout
