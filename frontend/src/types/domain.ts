@@ -72,9 +72,9 @@ export function connectivityStatus(device: Pick<Device, "connected">): Connectiv
 
 export type CameraStreamStatus = "idle" | "connecting" | "live" | "no_signal" | "offline" | "error";
 
+/** A device's one camera, as the inspector/verify UI sees it -- every
+ * device has exactly one camera slot, so there's no id/name to pick by. */
 export interface CameraInfo {
-  id: string;
-  name: string;
   status: CameraStreamStatus;
 }
 

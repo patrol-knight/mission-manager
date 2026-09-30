@@ -5,16 +5,17 @@ import type { CameraInfo } from "../../types/domain";
 /**
  * Owns the open-on-mount / close-on-unmount session lifecycle -- the shared
  * seam both DeviceInspectorOverlay and AnomalyVerifyModal drive their camera
- * UI through (see api/cameraApi.ts's mock/real switch). `streams` is keyed by
- * camera id, populated once WebRTC negotiation completes and the gateway's
- * track arrives (real mode only -- always empty in mock mode).
+ * UI through (see api/cameraApi.ts's mock/real switch). Every device has
+ * exactly one camera; `stream` is populated once WebRTC negotiation
+ * completes and the gateway's track arrives (real mode only -- always null
+ * in mock mode).
  */
 export function useCameraSession(
   deviceId: string | null,
   hasCameraCapability: boolean,
-): { cameras: CameraInfo[]; streams: Record<string, MediaStream>; error: string | null } {
-  const [cameras, setCameras] = useState<CameraInfo[]>([]);
-  const [streams, setStreams] = useState<Record<string, MediaStream>>({});
+): { camera: CameraInfo | null; stream: MediaStream | null; error: string | null } {
+  const [camera, setCamera] = useState<CameraInfo | null>(null);
+  const [stream, setStream] = useState<MediaStream | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -26,17 +27,10 @@ export function useCameraSession(
       deviceId,
       hasCameraCapability,
       (updated) => {
-        if (!cancelled) setCameras(updated);
+        if (!cancelled) setCamera(updated);
       },
-      (cameraId, stream) => {
-        if (cancelled) return;
-        setStreams((prev) => {
-          if (stream) return { ...prev, [cameraId]: stream };
-          if (!(cameraId in prev)) return prev;
-          const next = { ...prev };
-          delete next[cameraId];
-          return next;
-        });
+      (next) => {
+        if (!cancelled) setStream(next);
       },
     )
       .then((session) => {
@@ -45,7 +39,7 @@ export function useCameraSession(
           return;
         }
         sessionId = session.sessionId;
-        setCameras(session.cameras);
+        setCamera(session.camera);
       })
       .catch((err: unknown) => {
         if (!cancelled) setError(err instanceof Error ? err.message : "Failed to open camera session");
@@ -53,12 +47,12 @@ export function useCameraSession(
 
     return () => {
       cancelled = true;
-      setCameras([]);
-      setStreams({});
+      setCamera(null);
+      setStream(null);
       setError(null);
       if (sessionId) closeInspectionSession(sessionId).catch(() => {});
     };
   }, [deviceId, hasCameraCapability]);
 
-  return { cameras, streams, error };
+  return { camera, stream, error };
 }

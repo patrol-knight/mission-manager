@@ -28,7 +28,7 @@ export function AnomalyVerifyModal() {
   // stationary sensor's. Single-robot system, same assumption the backend's
   // get_connected_robot() makes.
   const robotDeviceId = useDeviceStore((s) => Object.values(s.devices).find((d) => d.type === "robot")?.deviceId ?? null);
-  const { cameras, streams, error } = useCameraSession(robotDeviceId, true);
+  const { camera, stream, error } = useCameraSession(robotDeviceId, true);
   const { show } = useToast();
   const [pending, setPending] = useState<"verify" | "dismiss" | null>(null);
 
@@ -125,10 +125,7 @@ export function AnomalyVerifyModal() {
           {error ? (
             <div style={{ color: "#ff8787", fontSize: 13 }}>{error}</div>
           ) : (
-            <CameraStreamView
-              camera={cameras[0] ?? null}
-              stream={cameras[0] ? (streams[cameras[0].id] ?? null) : null}
-            />
+            <CameraStreamView camera={camera} stream={stream} />
           )}
         </div>
         <div style={{ padding: 16, borderTop: "1px solid #343a40", display: "flex", justifyContent: "flex-end", gap: 8 }}>

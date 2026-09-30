@@ -16,15 +16,15 @@ interface CameraStreamViewProps {
 }
 
 /**
- * Shared rendering surface for one camera feed -- the seam CameraTile
- * (device inspector's grid/focus view) and AnomalyVerifyModal both render
+ * Shared rendering surface for a device's one camera feed -- the seam
+ * DeviceInspectorOverlay and AnomalyVerifyModal both render
  * through, so the <video>/placeholder/status-badge markup exists in exactly
  * one place instead of being duplicated. Fills its container; sizing and
  * chrome (button frame, grid slot, dialog panel) are the caller's job.
  *
  * `no_signal` renders the video element same as `live` -- the gateway
  * completes WebRTC negotiation and streams a GStreamer videotestsrc
- * placeholder ("NO SIGNAL — {camera_id}") even with no real camera frames,
+ * placeholder ("NO SIGNAL") even with no real camera frames,
  * so a live MediaStream is expected in both states (see
  * ../../../../zenoh_bridge/docs/video_streaming_pipeline.md §5).
  */
@@ -90,11 +90,10 @@ export function CameraStreamView({ camera, stream }: CameraStreamViewProps) {
           padding: "4px 8px",
           background: "rgba(0,0,0,0.6)",
           display: "flex",
-          justifyContent: "space-between",
+          justifyContent: "flex-end",
           fontSize: 11,
         }}
       >
-        <span>{camera.name}</span>
         <span>{STATUS_LABEL[camera.status]}</span>
       </div>
     </div>

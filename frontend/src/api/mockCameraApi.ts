@@ -1,39 +1,25 @@
-import type { CameraInfo, CameraStreamStatus } from "../types/domain";
+import type { CameraInfo } from "../types/domain";
 import type { InspectionSession } from "./cameraApi";
 
-const MOCK_CAMERA_NAMES = ["Front", "Rear", "Overhead"];
-
 /**
- * Fake session: returns canned cameras (only if the device advertises the
- * "camera" capability) and independently transitions each one from
- * "connecting" to "live" — except one, which goes to "error", demonstrating
- * that a single failed stream doesn't block the others.
+ * Fake session: returns the device's one canned camera (only if the device
+ * advertises the "camera" capability) and transitions it from "connecting"
+ * to "live".
  */
 export async function openInspectionSession(
   deviceId: string,
   hasCameraCapability: boolean,
-  onUpdate: (cameras: CameraInfo[]) => void,
+  onUpdate: (camera: CameraInfo | null) => void,
   // Mock never produces a real MediaStream -- signature still matches CameraApiImpl.
-  _onStream: (cameraId: string, stream: MediaStream | null) => void,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  _onStream: (stream: MediaStream | null) => void,
 ): Promise<InspectionSession> {
   const sessionId = `mock-session-${deviceId}-${Date.now()}`;
-  if (!hasCameraCapability) return { sessionId, cameras: [] };
+  if (!hasCameraCapability) return { sessionId, camera: null };
 
-  let cameras: CameraInfo[] = MOCK_CAMERA_NAMES.map((name, i) => ({
-    id: `${deviceId}-cam-${i}`,
-    name,
-    status: "connecting",
-  }));
+  setTimeout(() => onUpdate({ status: "live" }), 400);
 
-  MOCK_CAMERA_NAMES.forEach((_, i) => {
-    setTimeout(() => {
-      const nextStatus: CameraStreamStatus = i === 2 ? "error" : "live";
-      cameras = cameras.map((c, idx) => (idx === i ? { ...c, status: nextStatus } : c));
-      onUpdate(cameras);
-    }, 400 + i * 250);
-  });
-
-  return { sessionId, cameras };
+  return { sessionId, camera: { status: "connecting" } };
 }
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- signature matches CameraApiImpl

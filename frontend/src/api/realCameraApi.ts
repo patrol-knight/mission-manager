@@ -12,7 +12,7 @@ const activeSessions = new Map<string, ActiveSession>();
 
 function toCameraInfo(deviceId: string): CameraInfo | null {
   const camera = useDeviceStore.getState().cameras[deviceId];
-  return camera ? { id: camera.cameraId, name: camera.cameraId, status: camera.streamState } : null;
+  return camera ? { status: camera.streamState } : null;
 }
 
 /** One camera per device (see the design doc's scope note) -- resolves
@@ -49,23 +49,20 @@ function waitForCameraId(deviceId: string): Promise<string | null> {
 export async function openInspectionSession(
   deviceId: string,
   hasCameraCapability: boolean,
-  onUpdate: (cameras: CameraInfo[]) => void,
-  onStream: (cameraId: string, stream: MediaStream | null) => void,
+  onUpdate: (camera: CameraInfo | null) => void,
+  onStream: (stream: MediaStream | null) => void,
 ): Promise<InspectionSession> {
-  if (!hasCameraCapability) return { sessionId: "", cameras: [] };
+  if (!hasCameraCapability) return { sessionId: "", camera: null };
 
   const cameraId = await waitForCameraId(deviceId);
-  if (!cameraId) return { sessionId: "", cameras: [] };
+  if (!cameraId) return { sessionId: "", camera: null };
 
-  const unsubscribeStore = useDeviceStore.subscribe(() => {
-    const info = toCameraInfo(deviceId);
-    onUpdate(info ? [info] : []);
-  });
+  const unsubscribeStore = useDeviceStore.subscribe(() => onUpdate(toCameraInfo(deviceId)));
 
   let session: WebrtcSession;
   try {
     session = await startWebrtcSession(deviceId, cameraId, {
-      onTrack: (stream) => onStream(cameraId, stream),
+      onTrack: onStream,
     });
   } catch (err) {
     unsubscribeStore();
@@ -74,8 +71,7 @@ export async function openInspectionSession(
 
   activeSessions.set(session.sessionId, { session, unsubscribeStore });
 
-  const info = toCameraInfo(deviceId);
-  return { sessionId: session.sessionId, cameras: info ? [info] : [] };
+  return { sessionId: session.sessionId, camera: toCameraInfo(deviceId) };
 }
 
 export async function closeInspectionSession(sessionId: string): Promise<void> {

@@ -85,6 +85,6 @@ describe("DeviceInspectorOverlay", () => {
   it("shows an empty camera state when the device has no camera capability", async () => {
     render(<Harness />);
     await userEvent.click(screen.getByText("Open"));
-    expect(await screen.findByText(/no cameras available/i)).toBeInTheDocument();
+    expect(await screen.findByText(/no camera available/i)).toBeInTheDocument();
   });
 });
