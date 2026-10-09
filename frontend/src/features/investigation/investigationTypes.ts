@@ -1,6 +1,6 @@
 import type { AnomalyVerdict } from "../anomalies/anomalyTypes";
 
-/** See backend/models/investigation.py and docs/investigate-mode-design.md §4.2. */
+/** See backend/models/investigation.py and the README's state machine section. */
 export type InvestigationPhase = "en_route" | "on_site";
 
 export interface InvestigationTarget {

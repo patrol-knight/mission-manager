@@ -6,11 +6,11 @@ import { describeAbort, type RawAutonomyAborted } from "./investigationTypes";
 
 /**
  * Renderless. Announces the transitions the system makes on its own, so a
- * change never looks like it came from nowhere (docs/investigate-mode-design.md
- * §8.8): arriving at the anomaly (which also opens the verify window), and
- * autonomy being aborted (e.g. the robot was lost), which stops the mission
- * and any investigation until the operator starts again. Transitions the
- * operator triggers are announced where they're triggered.
+ * change never looks like it came from nowhere: arriving at the anomaly
+ * (which also opens the verify window), and autonomy being aborted (e.g. the
+ * robot was lost), which stops the mission and any investigation until the
+ * operator starts again. Transitions the operator triggers are announced
+ * where they're triggered.
  */
 export function InvestigationNotifier() {
   const investigation = useInvestigationStore((s) => s.investigation);

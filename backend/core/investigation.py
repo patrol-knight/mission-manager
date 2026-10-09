@@ -33,10 +33,11 @@ logger = logging.getLogger(__name__)
 
 
 class InvestigationCoordinator:
-    """The operator-driven investigate mode (docs/investigate-mode-design.md
-    §4.2): NONE -> EN_ROUTE -> ON_SITE -> NONE, in parallel with the mission
-    and taking priority over it -- while an investigation is active, mission
-    drive sends no goals and MissionService refuses mission transitions.
+    """The operator-driven investigate mode (README "Mission & Investigation
+    State Machines"): NONE -> EN_ROUTE -> ON_SITE -> NONE, in parallel with
+    the mission and taking priority over it -- while an investigation is
+    active, mission drive sends no goals and MissionService refuses mission
+    transitions.
 
     - start(): send the robot to an anomaly, or switch to another one.
     - on_device_state(): EN_ROUTE -> ON_SITE when the robot reports arrival.
@@ -241,7 +242,7 @@ class InvestigationCoordinator:
         self._websocket.broadcast_threadsafe({"type": "anomaly.updated", "data": anomaly.model_dump(mode="json")})
 
     def _hand_back(self, robot_device_id: str) -> None:
-        """The fallback rules (design doc §5): the mission takes the robot
+        """The hand-back rules (README table): the mission takes the robot
         back -- rejoining the route, or returning to waypoint 0 -- or, with no
         mission to go back to, the robot holds where it is."""
         execution = self._execution.after_investigation()

@@ -13,7 +13,7 @@ const TONE_COLORS: Record<ActivityTone, string> = {
 };
 
 /** The one status line the operator reads: what the robot is doing and what
- * happens next (docs/investigate-mode-design.md §8.1). */
+ * happens next. */
 export function RobotActivityStatus() {
   const { status } = useApiConnection();
   const robot = useConnectedRobot();

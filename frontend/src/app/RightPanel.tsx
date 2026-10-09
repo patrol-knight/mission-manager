@@ -46,7 +46,7 @@ export function RightPanel({
         <>
           {/* Order: what the robot is doing, the investigation (if any), the
               clicked anomaly, then the mission -- collapsed to a read-only
-              strip while investigating (docs/investigate-mode-design.md §8.3). */}
+              strip while investigating. */}
           <RobotActivityStatus />
           <InvestigateCard />
           <AnomalyCard />

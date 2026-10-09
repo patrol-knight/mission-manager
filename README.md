@@ -25,9 +25,32 @@ When running under Docker Compose, every backend setting is passed explicitly vi
 
 There is no in-process device simulator — the backend's only device/anomaly data source is Zenoh (`backend/transport/zenoh_gateway.py`). By default `ZENOH_ENABLED=false` and the app shows empty device/anomaly states; mission authoring (creating/editing missions, route validation) works fine with nothing connected, since that's handled entirely by `mission_server`/`map_server` and never touches devices.
 
-**For a local demo with fake devices:** run the `device_gateway` repo's demo launch (`dummy_robot` + `robot_state_aggregator` + `iot_device` + `iot_state_aggregator`, each behind a `device_gateway_node`) against a `zenohd`, then set `ZENOH_ENABLED=true` here and point `ZENOH_ROUTER` at that same `zenohd` (`docker-compose.yml` already runs one as the `zenohd` service and wires the backend to it).
+**For a local demo** (sibling checkouts next to this repo), start the router with this compose file
+(`ZENOH_ENABLED=true` in the root `.env`), then:
 
-**For a real robot:** same toggle — `ZENOH_ENABLED=true`, `ZENOH_ROUTER` pointing at your Zenoh router. Your robot/IoT gateway needs to publish JSON matching `backend/models/device.py`'s `DeviceState` shape on the `ZENOH_DEVICE_STATE_KEYEXPR` key expression (default `devices/*/state`), and `backend/models/anomaly.py`'s `Anomaly` shape on `ZENOH_ANOMALY_KEYEXPR` (default `anomalies/*/state`) for anomaly detections — which is exactly what `device_gateway`'s `mission_manager_contract` package produces.
+| What | Where | Command |
+|---|---|---|
+| Dummy robot (lanelet-following stand-in for Autoware) | `../husky/experiments/dummy_robot` | `./launch.sh up realsense:=false` |
+| IoT tower | `../iot` | `./launch.sh up realsense:=false skeleton:=false` |
+| Fake anomalies near the towers | `../anomaly_detection` | `.venv/bin/python -m experiment.experiment` (`--once` for a single one) |
+
+Restart the dummy robot stack as a whole (`./launch.sh down` then `up`): restarting only its
+`zenoh_bridge` container resets the goal sequence counter, and the robot then ignores new goals.
+
+**For a real robot:** same toggle — `ZENOH_ENABLED=true`, `ZENOH_ROUTER` pointing at your Zenoh router.
+
+- **Devices** publish JSON matching `backend/models/device.py`'s `DeviceState` on
+  `ZENOH_DEVICE_STATE_KEYEXPR` (default `devices/*/state`) — what `zenoh_bridge`'s aggregator produces —
+  and receive `navigate_to_goal` / `cancel_navigation` commands on `devices/{device_id}/commands`.
+- **Anomalies** come from `../anomaly_detection` and follow its contract
+  (`../anomaly_detection/docs/topics_format.md`, section 2): state messages on `ZENOH_ANOMALY_KEYEXPR`
+  (default `anomalies/*/state`, parsed as `AnomalyStateMessage` in `backend/models/anomaly.py`), and the
+  operator's verdict sent back on `anomalies/{anomaly_id}/feedback`. An anomaly disappears once its
+  `degrade_sec` grace period passes without a refresh, unless the robot is investigating it.
+- **Anomaly history** is written once per anomaly, when it is resolved or expires, to the
+  `anomaly_history` table. It is off by default; enable it with `COMPOSE_PROFILES=db` plus `DATABASE_URL`
+  in the root `.env` (see `.env.example`). If Postgres is unreachable, history is dropped and everything
+  else keeps working.
 
 **Frontend backend URL:** if you're viewing the app from a different machine than the one Docker/the backend runs on (e.g. a robot on the local network), set `API_BASE_URL`/`WS_URL` in the root `.env` to that machine's address instead of `localhost` (see `.env.example` for the exact format).
 
@@ -40,86 +63,99 @@ cd backend && .venv/bin/uvicorn app:app --host 0.0.0.0 --port 8000
 cd frontend && npm run dev   # http://localhost:5173
 ```
 
-## Mission & Anomaly State Machine
+## Backend layout
 
-The diagram below reflects the actual backend state machine (`backend/core/mission_execution.py`'s
-`MissionExecutionManager`, `MissionStatus` in `backend/models/mission_execution.py`) and the
-matching frontend gating (`MissionControls.tsx`/`MissionStatusPanel.tsx`), not just the UI flow —
-useful context before adding new functionality that touches mission or anomaly state.
+```
+backend/
+├── app.py            # FastAPI app: routers, error handlers, startup/shutdown
+├── bootstrap.py      # builds every service once (Services) and wires them together
+├── config.py         # Settings, read from env / .env
+├── api/              # HTTP + WebSocket routers only: parse the request, call one service method
+│   ├── deps.py       #   get_services(): how routers reach the services
+│   └── errors.py     #   the single mapping from core/errors.py exceptions to HTTP status codes
+├── core/             # services and domain logic (no FastAPI imports)
+│   ├── mission_service.py    # mission use cases the API calls: CRUD, start/pause/resume/stop
+│   ├── mission_server.py     # mission definitions + YAML persistence
+│   ├── mission_execution.py  # runtime mission status state machine
+│   ├── mission_drive.py      # drives the robot through the mission's waypoints
+│   ├── anomaly_registry.py   # live anomalies: ingest, lifetime/expiry, verdict
+│   ├── anomaly_repository.py # write-once anomaly history in Postgres
+│   ├── investigation.py      # operator-driven investigate mode (robot to an anomaly and back)
+│   ├── goal_arrival.py       # when a robot "arrived" sample counts as reaching a goal
+│   ├── camera_stream.py      # start/stop a device camera stream
+│   ├── device_registry.py, camera_registry.py, map_server.py, websocket_manager.py
+│   ├── monitor.py            # periodic housekeeping (offline devices, robot lost, anomaly expiry)
+│   └── errors.py             # domain exceptions
+├── models/           # pydantic models: wire payloads, API responses, persisted shapes
+├── transport/        # Zenoh gateway (ingest + outbound commands/feedback)
+└── tools/            # standalone scripts (anomaly history export)
+```
+
+## Mission & Investigation State Machines
+
+The robot is driven by two independent state machines. The **mission**
+(`MissionStatus`, `backend/core/mission_execution.py`) patrols the route. The
+**investigation** (`InvestigationState`, `backend/core/investigation.py`) is
+started by the operator on an anomaly and takes priority: while it is active,
+mission drive sends no goals and every mission transition is refused (409).
+The UI shows both as one status line (`RobotActivityStatus.tsx`).
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Ready : docker compose up (launches system, loads current/default mission + map)
-
-    state "Library / Editor" as Editing {
-        [*] --> Library
-        Library --> Editor : select mission to edit
-        Editor --> [*] : Save
-        Library --> [*] : Set as current mission
+    state "Mission" as M {
+        [*] --> Ready
+        Ready --> Running : Start (robot connected)
+        Running --> Paused : Pause
+        Paused --> Running : Resume
+        Running --> Returning : Stop
+        Paused --> Returning : Stop
+        Returning --> Ready : robot reaches WP 1
+        Running --> Ready : all loops finished (COMPLETED broadcast; never for an infinite mission)
+        Paused --> Running : investigation ended (rejoin route)
+        Ready --> Returning : investigation ended (back to WP 1)
+        Running --> Ready : robot lost
+        Paused --> Ready : robot lost
+        Returning --> Ready : robot lost
     }
-
-    Ready --> Editing : New / Edit Mission
-    Editing --> Ready : Save mission
-
-    Ready --> Running : Start
-    note right of Ready
-        Start is disabled in the UI whenever no
-        robot device is connected -- there is no
-        separate "rejected" state, the button
-        itself is just disabled.
-    end note
-
-    Running --> Paused : Pause
-    Paused --> Running : Resume
-
-    Running --> ReturningHome : Stop
-    Paused --> ReturningHome : Stop
-    ReturningHome --> Ready : robot reaches home (no toast, see note)
-
-    Running --> Investigating : anomaly detected (queue not empty)
-    Investigating --> Running : queue empty, robot back at closest waypoint
-    Investigating --> ReturningHome : Stop (escape hatch, still allowed)
-
-    state Investigating {
-        [*] --> EnRoute
-        EnRoute --> Arrived : robot reports arrival
-        Arrived --> VerifyWindow : operator opens "Review Anomaly"
-        VerifyWindow --> EnRoute : resolved, next anomaly in queue
-        VerifyWindow --> ReturningToMission : resolved, queue empty
-        ReturningToMission --> EnRoute : new anomaly detected
-        ReturningToMission --> [*] : robot reaches the waypoint
+    state "Investigation" as I {
+        [*] --> None
+        None --> EnRoute : Investigate (anomaly card)
+        EnRoute --> EnRoute : Investigate another (current one abandoned)
+        EnRoute --> OnSite : robot reports arrival at the anomaly
+        OnSite --> OnSite : verdict TRUE / FALSE / UNCLEAR (draft)
+        OnSite --> EnRoute : Investigate another [verdict chosen]
+        OnSite --> None : Finish [verdict chosen]
+        EnRoute --> None : Stop
+        EnRoute --> None : robot lost
+        OnSite --> None : robot lost
     }
-    note right of Investigating
-        Pause, Resume, and Edit are all blocked
-        while investigating -- Stop is the only
-        control shown besides the verify flow.
-    end note
-
-    Running --> Completed : all configured loops finished
-    Completed --> Ready : automatic, immediate
 ```
 
-Notes on states that aren't obvious from the diagram alone:
-- **Library/Editor is a frontend view state** (`AppShell.tsx`'s `view`), not a backend `MissionStatus`
-  value -- entering/exiting it never changes the backend's status away from `READY`.
-- **`COMPLETED` is a one-shot broadcast, not a persisted state** (`MissionExecutionManager._finish_mission`)
-  -- by the time any client could act on it, the real state is already `READY` again. The frontend's
-  `MissionControls.tsx`/`assert_editable`'s guard still nominally accept `COMPLETED` as if it were
-  actionable (same as `READY`), but that's defensive/vestigial code for a race window that in
-  practice never has time to open, not a real reachable interaction.
-- **Anomalies are investigated from a FIFO queue** (`AnomalyResponseCoordinator`) that belongs to
-  the current mission run, from Start until Stop/switch/completion. Only anomalies detected during
-  a run (`Running`, `Investigating`, `Paused`) are queued; the robot visits them one at a time,
-  going straight from one to the next. Anomalies detected while `Paused` are investigated on
-  Resume. Anomalies detected outside a run (`Ready`, `ReturningHome`) are shown on the map but
-  never investigated.
-- **Returning to the mission** goes to the waypoint closest to the last anomaly by lanelet route
-  distance (lanelets are one-way, so straight-line distance can be misleading), not necessarily
-  the next one in sequence. That waypoint counts as reached, and the mission carries on from the
-  one after it.
-- **Stop or switching missions ends the run** (`AnomalyResponseCoordinator.end_run`): the queue is
-  cleared, and an anomaly the robot was heading to or parked at goes back to `detected`. None of
-  them are carried over to the next run.
-- **If the robot disconnects mid-investigation**, the run continues: the unresolved anomaly goes
-  back to the front of the queue and is revisited once the robot reconnects. There is no timeout
-  on an investigation leg -- not shown above to keep the happy-path readable.
+When an investigation ends, the mission takes the robot back
+(`InvestigationCoordinator._hand_back`):
+
+| Mission when it ends | Then |
+|---|---|
+| Running or Paused | Running, rejoining the route at the waypoint closest by lanelet route distance |
+| Ready or Returning | Returning to WP 1, then Ready |
+| no mission | the robot holds in place |
+
+Notes:
+- **The verdict is committed when the robot leaves the anomaly** (Finish, or investigating another
+  one). TRUE/FALSE close the anomaly: it is written to `anomaly_history`, sent to Anomaly Detection as
+  feedback, and leaves the map. UNCLEAR is recorded but keeps the anomaly on the map for another look.
+  Stopping before arrival, or a robot disconnect, records nothing.
+- **The rejoin waypoint doesn't count as finishing a loop**, even if it is WP 1, so skipping part of
+  the route never completes the mission early.
+- **Infinite missions** (the editor's "Infinite" box next to the loop count) loop until the operator
+  stops them. Loops are still counted, and the loop count is kept for when the box is unticked.
+- **Library/Editor is a frontend view state** (`AppShell.tsx`'s `view`), not a backend status.
+- **`COMPLETED` is a one-shot broadcast** (`MissionExecutionManager._finish_mission`); the state is
+  `READY` again immediately.
+- **Losing the robot stops everything.** Once the robot has been offline for `ROBOT_LOST_GRACE_SEC`
+  (default 10 s; the UI shows it offline after 3 s), `MissionService.abort_autonomy` cancels the
+  investigation without a verdict and drops the mission to Ready. Nothing resumes on its own: when the
+  robot reports in again it is sent `cancel_navigation`, and the operator has to Start or Investigate
+  again. The same entry point is meant for a future joystick takeover.
+- **There is no timeout on an investigation.** The Investigate card shows the distance to the
+  anomaly and the elapsed time; the operator decides whether to Stop.

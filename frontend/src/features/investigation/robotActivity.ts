@@ -26,7 +26,7 @@ export interface RobotActivityInput {
 }
 
 /** One status for the operator, derived from the two internal state machines
- * (mission + investigation) -- docs/investigate-mode-design.md §8.1. */
+ * (mission + investigation). */
 export function describeRobotActivity(input: RobotActivityInput): RobotActivity {
   const { robotConnected, investigation, target, distanceM, execution, definition } = input;
 
