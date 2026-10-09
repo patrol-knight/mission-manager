@@ -30,3 +30,8 @@ export function formatDuration(seconds: number | null): string {
   const minutes = totalMinutes % 60;
   return minutes === 0 ? `~${hours}h` : `~${hours}h ${minutes}m`;
 }
+
+/** "3", or "∞" for a mission that loops until stopped. */
+export function formatLoopTotal(mission: { loopCount: number; infiniteLoop: boolean }): string {
+  return mission.infiniteLoop ? "∞" : String(mission.loopCount);
+}

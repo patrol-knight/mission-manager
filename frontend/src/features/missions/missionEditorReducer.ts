@@ -9,6 +9,9 @@ export interface MissionEditorState {
   /** Raw text of the loop-count field — kept as a string so invalid intermediate
    * input (empty, "-", "1.") can be typed and validated, not silently coerced. */
   loopCountInput: string;
+  /** "Infinite" checkbox: loop until stopped. The loop count is kept (and
+   * its input disabled) so unticking restores it. */
+  infiniteLoop: boolean;
   waypoints: Waypoint[];
   selectedWaypointId: string | null;
   tool: EditorTool;
@@ -26,6 +29,7 @@ export const BLANK_STATE: MissionEditorState = {
   missionId: null,
   name: "",
   loopCountInput: "1",
+  infiniteLoop: false,
   waypoints: [],
   selectedWaypointId: null,
   tool: "modify",
@@ -40,6 +44,7 @@ export type MissionEditorAction =
   | { type: "OPEN"; mission: MissionDefinition | null }
   | { type: "SET_NAME"; name: string }
   | { type: "SET_LOOP_COUNT_INPUT"; value: string }
+  | { type: "SET_INFINITE_LOOP"; value: boolean }
   | { type: "ADD_WAYPOINT"; x: number; y: number }
   | { type: "MOVE_WAYPOINT"; id: string; x: number; y: number }
   | { type: "SELECT_WAYPOINT"; id: string | null }
@@ -73,6 +78,7 @@ export function missionEditorReducer(
         missionId: action.mission.missionId,
         name: action.mission.name,
         loopCountInput: String(action.mission.loopCount),
+        infiniteLoop: action.mission.infiniteLoop,
         waypoints: action.mission.waypoints,
         selectedWaypointId: null,
         tool: "modify",
@@ -89,6 +95,9 @@ export function missionEditorReducer(
 
     case "SET_LOOP_COUNT_INPUT":
       return { ...state, loopCountInput: action.value, dirty: true, validationStale: true };
+
+    case "SET_INFINITE_LOOP":
+      return { ...state, infiniteLoop: action.value, dirty: true };
 
     case "ADD_WAYPOINT": {
       const waypoint: Waypoint = {
@@ -184,7 +193,7 @@ export function isNameValid(name: string): boolean {
 export function canSave(state: MissionEditorState): boolean {
   return (
     isNameValid(state.name) &&
-    parseLoopCount(state.loopCountInput) !== null &&
+    (state.infiniteLoop || parseLoopCount(state.loopCountInput) !== null) &&
     state.waypoints.length >= 2 &&
     !state.validationStale &&
     state.validationResult?.valid === true

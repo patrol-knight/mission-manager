@@ -18,15 +18,10 @@ def create_mission(mission: Mission, services: Services = Depends(get_services))
     return services.mission_service.create_mission(mission)
 
 
-# Literal paths before "/{mission_id}" so they aren't captured as an id.
+# Literal path before "/{mission_id}" so it isn't captured as an id.
 @router.get("/current", response_model=MissionGeo)
 def get_current_mission(services: Services = Depends(get_services)) -> MissionGeo:
     return services.mission_service.get_current()
-
-
-@router.get("/default", response_model=MissionGeo)
-def get_default_mission(services: Services = Depends(get_services)) -> MissionGeo:
-    return services.mission_service.get_default()
 
 
 @router.get("/current/execution", response_model=MissionExecutionState)
@@ -74,7 +69,3 @@ def delete_mission(mission_id: str, services: Services = Depends(get_services)) 
 def activate_mission(mission_id: str, services: Services = Depends(get_services)) -> MissionGeo:
     return services.mission_service.activate(mission_id)
 
-
-@router.post("/{mission_id}/set-default", response_model=MissionGeo)
-def set_default_mission(mission_id: str, services: Services = Depends(get_services)) -> MissionGeo:
-    return services.mission_service.set_default(mission_id)

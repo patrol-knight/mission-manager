@@ -1,4 +1,5 @@
 import { formatAnomalyTypes, formatConfidence, VERDICT_LABELS, type Anomaly } from "../anomalies/anomalyTypes";
+import { formatLoopTotal } from "../missions/missionSummaryFormat";
 import type { MissionDefinition, MissionExecutionState } from "../missions/missionTypes";
 import { fallbackAfterInvestigation } from "./fallback";
 import type { Investigation } from "./investigationTypes";
@@ -63,7 +64,7 @@ export function describeRobotActivity(input: RobotActivityInput): RobotActivity 
       const nextWaypoint = waypointCount > 0 ? ((execution.currentWaypointIndex + 1) % waypointCount) + 1 : null;
       return {
         title: "Patrolling",
-        detail: `Loop ${execution.currentLoop}/${definition.loopCount}${nextWaypoint ? ` → WP ${nextWaypoint}` : ""}`,
+        detail: `Loop ${execution.currentLoop}/${formatLoopTotal(definition)}${nextWaypoint ? ` → WP ${nextWaypoint}` : ""}`,
         next: null,
         tone: "active",
       };

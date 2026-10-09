@@ -16,11 +16,6 @@ export interface Waypoint {
   lon?: number | null;
 }
 
-export interface TimeSlot {
-  start: string | null;
-  end: string | null;
-}
-
 /**
  * The mission's authored configuration (name/waypoints/loop count) — distinct from
  * MissionExecutionState, which is runtime progress. The two are never merged into one
@@ -32,9 +27,10 @@ export interface MissionDefinition {
   mapName: string;
   frameId: string;
   description: string | null;
-  timeSlot: TimeSlot | null;
   waypoints: Waypoint[];
   loopCount: number;
+  /** Loop until stopped; loopCount is kept but unused while this is set. */
+  infiniteLoop: boolean;
   createdAt: string | null;
   updatedAt: string | null;
   metadata: Record<string, unknown>;
@@ -98,20 +94,15 @@ interface RawWaypoint {
   lon?: number | null;
 }
 
-interface RawTimeSlot {
-  start: string | null;
-  end: string | null;
-}
-
 export interface RawMission {
   mission_id: string;
   name: string;
   map_name: string;
   frame_id: string;
   description: string | null;
-  time_slot: RawTimeSlot | null;
   waypoints: RawWaypoint[];
   loop_count: number;
+  infinite_loop: boolean;
   created_at: string | null;
   updated_at: string | null;
   metadata: Record<string, unknown>;
@@ -124,7 +115,6 @@ export function missionDefinitionFromRaw(raw: RawMission): MissionDefinition {
     mapName: raw.map_name,
     frameId: raw.frame_id,
     description: raw.description,
-    timeSlot: raw.time_slot ? { start: raw.time_slot.start, end: raw.time_slot.end } : null,
     waypoints: raw.waypoints.map((wp) => ({
       waypointId: wp.waypoint_id,
       x: wp.x,
@@ -136,6 +126,7 @@ export function missionDefinitionFromRaw(raw: RawMission): MissionDefinition {
       lon: wp.lon,
     })),
     loopCount: raw.loop_count,
+    infiniteLoop: raw.infinite_loop,
     createdAt: raw.created_at,
     updatedAt: raw.updated_at,
     metadata: raw.metadata,
@@ -150,13 +141,12 @@ export interface MissionSummary {
   frameId: string;
   waypointCount: number;
   loopCount: number;
+  infiniteLoop: boolean;
   homeX: number | null;
   homeY: number | null;
   /** Loop-closed, lanelet-routed path length in meters; null if unroutable or <2 waypoints. */
   distanceM: number | null;
-  timeSlot: TimeSlot | null;
   isCurrent: boolean;
-  isDefault: boolean;
   updatedAt: string | null;
 }
 
@@ -167,12 +157,11 @@ export interface RawMissionSummary {
   frame_id: string;
   waypoint_count: number;
   loop_count: number;
+  infinite_loop: boolean;
   home_x: number | null;
   home_y: number | null;
   distance_m: number | null;
-  time_slot: RawTimeSlot | null;
   is_current: boolean;
-  is_default: boolean;
   updated_at: string | null;
 }
 
@@ -184,12 +173,11 @@ export function missionSummaryFromRaw(raw: RawMissionSummary): MissionSummary {
     frameId: raw.frame_id,
     waypointCount: raw.waypoint_count,
     loopCount: raw.loop_count,
+    infiniteLoop: raw.infinite_loop,
     homeX: raw.home_x,
     homeY: raw.home_y,
     distanceM: raw.distance_m,
-    timeSlot: raw.time_slot ? { start: raw.time_slot.start, end: raw.time_slot.end } : null,
     isCurrent: raw.is_current,
-    isDefault: raw.is_default,
     updatedAt: raw.updated_at,
   };
 }
@@ -199,6 +187,7 @@ export interface MissionDraftInput {
   missionId: string | null;
   name: string;
   loopCount: number;
+  infiniteLoop: boolean;
   waypoints: Waypoint[];
 }
 
@@ -215,7 +204,6 @@ export function missionDraftToRawPayload(draft: ResolvedMissionDraft): RawMissio
     map_name: draft.mapName,
     frame_id: draft.frameId,
     description: null,
-    time_slot: null,
     waypoints: draft.waypoints.map((wp) => ({
       waypoint_id: wp.waypointId,
       x: wp.x,
@@ -225,6 +213,7 @@ export function missionDraftToRawPayload(draft: ResolvedMissionDraft): RawMissio
       type: wp.type,
     })),
     loop_count: draft.loopCount,
+    infinite_loop: draft.infiniteLoop,
     created_at: null,
     updated_at: null,
     metadata: {},

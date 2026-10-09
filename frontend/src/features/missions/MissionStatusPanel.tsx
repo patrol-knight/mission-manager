@@ -2,6 +2,7 @@ import { useApiConnection } from "../../hooks/useApiConnection";
 import { useMissionStore } from "../../stores/missionStore";
 import { cardStyle, cardTitleStyle, buttonStyles } from "../../components/styles";
 import { MissionControls } from "./MissionControls";
+import { formatLoopTotal } from "./missionSummaryFormat";
 import type { MissionStatus } from "./missionTypes";
 
 const STATUS_LABEL: Record<MissionStatus, string> = {
@@ -30,7 +31,7 @@ export function MissionStatusPanel({ onOpenLibrary, collapsed }: MissionStatusPa
           definition.name,
           execution ? STATUS_LABEL[execution.status] : null,
           "suspended",
-          execution && execution.status !== "ready" ? `loop ${execution.currentLoop}/${definition.loopCount}` : null,
+          execution && execution.status !== "ready" ? `loop ${execution.currentLoop}/${formatLoopTotal(definition)}` : null,
         ]
       : ["No mission"];
     return (
@@ -75,12 +76,12 @@ export function MissionStatusPanel({ onOpenLibrary, collapsed }: MissionStatusPa
           {execution === null ? (
             <>
               <Row label="Waypoints" value={String(definition.waypoints.length)} />
-              <Row label="Loops" value={String(definition.loopCount)} />
+              <Row label="Loops" value={formatLoopTotal(definition)} />
               <Row label="Execution status" value="loading…" />
             </>
           ) : execution.status === "running" || execution.status === "paused" ? (
             <>
-              <Row label="Current Loop" value={`${execution.currentLoop} / ${definition.loopCount}`} />
+              <Row label="Current Loop" value={`${execution.currentLoop} / ${formatLoopTotal(definition)}`} />
               <Row
                 label="Current Waypoint"
                 value={`${execution.currentWaypointIndex + 1} / ${definition.waypoints.length}`}
@@ -92,7 +93,7 @@ export function MissionStatusPanel({ onOpenLibrary, collapsed }: MissionStatusPa
           ) : (
             <>
               <Row label="Waypoints" value={String(definition.waypoints.length)} />
-              <Row label="Loops" value={String(definition.loopCount)} />
+              <Row label="Loops" value={formatLoopTotal(definition)} />
             </>
           )}
 

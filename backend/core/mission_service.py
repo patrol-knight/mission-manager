@@ -78,12 +78,6 @@ class MissionService:
         current = self._missions.get_current()
         return self._with_geo(current) if current is not None else None
 
-    def get_default(self) -> MissionGeo:
-        mission = self._missions.get_default()
-        if mission is None:
-            raise MissionNotFoundError("No default mission is set")
-        return self._with_geo(mission)
-
     def create_mission(self, mission: Mission) -> MissionGeo:
         return self._with_geo(self._missions.create_mission(mission))
 
@@ -108,9 +102,6 @@ class MissionService:
         self._execution.on_activated(mission_id)
         self._broadcast_current()
         return self._with_geo(activated)
-
-    def set_default(self, mission_id: str) -> MissionGeo:
-        return self._with_geo(self._missions.set_default(mission_id))
 
     # -- Execution -----------------------------------------------------------
 

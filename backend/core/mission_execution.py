@@ -212,7 +212,7 @@ class MissionExecutionManager:
 
             if waypoint_index == 0 and state.current_waypoint_index != 0 and not rejoined:
                 completed_loops += 1
-                if completed_loops >= mission.loop_count:
+                if not mission.infinite_loop and completed_loops >= mission.loop_count:
                     status = MissionStatus.COMPLETED
                 else:
                     current_loop += 1
