@@ -1,13 +1,13 @@
 const ACTIVE_WAYPOINT_COLOR = "#f08c00";
 // Matches CurrentMissionRouteLayer's INVESTIGATING_COLOR, so the route and
-// its waypoints gray out together while a diversion is in flight.
+// its waypoints gray out together while the robot is investigating.
 const INVESTIGATING_WAYPOINT_COLOR = "#868e96";
 
 /** Shared marker color between the interactive editor layer
  * (features/map/WaypointEditorLayer.tsx) and the read-only monitor layer
  * (features/map/MissionWaypointMarkersLayer.tsx) so both render identically
  * — every waypoint the same orange as the mission route, regardless of
- * home/selected status. Grays out when `muted` (mission is INVESTIGATING). */
+ * home/selected status. Grays out when `muted` (the robot is investigating). */
 export function waypointMarkerColor(muted = false): string {
   return muted ? INVESTIGATING_WAYPOINT_COLOR : ACTIVE_WAYPOINT_COLOR;
 }

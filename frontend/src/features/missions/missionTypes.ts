@@ -40,7 +40,7 @@ export interface MissionDefinition {
   metadata: Record<string, unknown>;
 }
 
-export type MissionStatus = "ready" | "running" | "paused" | "returning_home" | "completed" | "investigating";
+export type MissionStatus = "ready" | "running" | "paused" | "returning" | "completed";
 
 /** Runtime execution progress — see backend/models/mission_execution.py::MissionExecutionState. */
 export interface MissionExecutionState {

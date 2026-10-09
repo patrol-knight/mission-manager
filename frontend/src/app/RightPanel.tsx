@@ -2,6 +2,10 @@ import { MissionStatusPanel } from "../features/missions/MissionStatusPanel";
 import { MissionLibraryPanel } from "../features/missions/MissionLibraryPanel";
 import { MissionEditorPanel } from "../features/missions/MissionEditorPanel";
 import { DeviceConnectivityPanel } from "../features/devices/DeviceConnectivityPanel";
+import { AnomalyCard } from "../features/anomalies/AnomalyCard";
+import { InvestigateCard } from "../features/investigation/InvestigateCard";
+import { RobotActivityStatus } from "../features/investigation/RobotActivityStatus";
+import { useInvestigationStore } from "../stores/investigationStore";
 import { TopBar } from "./TopBar";
 
 interface RightPanelProps {
@@ -19,6 +23,8 @@ export function RightPanel({
   onEnterEditor,
   onExitEditorToLibrary,
 }: RightPanelProps) {
+  const investigating = useInvestigationStore((s) => s.investigation !== null);
+
   return (
     <div
       style={{
@@ -38,7 +44,13 @@ export function RightPanel({
       <TopBar />
       {view === "monitor" ? (
         <>
-          <MissionStatusPanel onOpenLibrary={onOpenLibrary} />
+          {/* Order: what the robot is doing, the investigation (if any), the
+              clicked anomaly, then the mission -- collapsed to a read-only
+              strip while investigating (docs/investigate-mode-design.md §8.3). */}
+          <RobotActivityStatus />
+          <InvestigateCard />
+          <AnomalyCard />
+          <MissionStatusPanel onOpenLibrary={onOpenLibrary} collapsed={investigating} />
           <DeviceConnectivityPanel />
         </>
       ) : view === "library" ? (

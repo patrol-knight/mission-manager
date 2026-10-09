@@ -110,7 +110,7 @@ export function MapWorkspace({ containerRef, map, ready, children }: MapWorkspac
           70%  { box-shadow: 0 0 0 10px rgba(224,49,49,0); }
           100% { box-shadow: 0 0 0 0 rgba(224,49,49,0); }
         }
-        @keyframes diversion-target-pulse {
+        @keyframes investigation-target-pulse {
           0%   { box-shadow: 0 0 0 0 rgba(255,215,0,0.8); }
           70%  { box-shadow: 0 0 0 12px rgba(255,215,0,0); }
           100% { box-shadow: 0 0 0 0 rgba(255,215,0,0); }

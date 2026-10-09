@@ -137,10 +137,7 @@ export function MissionLibraryPanel({ onBack, onEnterEditor }: MissionLibraryPan
     const runningElsewhere =
       execution !== null &&
       execution.missionId !== mission.missionId &&
-      (execution.status === "running" ||
-        execution.status === "paused" ||
-        execution.status === "returning_home" ||
-        execution.status === "investigating");
+      (execution.status === "running" || execution.status === "paused" || execution.status === "returning");
     if (runningElsewhere) {
       setActivateTarget(mission);
       return;

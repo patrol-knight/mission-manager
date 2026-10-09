@@ -48,9 +48,8 @@ class RealtimeClient {
   private anomalySnapshotListeners = new Set<Listener<unknown[]>>();
   private anomalyUpdateListeners = new Set<Listener<unknown>>();
   private anomalyExpiredListeners = new Set<Listener<unknown>>();
-  private diversionStartedListeners = new Set<Listener<unknown>>();
-  private diversionReturningListeners = new Set<Listener<unknown>>();
-  private diversionClearedListeners = new Set<Listener<unknown>>();
+  private investigationUpdateListeners = new Set<Listener<unknown>>();
+  private investigationCancelledListeners = new Set<Listener<unknown>>();
   private cameraUpdateListeners = new Set<Listener<CameraState>>();
   private camerasSnapshotListeners = new Set<Listener<CameraState[]>>();
   private cameraSignalListeners = new Set<Listener<RawCameraSignal>>();
@@ -113,22 +112,16 @@ class RealtimeClient {
     return () => this.anomalyExpiredListeners.delete(fn);
   }
 
-  /** Fed by `anomaly.diversion.started` — robot begins diverting to an anomaly. */
-  onDiversionStarted(fn: Listener<unknown>): Unsubscribe {
-    this.diversionStartedListeners.add(fn);
-    return () => this.diversionStartedListeners.delete(fn);
+  /** Fed by `investigation.updated` — the full investigation state, or null when none is active. */
+  onInvestigationUpdate(fn: Listener<unknown>): Unsubscribe {
+    this.investigationUpdateListeners.add(fn);
+    return () => this.investigationUpdateListeners.delete(fn);
   }
 
-  /** Fed by `anomaly.diversion.returning` — robot heads back to the mission. */
-  onDiversionReturning(fn: Listener<unknown>): Unsubscribe {
-    this.diversionReturningListeners.add(fn);
-    return () => this.diversionReturningListeners.delete(fn);
-  }
-
-  /** Fed by `anomaly.diversion.cleared` — diversion fully resolved (or aborted). */
-  onDiversionCleared(fn: Listener<unknown>): Unsubscribe {
-    this.diversionClearedListeners.add(fn);
-    return () => this.diversionClearedListeners.delete(fn);
+  /** Fed by `investigation.cancelled` — the robot went offline mid-investigation. */
+  onInvestigationCancelled(fn: Listener<unknown>): Unsubscribe {
+    this.investigationCancelledListeners.add(fn);
+    return () => this.investigationCancelledListeners.delete(fn);
   }
 
   /** Fed by `camera.updated` — a camera's stream_state changed (idle/connecting/live/no_signal/offline/error). */
@@ -221,14 +214,11 @@ class RealtimeClient {
       case "anomaly.expired":
         this.anomalyExpiredListeners.forEach((fn) => fn(msg.data));
         break;
-      case "anomaly.diversion.started":
-        this.diversionStartedListeners.forEach((fn) => fn(msg.data));
+      case "investigation.updated":
+        this.investigationUpdateListeners.forEach((fn) => fn(msg.data));
         break;
-      case "anomaly.diversion.returning":
-        this.diversionReturningListeners.forEach((fn) => fn(msg.data));
-        break;
-      case "anomaly.diversion.cleared":
-        this.diversionClearedListeners.forEach((fn) => fn(msg.data));
+      case "investigation.cancelled":
+        this.investigationCancelledListeners.forEach((fn) => fn(msg.data));
         break;
       case "camera.updated":
         this.cameraUpdateListeners.forEach((fn) => fn(cameraStateFromRaw(msg.data as RawCameraState)));

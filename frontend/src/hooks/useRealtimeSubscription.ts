@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { getRealtimeClient } from "../api/realtimeClient";
 import { useDeviceStore } from "../stores/deviceStore";
 import { useMissionStore } from "../stores/missionStore";
+import { useInvestigationStore } from "../stores/investigationStore";
 import {
   missionDefinitionFromRaw,
   missionExecutionStateFromRaw,
@@ -9,16 +10,15 @@ import {
   type RawMissionExecutionState,
 } from "../features/missions/missionTypes";
 import { anomalyFromRaw, type RawAnomaly, type RawAnomalyExpired } from "../features/anomalies/anomalyTypes";
-import type { RawDiversionReturning, RawDiversionStarted } from "../features/anomalies/diversionTypes";
+import { investigationFromRaw, type RawInvestigation } from "../features/investigation/investigationTypes";
 
 /**
  * Mounted once (in AppShell). Bridges the singleton realtime connection into
- * deviceStore/missionStore. Cleanup always unsubscribes and effect re-mount always
+ * the stores. Cleanup always unsubscribes and effect re-mount always
  * re-subscribes, so this is safe under React StrictMode's dev-mode double-invoke.
  *
- * Pure store updates only — no side effects like toasts. AnomalyArrivalWatcher
- * (a separate, always-mounted component) is what reacts to the resulting
- * anomalies collection to show the arrival toast.
+ * Pure store updates only — no side effects like toasts. InvestigationNotifier
+ * (a separate, always-mounted component) reacts to the resulting state.
  */
 export function useRealtimeSubscription(): void {
   const setDevices = useDeviceStore((s) => s.setDevices);
@@ -26,12 +26,10 @@ export function useRealtimeSubscription(): void {
   const setAnomalies = useDeviceStore((s) => s.setAnomalies);
   const upsertAnomaly = useDeviceStore((s) => s.upsertAnomaly);
   const removeAnomaly = useDeviceStore((s) => s.removeAnomaly);
-  const setDiversionStarted = useDeviceStore((s) => s.setDiversionStarted);
-  const setDiversionReturning = useDeviceStore((s) => s.setDiversionReturning);
-  const clearDiversion = useDeviceStore((s) => s.clearDiversion);
   const upsertCamera = useDeviceStore((s) => s.upsertCamera);
   const setDefinition = useMissionStore((s) => s.setDefinition);
   const setExecution = useMissionStore((s) => s.setExecution);
+  const setInvestigation = useInvestigationStore((s) => s.setInvestigation);
 
   useEffect(() => {
     const client = getRealtimeClient();
@@ -53,9 +51,9 @@ export function useRealtimeSubscription(): void {
         upsertAnomaly(anomalyFromRaw(raw as RawAnomaly));
       }),
       client.onAnomalyExpired((raw) => removeAnomaly((raw as RawAnomalyExpired).anomaly_id)),
-      client.onDiversionStarted((raw) => setDiversionStarted(raw as RawDiversionStarted)),
-      client.onDiversionReturning((raw) => setDiversionReturning(raw as RawDiversionReturning)),
-      client.onDiversionCleared(() => clearDiversion()),
+      client.onInvestigationUpdate((raw) => {
+        setInvestigation(raw ? investigationFromRaw(raw as RawInvestigation) : null);
+      }),
       client.onCamerasSnapshot((cameras) => cameras.forEach(upsertCamera)),
       client.onCameraUpdate(upsertCamera),
     ];
@@ -69,11 +67,9 @@ export function useRealtimeSubscription(): void {
     setAnomalies,
     upsertAnomaly,
     removeAnomaly,
-    setDiversionStarted,
-    setDiversionReturning,
-    clearDiversion,
     upsertCamera,
     setDefinition,
     setExecution,
+    setInvestigation,
   ]);
 }
