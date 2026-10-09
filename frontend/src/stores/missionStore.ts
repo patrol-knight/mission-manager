@@ -4,7 +4,7 @@ import type { MissionDefinition, MissionExecutionState } from "../features/missi
 interface MissionStoreState {
   /** The authored mission configuration. */
   definition: MissionDefinition | null;
-  /** Runtime execution progress — always `null` until backend milestone B2 lands. */
+  /** Runtime execution progress; `null` when no mission is current. */
   execution: MissionExecutionState | null;
   setDefinition: (definition: MissionDefinition | null) => void;
   setExecution: (execution: MissionExecutionState | null) => void;

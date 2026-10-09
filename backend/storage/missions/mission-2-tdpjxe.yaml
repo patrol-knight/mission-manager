@@ -3,7 +3,6 @@ name: Mission 2
 map_name: lanelet2_map
 frame_id: map
 description: null
-time_slot: null
 waypoints:
 - waypoint_id: cdaa1a2b-af15-4bac-b8f6-ba8f1cfe01f2
   x: -67.335687568368

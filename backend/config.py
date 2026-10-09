@@ -21,6 +21,11 @@ class Settings(BaseSettings):
     app_state_path: str = "storage/app_state.yaml"
 
     device_offline_timeout_sec: float = 3.0
+    # How long the robot may stay offline before the mission and any
+    # investigation are aborted (MissionService.abort_if_robot_lost). Longer
+    # than device_offline_timeout_sec, which only drives the UI's connection
+    # dot, so a short network blip doesn't stop a mission.
+    robot_lost_grace_sec: float = 10.0
     device_monitor_interval_sec: float = 1.0
 
     # Durable anomaly-detection history (backend/core/anomaly_repository.py).
@@ -34,6 +39,8 @@ class Settings(BaseSettings):
     zenoh_router: str = "tcp/localhost:7447"
     zenoh_device_state_keyexpr: str = "devices/*/state"
     zenoh_anomaly_keyexpr: str = "anomalies/*/state"
+    # Outbound: {anomaly_id} is substituted by ZenohGateway.publish_anomaly_feedback().
+    zenoh_anomaly_feedback_keyexpr: str = "anomalies/{anomaly_id}/feedback"
     # Outbound: {device_id} is substituted by ZenohGateway.publish_command().
     zenoh_device_commands_keyexpr: str = "devices/{device_id}/commands"
 
@@ -49,16 +56,13 @@ class Settings(BaseSettings):
         "devices/{device_id}/cameras/{camera_id}/webrtc/to-device"
     )
 
-    # AnomalyResponseCoordinator (core/anomaly_response.py) -- kill switch.
-    anomaly_response_enabled: bool = True
     # MissionDriveCoordinator (core/mission_drive.py) -- kill switch for
     # autonomously driving the current mission's waypoints.
     mission_drive_enabled: bool = True
 
-    # Shared by both coordinators above: how long to wait for the tracked
-    # robot's operational_state to report "arrived" after a navigate_to_goal
-    # command, before giving up (anomaly diversion reverts/clears; mission
-    # drive just retries). The robot itself is the source of truth for
-    # arrival -- this is only a safety net for a stuck/disconnected robot,
-    # not a simulated travel time.
+    # MissionDriveCoordinator: how long to wait for the robot to report
+    # "arrived" after a waypoint navigate_to_goal before re-sending it. The
+    # robot is the source of truth for arrival -- this is only a safety net
+    # for a lost command, not a simulated travel time. (Investigations
+    # deliberately have no timeout; the operator decides when to Stop.)
     navigation_timeout_sec: float = 60.0

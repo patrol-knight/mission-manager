@@ -27,8 +27,8 @@ import sys
 import psycopg
 
 COLUMNS = [
-    "anomaly_id", "frame_id", "x", "y", "lat", "lon", "type", "confidence",
-    "source_device_id", "mission_id", "detected_at", "resolved_at", "resolution",
+    "anomaly_id", "types", "frame_id", "x", "y", "lat", "lon", "confidence",
+    "source_device_id", "mission_id", "detected_at", "last_seen_at", "closed_at", "resolution",
 ]
 
 
@@ -54,7 +54,9 @@ def build_query(args: argparse.Namespace) -> tuple[str, list]:
         clauses.append("detected_at < %s")
         params.append(args.until)
 
-    query = f"SELECT {', '.join(COLUMNS)} FROM anomalies"
+    # types is a Postgres array -- joined with "|" so it stays one CSV cell.
+    select = ["array_to_string(types, '|')" if c == "types" else c for c in COLUMNS]
+    query = f"SELECT {', '.join(select)} FROM anomaly_history"
     if clauses:
         query += " WHERE " + " AND ".join(clauses)
     query += " ORDER BY detected_at"
@@ -69,9 +71,9 @@ def main() -> None:
     )
     parser.add_argument("--output", "-o", help="File to write CSV to. Defaults to stdout.")
     parser.add_argument(
-        "--resolution", choices=["true_positive", "false_positive", "unresolved"], default=None,
-        help="Filter by resolution. 'unresolved' means resolution IS NULL (still detected/investigating). "
-        "Omit to include all rows regardless of resolution.",
+        "--resolution", choices=["true_positive", "false_positive", "unclear", "unresolved"], default=None,
+        help="Filter by resolution. 'unresolved' means resolution IS NULL (expired without anyone "
+        "verifying it). Omit to include all rows regardless of resolution.",
     )
     parser.add_argument("--mission-id", default=None, help="Filter to anomalies detected during this mission.")
     parser.add_argument("--since", default=None, help="Only anomalies detected on/after this date (YYYY-MM-DD or full timestamp).")

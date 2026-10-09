@@ -17,16 +17,6 @@ import {
 } from "../features/missions/missionTypes";
 import { withLoopClosure } from "../features/missions/routeLoop";
 
-export async function getMissionDefinition(): Promise<MissionDefinition | null> {
-  try {
-    const raw = await http.get<RawMission>("/api/missions/current");
-    return missionDefinitionFromRaw(raw);
-  } catch (err) {
-    if (err instanceof ApiError && err.status === 404) return null;
-    throw err;
-  }
-}
-
 export async function listMissionSummaries(): Promise<MissionSummary[]> {
   const raw = await http.get<RawMissionSummary[]>("/api/missions");
   return raw.map(missionSummaryFromRaw);

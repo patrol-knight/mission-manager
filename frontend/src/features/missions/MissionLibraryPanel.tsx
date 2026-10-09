@@ -5,7 +5,7 @@ import { useAsyncResource } from "../../hooks/useAsyncResource";
 import { listMissionSummaries, getMission, deleteMission, activateMission } from "../../api/missionApi";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { useToast } from "../../components/useToast";
-import { formatDistance, formatDuration, estimateEtaSeconds } from "./missionSummaryFormat";
+import { formatDistance, formatDuration, formatLoopTotal, estimateEtaSeconds } from "./missionSummaryFormat";
 import type { MissionSummary } from "./missionTypes";
 
 const cardStyle: CSSProperties = {
@@ -137,10 +137,7 @@ export function MissionLibraryPanel({ onBack, onEnterEditor }: MissionLibraryPan
     const runningElsewhere =
       execution !== null &&
       execution.missionId !== mission.missionId &&
-      (execution.status === "running" ||
-        execution.status === "paused" ||
-        execution.status === "returning_home" ||
-        execution.status === "investigating");
+      (execution.status === "running" || execution.status === "paused" || execution.status === "returning");
     if (runningElsewhere) {
       setActivateTarget(mission);
       return;
@@ -182,8 +179,9 @@ export function MissionLibraryPanel({ onBack, onEnterEditor }: MissionLibraryPan
       )}
 
       {missions?.map((m) => {
-        const eta = estimateEtaSeconds(m.distanceM, m.loopCount);
-        const pinned = m.isCurrent || m.isDefault;
+        // An infinite mission has no end, so show the time for one loop instead.
+        const eta = estimateEtaSeconds(m.distanceM, m.infiniteLoop ? 1 : m.loopCount);
+        const pinned = m.isCurrent;
         const busy = busyId === m.missionId;
         return (
           <div
@@ -196,19 +194,18 @@ export function MissionLibraryPanel({ onBack, onEnterEditor }: MissionLibraryPan
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
               <div style={{ fontWeight: 600, fontSize: 15, color: "#212529" }}>{m.name}</div>
               <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
-                {m.isDefault && <Badge color="#845ef7">Default</Badge>}
                 {m.isCurrent && <Badge color="#1c7ed6">Active</Badge>}
               </div>
             </div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 4, margin: "8px 0" }}>
-              <Row label="Waypoints" value={`${m.waypointCount} · Loop count ${m.loopCount}`} />
+              <Row label="Waypoints" value={`${m.waypointCount} · Loop count ${formatLoopTotal(m)}`} />
               <Row
                 label="Home"
                 value={m.homeX !== null && m.homeY !== null ? `(${m.homeX.toFixed(2)}, ${m.homeY.toFixed(2)})` : "—"}
               />
               <Row label="Distance / loop" value={formatDistance(m.distanceM)} />
-              <Row label="ETA" value={formatDuration(eta)} />
+              <Row label={m.infiniteLoop ? "ETA / loop" : "ETA"} value={formatDuration(eta)} />
             </div>
 
             <div style={{ display: "flex", gap: 6 }}>

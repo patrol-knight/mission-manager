@@ -27,7 +27,7 @@ describe("missionEditorReducer", () => {
       mapName: "demo",
       frameId: "map",
       description: null,
-      timeSlot: null,
+      infiniteLoop: false,
       waypoints: [
         { waypointId: "wp1", x: 0, y: 0, yaw: null, label: null, type: "patrol" },
         { waypointId: "wp2", x: 1, y: 1, yaw: null, label: null, type: "patrol" },
@@ -182,6 +182,20 @@ describe("canSave", () => {
 
     state = missionEditorReducer(state, { type: "SET_LOOP_COUNT_INPUT", value: "0" });
     expect(canSave(state)).toBe(false);
+  });
+
+  it("an infinite mission saves without a valid loop count, which is kept for later", () => {
+    let state = missionEditorReducer(BLANK_STATE, { type: "SET_NAME", name: "Patrol A" });
+    state = addWaypoint(state, 0, 0);
+    state = addWaypoint(state, 1, 1);
+    state = missionEditorReducer(state, { type: "SET_LOOP_COUNT_INPUT", value: "" });
+    state = missionEditorReducer(state, { type: "SET_VALIDATION_RESULT", result: VALID_ROUTE_RESULT });
+    expect(canSave(state)).toBe(false);
+
+    state = missionEditorReducer(state, { type: "SET_INFINITE_LOOP", value: true });
+    expect(state.dirty).toBe(true);
+    expect(canSave(state)).toBe(true);
+    expect(state.loopCountInput).toBe("");
   });
 
   it("blocks save when the last validation failed", () => {

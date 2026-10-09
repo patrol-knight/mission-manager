@@ -1,34 +1,92 @@
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from core.anomaly_repository import AnomalyRepository
 from core.errors import AnomalyNotFoundError, InvalidAnomalyTransitionError
-from models.anomaly import Anomaly, AnomalyStatus
+from models.anomaly import FINAL_VERDICTS, Anomaly, AnomalyStateMessage, AnomalyVerdict
 
 
 class AnomalyRegistry:
-    """In-memory, thread-safe store of anomalies — same shape/precedent as
-    DeviceRegistry: the live state (anomalies are ephemeral field data) is
-    never lost even if the optional durable-history write fails. When a
-    repository is supplied, every mutation is also mirrored into Postgres
-    for later analysis (see core/anomaly_repository.py) -- but the registry
-    itself never issues SQL and never fails/blocks because of it; the
-    repository is fail-soft on its own. Multiple independent writers (Zenoh
-    ingest for create/en_route/arrived; the verify/dismiss endpoints for the
-    final transition) share one instance."""
+    """In-memory, thread-safe store of live anomalies — same shape/precedent
+    as DeviceRegistry. Writers: Zenoh ingest (create/refresh), the
+    investigation coordinator (target/verdict), and the monitor loop (expiry).
+
+    Lifetime follows ../anomaly_detection/docs/topics_format.md section 2.1:
+    each state message extends `expires_at` (never shortens it), and once it
+    passes, expire() removes the anomaly -- except the one the robot is
+    investigating (set_target()). There is no "end" message.
+
+    A final verdict (true/false positive) closes an anomaly: later refreshes
+    are ignored and it leaves the map. An "unclear" verdict doesn't -- the
+    anomaly stays live and can be investigated again.
+
+    When a repository is supplied, each anomaly is written to it exactly once,
+    at its terminal event -- a final verdict, or expiry -- and never updated
+    (see core/anomaly_repository.py). The repository is fail-soft on its own."""
 
     def __init__(self, repository: AnomalyRepository | None = None) -> None:
         self._lock = threading.RLock()
         self._anomalies: dict[str, Anomaly] = {}
+        # The anomaly the robot is investigating; expire() never removes it.
+        self._target_id: str | None = None
+        # Ids of closed anomalies already removed from _anomalies. Feedback
+        # delivery is best-effort, so Anomaly Detection may keep refreshing a
+        # closed id; without this, a late refresh after removal would
+        # recreate it as a brand-new anomaly.
+        self._closed_ids: set[str] = set()
         self._repository = repository
 
-    def create(self, anomaly: Anomaly) -> Anomaly:
+    def ingest(
+        self, message: AnomalyStateMessage, received_at: datetime, latlon: tuple[float, float] | None
+    ) -> tuple[Anomaly, bool] | None:
+        """Creates or refreshes an anomaly from one state message. Returns
+        (stored anomaly, is_new), or None if the message was ignored because
+        that anomaly is already closed."""
+        lat, lon = latlon if latlon is not None else (None, None)
+        lifetime_end = received_at + timedelta(seconds=message.degrade_sec)
         with self._lock:
+            if message.anomaly_id in self._closed_ids:
+                return None
+            existing = self._anomalies.get(message.anomaly_id)
+            if existing is not None and existing.is_closed:
+                return None
+
+            if existing is None:
+                anomaly = Anomaly(
+                    anomaly_id=message.anomaly_id,
+                    types=list(message.types),
+                    x=message.x,
+                    y=message.y,
+                    frame_id=message.frame_id,
+                    confidence=message.confidence,
+                    source_device_id=message.source_device_id,
+                    detected_at=datetime.fromtimestamp(message.detected_at, timezone.utc),
+                    updated_at=received_at,
+                    last_seen_at=received_at,
+                    degrade_sec=message.degrade_sec,
+                    expires_at=lifetime_end,
+                    lat=lat,
+                    lon=lon,
+                )
+            else:
+                # detected_at and source_device_id don't change on refresh
+                # (contract), so the first message's values are kept.
+                anomaly = existing.model_copy(
+                    update={
+                        "types": list(message.types),
+                        "x": message.x,
+                        "y": message.y,
+                        "confidence": message.confidence,
+                        "lat": lat,
+                        "lon": lon,
+                        "updated_at": received_at,
+                        "last_seen_at": received_at,
+                        "degrade_sec": message.degrade_sec,
+                        "expires_at": max(existing.expires_at, lifetime_end),
+                    }
+                )
             self._anomalies[anomaly.anomaly_id] = anomaly
-            stored = anomaly.model_copy(deep=True)
-        if self._repository is not None:
-            self._repository.create(stored)
-        return stored
+            return anomaly.model_copy(deep=True), existing is None
 
     def get(self, anomaly_id: str) -> Anomaly | None:
         with self._lock:
@@ -43,64 +101,73 @@ class AnomalyRegistry:
                 reverse=True,
             )
 
-    def update_status(self, anomaly_id: str, status: AnomalyStatus) -> Anomaly:
-        with self._lock:
-            existing = self._anomalies.get(anomaly_id)
-            if existing is None:
-                raise AnomalyNotFoundError(f"Anomaly not found: {anomaly_id}")
-            updated = existing.model_copy(update={"status": status, "updated_at": datetime.now(timezone.utc)})
-            self._anomalies[anomaly_id] = updated
-            return updated.model_copy(deep=True)
+    def set_target(self, anomaly_id: str | None) -> Anomaly | None:
+        """Atomically switches which anomaly expiry must leave alone (the one
+        the robot is investigating). The previous target gets a fresh grace
+        period, so it doesn't vanish the moment the robot turns away.
 
-    def _resolve(self, anomaly_id: str, resolution: str) -> Anomaly:
-        """Shared by verify() and dismiss() -- both end anomaly review via
-        the same status transition (VERIFIED), but now record distinct
-        resolutions: verify() -> true_positive, dismiss() -> false_positive.
-        Both are only reachable from AnomalyVerifyModal.tsx after the
-        operator has actually inspected the robot's camera feed (there is no
-        "dismiss without inspecting" path in the frontend), so dismiss here
-        genuinely means "confirmed false," not "skipped."""
+        Pass None to clear the target. For an id, returns the new target, or
+        None -- leaving the previous target in place -- if it is gone (expiry
+        may remove an untargeted anomaly at any moment) or already closed."""
+        with self._lock:
+            candidate = None
+            if anomaly_id is not None:
+                candidate = self._anomalies.get(anomaly_id)
+                if candidate is None or candidate.is_closed:
+                    return None
+            previous = self._anomalies.get(self._target_id) if self._target_id else None
+            if previous is not None and previous.anomaly_id != anomaly_id:
+                fresh_end = datetime.now(timezone.utc) + timedelta(seconds=previous.degrade_sec)
+                self._anomalies[previous.anomaly_id] = previous.model_copy(
+                    update={"expires_at": max(previous.expires_at, fresh_end)}
+                )
+            self._target_id = anomaly_id
+            return candidate.model_copy(deep=True) if candidate is not None else None
+
+    def resolve(self, anomaly_id: str, verdict: AnomalyVerdict, mission_id: str | None) -> Anomaly:
+        """Records the operator's verdict. A final verdict closes the anomaly
+        and is its terminal event, so it's written to the repository here; it
+        stays in memory, hidden from the map, until expire() drops it, so late
+        refreshes keep being ignored. "unclear" is recorded but not final."""
         with self._lock:
             existing = self._anomalies.get(anomaly_id)
             if existing is None:
                 raise AnomalyNotFoundError(f"Anomaly not found: {anomaly_id}")
-            if existing.status != AnomalyStatus.ROBOT_ARRIVED:
-                raise InvalidAnomalyTransitionError(
-                    f"Cannot resolve an anomaly with status {existing.status}"
-                )
+            if existing.is_closed:
+                raise InvalidAnomalyTransitionError(f"Anomaly already resolved: {anomaly_id}")
             resolved_at = datetime.now(timezone.utc)
             updated = existing.model_copy(
                 update={
-                    "status": AnomalyStatus.VERIFIED,
+                    "resolution": verdict,
+                    "resolved_at": resolved_at,
                     "updated_at": resolved_at,
-                    "resolution": resolution,
+                    "mission_id": mission_id,
                 }
             )
             self._anomalies[anomaly_id] = updated
             stored = updated.model_copy(deep=True)
-        if self._repository is not None:
-            self._repository.update_resolution(anomaly_id, resolution, resolved_at)
+        if self._repository is not None and verdict in FINAL_VERDICTS:
+            self._repository.record_final(stored, closed_at=resolved_at)
         return stored
 
-    def verify(self, anomaly_id: str) -> Anomaly:
-        return self._resolve(anomaly_id, "true_positive")
-
-    def dismiss(self, anomaly_id: str) -> Anomaly:
-        return self._resolve(anomaly_id, "false_positive")
-
-    def record_mission_context(self, anomaly_id: str, mission_id: str) -> None:
-        """Called by AnomalyResponseCoordinator.on_anomaly_detected() at the
-        moment a diversion actually starts -- records which mission the
-        robot was executing when it diverted here, not merely whichever
-        mission happened to be loaded at raw detection time. No-op if the
-        anomaly is unknown (shouldn't happen -- caller only calls this right
-        after creating it) rather than raising, since this is best-effort
-        context, not part of the anomaly's core lifecycle."""
+    # Quoted: inside this class body, `list` is the method above, not the builtin.
+    def expire(self, now: datetime | None = None) -> "list[str]":
+        """Removes every anomaly whose expires_at has passed, except the
+        investigation target. Open ones (no verdict, or unclear) are written
+        to the repository here, their terminal event; closed ones were
+        already written by resolve(). Returns the removed ids. Call
+        periodically (core/monitor.py)."""
+        now = datetime.now(timezone.utc) if now is None else now
         with self._lock:
-            existing = self._anomalies.get(anomaly_id)
-            if existing is None:
-                return
-            updated = existing.model_copy(update={"mission_id": mission_id})
-            self._anomalies[anomaly_id] = updated
+            expired = [
+                a for a in self._anomalies.values() if a.expires_at <= now and a.anomaly_id != self._target_id
+            ]
+            for anomaly in expired:
+                del self._anomalies[anomaly.anomaly_id]
+                if anomaly.is_closed:
+                    self._closed_ids.add(anomaly.anomaly_id)
         if self._repository is not None:
-            self._repository.update_mission_context(anomaly_id, mission_id)
+            for anomaly in expired:
+                if not anomaly.is_closed:
+                    self._repository.record_final(anomaly, closed_at=now)
+        return [a.anomaly_id for a in expired]

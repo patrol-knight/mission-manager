@@ -12,6 +12,17 @@ const DEVICE_COLORS: Record<Device["type"], string> = {
   iot: "#d6336c",
 };
 
+// Explicit stacking, not mount order -- markers are appended to the DOM as
+// each layer's useMarkerList effect resolves, so mount order is fragile.
+// Waypoints 1 < IoT 4 < anomalies 5 (AnomalyLayer) < robot 10: anomalies are
+// reported by a tower's camera and usually sit right next to it, so they
+// must win over the tower to stay clickable, and the robot must always stay
+// visible, e.g. while driving through a waypoint or parked at an anomaly.
+const DEVICE_Z_INDEX: Record<Device["type"], number> = {
+  robot: 10,
+  iot: 4,
+};
+
 // Dim + desaturate on disconnect rather than removing the marker (last-known
 // position stays useful) or changing its base color (that's the type legend).
 // backendConnected false means each device's own `connected` field is stale
@@ -34,14 +45,8 @@ function buildDeviceElement(device: Device, backendConnected: boolean): HTMLElem
     border:2px solid white;
     box-shadow:0 1px 5px rgba(0,0,0,0.5);
     cursor:pointer;
-    z-index:10;
+    z-index:${DEVICE_Z_INDEX[device.type]};
   `;
-  // Explicit z-index, not just mounting DeviceMarkerLayer last -- markers
-  // are appended to the DOM as each layer's own useMarkerList effect
-  // resolves, not in JSX/mount order, so relying on mount order to decide
-  // stacking is fragile. Device markers need to always win (e.g. the robot
-  // driving through a waypoint must stay visible), so this is the reliable
-  // way to guarantee it regardless of resolution order.
   applyConnectivityStyle(el, device, backendConnected);
   return el;
 }

@@ -44,3 +44,39 @@ class AnomalyNotFoundError(Exception):
 
 class InvalidAnomalyTransitionError(Exception):
     pass
+
+
+class DeviceNotFoundError(Exception):
+    pass
+
+
+class DeviceNotConnectedError(Exception):
+    pass
+
+
+class CameraUnavailableError(Exception):
+    pass
+
+
+class DeviceUnreachableError(Exception):
+    pass
+
+
+class InvestigationActiveError(Exception):
+    pass
+
+
+class NoActiveInvestigationError(Exception):
+    pass
+
+
+class VerdictRequiredError(Exception):
+    pass
+
+
+class NotOnSiteError(Exception):
+    pass
+
+
+class NoRouteError(Exception):
+    pass

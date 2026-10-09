@@ -2,19 +2,20 @@ import { useContext, useMemo } from "react";
 import { MapContext } from "./MapContext";
 import { useMarkerList, type UseMarkerListOptions } from "./mapMarkers";
 import { useMissionStore } from "../../stores/missionStore";
+import { useInvestigationStore } from "../../stores/investigationStore";
 import { waypointMarkerColor, buildWaypointMarkerElement } from "../missions/waypointMarker";
 import type { Waypoint } from "../missions/missionTypes";
 
 /** Monitor-view counterpart to the Editor's (interactive) WaypointEditorLayer —
  * read-only numbered markers for the persisted mission's waypoints. Shares
  * marker styling via features/missions/waypointMarker.ts so both look identical.
- * Grays out while INVESTIGATING, same as CurrentMissionRouteLayer's route
- * line -- the diversion's own yellow route/target marker stays the visual
+ * Grays out while the robot is investigating, same as CurrentMissionRouteLayer's
+ * route line -- the investigation's yellow route/target stays the visual
  * focus, while the mission's waypoints remain visible for context. */
 export function MissionWaypointMarkersLayer() {
   const { map } = useContext(MapContext);
   const definition = useMissionStore((s) => s.definition);
-  const investigating = useMissionStore((s) => s.execution?.status === "investigating");
+  const investigating = useInvestigationStore((s) => s.investigation !== null);
   const waypoints = useMemo(() => definition?.waypoints ?? [], [definition]);
 
   const options = useMemo<UseMarkerListOptions<Waypoint>>(

@@ -30,11 +30,8 @@ const MAX_DELAY = 30_000;
 
 /**
  * Typed pub/sub wrapper around the backend's single /ws channel — see
- * backend/api/websocket.py for the protocol. `onMissionUpdate`/`onMissionExecutionUpdate`/
- * `onAnomalySnapshot`/`onAnomalyUpdate` are wired up front so consumers (missionStore,
- * deviceStore) have a stable subscription surface; the underlying `mission.execution.updated`
- * and `anomaly.*` events simply won't fire until the backend milestones that emit them
- * (B2/B3) land — that's a no-op, not an error, until then.
+ * backend/api/websocket.py for the protocol. One `on*` method per event type,
+ * so consumers (missionStore, deviceStore) subscribe without parsing envelopes.
  */
 class RealtimeClient {
   private ws: WebSocket | null = null;
@@ -50,9 +47,9 @@ class RealtimeClient {
   private missionExecutionListeners = new Set<Listener<unknown>>();
   private anomalySnapshotListeners = new Set<Listener<unknown[]>>();
   private anomalyUpdateListeners = new Set<Listener<unknown>>();
-  private diversionStartedListeners = new Set<Listener<unknown>>();
-  private diversionReturningListeners = new Set<Listener<unknown>>();
-  private diversionClearedListeners = new Set<Listener<unknown>>();
+  private anomalyExpiredListeners = new Set<Listener<unknown>>();
+  private investigationUpdateListeners = new Set<Listener<unknown>>();
+  private autonomyAbortedListeners = new Set<Listener<unknown>>();
   private cameraUpdateListeners = new Set<Listener<CameraState>>();
   private camerasSnapshotListeners = new Set<Listener<CameraState[]>>();
   private cameraSignalListeners = new Set<Listener<RawCameraSignal>>();
@@ -91,40 +88,40 @@ class RealtimeClient {
     return () => this.missionUpdateListeners.delete(fn);
   }
 
-  /** Fed by `mission.execution`/`mission.execution.updated` (added in backend milestone B2). */
+  /** Fed by `mission.execution` (connect snapshot) and `mission.execution.updated`. */
   onMissionExecutionUpdate(fn: Listener<unknown>): Unsubscribe {
     this.missionExecutionListeners.add(fn);
     return () => this.missionExecutionListeners.delete(fn);
   }
 
-  /** Fed by `anomalies.snapshot` (added in backend milestone B3). */
+  /** Fed by `anomalies.snapshot` (connect snapshot). */
   onAnomalySnapshot(fn: Listener<unknown[]>): Unsubscribe {
     this.anomalySnapshotListeners.add(fn);
     return () => this.anomalySnapshotListeners.delete(fn);
   }
 
-  /** Fed by `anomaly.created`/`anomaly.updated` (added in backend milestone B3). */
+  /** Fed by `anomaly.created`/`anomaly.updated`. */
   onAnomalyUpdate(fn: Listener<unknown>): Unsubscribe {
     this.anomalyUpdateListeners.add(fn);
     return () => this.anomalyUpdateListeners.delete(fn);
   }
 
-  /** Fed by `anomaly.diversion.started` — robot begins diverting to an anomaly. */
-  onDiversionStarted(fn: Listener<unknown>): Unsubscribe {
-    this.diversionStartedListeners.add(fn);
-    return () => this.diversionStartedListeners.delete(fn);
+  /** Fed by `anomaly.expired` — the anomaly's grace period ran out without a refresh. */
+  onAnomalyExpired(fn: Listener<unknown>): Unsubscribe {
+    this.anomalyExpiredListeners.add(fn);
+    return () => this.anomalyExpiredListeners.delete(fn);
   }
 
-  /** Fed by `anomaly.diversion.returning` — robot heads back to the mission. */
-  onDiversionReturning(fn: Listener<unknown>): Unsubscribe {
-    this.diversionReturningListeners.add(fn);
-    return () => this.diversionReturningListeners.delete(fn);
+  /** Fed by `investigation.updated` — the full investigation state, or null when none is active. */
+  onInvestigationUpdate(fn: Listener<unknown>): Unsubscribe {
+    this.investigationUpdateListeners.add(fn);
+    return () => this.investigationUpdateListeners.delete(fn);
   }
 
-  /** Fed by `anomaly.diversion.cleared` — diversion fully resolved (or aborted). */
-  onDiversionCleared(fn: Listener<unknown>): Unsubscribe {
-    this.diversionClearedListeners.add(fn);
-    return () => this.diversionClearedListeners.delete(fn);
+  /** Fed by `autonomy.aborted` — mission and investigation were stopped (e.g. the robot was lost). */
+  onAutonomyAborted(fn: Listener<unknown>): Unsubscribe {
+    this.autonomyAbortedListeners.add(fn);
+    return () => this.autonomyAbortedListeners.delete(fn);
   }
 
   /** Fed by `camera.updated` — a camera's stream_state changed (idle/connecting/live/no_signal/offline/error). */
@@ -214,14 +211,14 @@ class RealtimeClient {
       case "anomaly.updated":
         this.anomalyUpdateListeners.forEach((fn) => fn(msg.data));
         break;
-      case "anomaly.diversion.started":
-        this.diversionStartedListeners.forEach((fn) => fn(msg.data));
+      case "anomaly.expired":
+        this.anomalyExpiredListeners.forEach((fn) => fn(msg.data));
         break;
-      case "anomaly.diversion.returning":
-        this.diversionReturningListeners.forEach((fn) => fn(msg.data));
+      case "investigation.updated":
+        this.investigationUpdateListeners.forEach((fn) => fn(msg.data));
         break;
-      case "anomaly.diversion.cleared":
-        this.diversionClearedListeners.forEach((fn) => fn(msg.data));
+      case "autonomy.aborted":
+        this.autonomyAbortedListeners.forEach((fn) => fn(msg.data));
         break;
       case "camera.updated":
         this.cameraUpdateListeners.forEach((fn) => fn(cameraStateFromRaw(msg.data as RawCameraState)));

@@ -1,6 +1,27 @@
 import { useCallback, useEffect, useRef, type ReactNode, type RefObject } from "react";
 import type maplibregl from "maplibre-gl";
 import { getMapBounds } from "../../api/mapApi";
+import { useDeviceStore } from "../../stores/deviceStore";
+import { overviewBounds, type LngLatBoundsLike } from "./overviewBounds";
+
+/** Fit the whole map plus a margin around every device (see overviewBounds),
+ * so a tower at the map's edge, and the anomalies in front of it, are never
+ * left out. Only runs on F and for the first view. */
+async function fitOverview(map: maplibregl.Map, duration: number, cancelled = () => false): Promise<void> {
+  let mapBounds: LngLatBoundsLike | null = null;
+  try {
+    const b = await getMapBounds();
+    mapBounds = [
+      [b.west, b.south],
+      [b.east, b.north],
+    ];
+  } catch {
+    // Map bounds unavailable (e.g. Lanelet2 map not loaded server-side) -- devices only.
+  }
+  if (cancelled()) return; // the map may have been torn down meanwhile (StrictMode remount)
+  const bounds = overviewBounds(mapBounds, Object.values(useDeviceStore.getState().devices));
+  if (bounds) map.fitBounds(bounds, { padding: 60, maxZoom: 19, duration });
+}
 
 interface MapWorkspaceProps {
   containerRef: RefObject<HTMLDivElement | null>;
@@ -19,59 +40,33 @@ interface MapWorkspaceProps {
  * special-casing.
  */
 export function MapWorkspace({ containerRef, map, ready, children }: MapWorkspaceProps) {
-  // The "F" recenter shortcut animates (matching the original app's feel);
-  // the initial auto-fit below stays an instant duration:0 jump since there's
-  // nothing to animate *from* on first paint.
+  // "F" recenters on the overview, animated. The first view is an instant
+  // overview fit, redone once when the first devices arrive (they usually
+  // come a moment after the map loads) -- never again after that, so it
+  // doesn't fight the operator's own panning.
   const fitToMap = useCallback(async () => {
-    if (!map) return;
-    try {
-      const bounds = await getMapBounds();
-      map.fitBounds(
-        [
-          [bounds.west, bounds.south],
-          [bounds.east, bounds.north],
-        ],
-        { padding: 60, duration: 600 },
-      );
-    } catch {
-      // Map bounds unavailable (e.g. Lanelet2 map not loaded server-side) — keep the default view.
-    }
+    if (map) await fitOverview(map, 600);
   }, [map]);
 
-  // Fit once per distinct map instance (not just once ever) — tracking the
-  // instance itself, rather than a plain boolean, means a StrictMode dev-mode
-  // remount (which tears down and recreates the Map) still gets a fresh fit
-  // instead of silently skipping it or calling fitBounds on an already-removed
-  // map if the in-flight bounds fetch resolves after that remount happened.
-  const firstFittedMapRef = useRef<maplibregl.Map | null>(null);
+  const fittedMapRef = useRef<maplibregl.Map | null>(null);
+  const fittedWithDevicesRef = useRef<maplibregl.Map | null>(null);
+  const hasDevices = useDeviceStore((s) => Object.keys(s.devices).length > 0);
 
   useEffect(() => {
-    if (!ready || !map || firstFittedMapRef.current === map) return;
+    if (!ready || !map || fittedWithDevicesRef.current === map) return;
+    if (fittedMapRef.current === map && !hasDevices) return;
     let cancelled = false;
-
-    (async () => {
-      if (!map) return;
-      try {
-        const bounds = await getMapBounds();
-        if (cancelled) return;
-        map.fitBounds(
-          [
-            [bounds.west, bounds.south],
-            [bounds.east, bounds.north],
-          ],
-          { padding: 60, duration: 0 },
-        );
-        firstFittedMapRef.current = map;
-      } catch {
-        // Map bounds unavailable — keep the default view; don't mark as fitted
-        // so a later map instance (or a later attempt) still gets a chance.
-      }
-    })();
-
+    // Marked done only once the fit actually ran, so a StrictMode remount
+    // that cancels the first attempt still gets its fit.
+    void fitOverview(map, 0, () => cancelled).then(() => {
+      if (cancelled) return;
+      fittedMapRef.current = map;
+      if (hasDevices) fittedWithDevicesRef.current = map;
+    });
     return () => {
       cancelled = true;
     };
-  }, [ready, map]);
+  }, [ready, map, hasDevices]);
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
@@ -110,7 +105,7 @@ export function MapWorkspace({ containerRef, map, ready, children }: MapWorkspac
           70%  { box-shadow: 0 0 0 10px rgba(224,49,49,0); }
           100% { box-shadow: 0 0 0 0 rgba(224,49,49,0); }
         }
-        @keyframes diversion-target-pulse {
+        @keyframes investigation-target-pulse {
           0%   { box-shadow: 0 0 0 0 rgba(255,215,0,0.8); }
           70%  { box-shadow: 0 0 0 12px rgba(255,215,0,0); }
           100% { box-shadow: 0 0 0 0 rgba(255,215,0,0); }

@@ -17,3 +17,26 @@ body,
 body {
   min-width: 320px;
 }
+
+/* Right-panel cards: slide in from below when they appear (an anomaly card
+   being selected, or an Investigate card replacing another). */
+@keyframes card-enter {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.card-enter {
+  animation: card-enter 220ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card-enter {
+    animation: none;
+  }
+}

@@ -17,7 +17,7 @@ const rawMission = {
   map_name: "demo",
   frame_id: "map",
   description: null,
-  time_slot: null,
+  infinite_loop: false,
   waypoints: [
     { waypoint_id: "wp1", x: 0, y: 0, yaw: null, label: null, type: "patrol" },
     { waypoint_id: "wp2", x: 1, y: 1, yaw: null, label: null, type: "patrol" },
@@ -45,6 +45,7 @@ describe("missionApi.saveMission", () => {
       missionId: null,
       name: "Patrol A",
       loopCount: 2,
+      infiniteLoop: false,
       waypoints,
     });
 
@@ -75,6 +76,7 @@ describe("missionApi.saveMission", () => {
       missionId: "patrol-a-x1y2z3",
       name: "Patrol A",
       loopCount: 2,
+      infiniteLoop: false,
       waypoints,
     });
 
@@ -92,7 +94,7 @@ describe("missionApi.saveMission", () => {
       .mockResolvedValueOnce(jsonResponse(rawMission));
     vi.stubGlobal("fetch", fetchMock);
 
-    await missionApi.saveMission({ missionId: null, name: "Patrol A", loopCount: 1, waypoints });
+    await missionApi.saveMission({ missionId: null, name: "Patrol A", loopCount: 1, infiniteLoop: false, waypoints });
 
     const [, createInit] = fetchMock.mock.calls[1];
     expect(JSON.parse(createInit.body).map_name).toBe("default");
@@ -155,9 +157,8 @@ const rawSummary = {
   home_x: 0,
   home_y: 0,
   distance_m: 12.5,
-  time_slot: null,
+  infinite_loop: false,
   is_current: true,
-  is_default: false,
   updated_at: "2026-07-19T00:00:00Z",
 };
 
@@ -180,9 +181,8 @@ describe("missionApi mission picker calls", () => {
         homeX: 0,
         homeY: 0,
         distanceM: 12.5,
-        timeSlot: null,
+        infiniteLoop: false,
         isCurrent: true,
-        isDefault: false,
         updatedAt: "2026-07-19T00:00:00Z",
       },
     ]);

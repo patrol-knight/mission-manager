@@ -8,14 +8,12 @@ class MissionStatus(str, Enum):
     READY = "ready"
     RUNNING = "running"
     PAUSED = "paused"
-    RETURNING_HOME = "returning_home"
+    # Driving back to waypoint 0 -- after Stop, or after an investigation
+    # that started while the mission was READY. READY again on arrival.
+    RETURNING = "returning"
+    # Broadcast for a moment when the last loop finishes, then reset to READY
+    # (see MissionExecutionManager._finish_mission).
     COMPLETED = "completed"
-    # Set by AnomalyResponseCoordinator while a robot diversion is in
-    # flight (see core/anomaly_response.py's enter_investigating/
-    # exit_investigating). Pause/Resume are unavailable from this status
-    # (mirrors real prior status) -- Stop remains available as an escape
-    # hatch (see MissionExecutionManager.stop()).
-    INVESTIGATING = "investigating"
 
 
 class MissionExecutionState(BaseModel):

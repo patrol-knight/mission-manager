@@ -17,7 +17,7 @@ export function useGeoJsonLineLayer(
   route: GeoJSON.Feature<GeoJSON.LineString> | null,
   paint: maplibregl.LineLayerSpecification["paint"],
   // When true, the layer is (re-)moved to the very top of the GL layer stack
-  // on every run, so callers like DiversionRouteLayer stay above the mission
+  // on every run, so callers like InvestigationRouteLayer stay above the mission
   // route/lanelet layers regardless of mount order or what else gets added.
   moveToTop = false,
 ): void {

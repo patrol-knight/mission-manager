@@ -27,9 +27,8 @@ const summaries: MissionSummary[] = [
     homeX: 1.5,
     homeY: -2.25,
     distanceM: 142,
-    timeSlot: null,
+    infiniteLoop: false,
     isCurrent: true,
-    isDefault: true,
     updatedAt: null,
   },
   {
@@ -42,9 +41,8 @@ const summaries: MissionSummary[] = [
     homeX: null,
     homeY: null,
     distanceM: null,
-    timeSlot: null,
+    infiniteLoop: true,
     isCurrent: false,
-    isDefault: false,
     updatedAt: null,
   },
 ];
@@ -55,7 +53,7 @@ const fullMission: MissionDefinition = {
   mapName: "demo",
   frameId: "map",
   description: null,
-  timeSlot: null,
+  infiniteLoop: false,
   waypoints: [],
   loopCount: 1,
   createdAt: null,
@@ -89,14 +87,15 @@ describe("MissionLibraryPanel", () => {
     useMissionStore.setState({ definition: null, execution: null });
   });
 
-  it("renders each mission's summary (waypoints, home, distance, ETA) and badges", async () => {
+  it("renders each mission's summary (waypoints, home, distance, ETA), badges and infinite loops", async () => {
     render(<Harness />);
     expect(await screen.findByText("Patrol A")).toBeInTheDocument();
     expect(screen.getByText("3 · Loop count 2")).toBeInTheDocument();
     expect(screen.getByText("(1.50, -2.25)")).toBeInTheDocument();
     expect(screen.getByText("142 m")).toBeInTheDocument();
-    expect(screen.getByText("Default")).toBeInTheDocument();
     expect(screen.getByText("Active")).toBeInTheDocument();
+    expect(screen.getByText("2 · Loop count ∞")).toBeInTheDocument();
+    expect(screen.getByText("ETA / loop")).toBeInTheDocument();
 
     expect(screen.getByText("Patrol B")).toBeInTheDocument();
     expect(screen.getAllByText("—")).not.toHaveLength(0);

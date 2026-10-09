@@ -75,7 +75,8 @@ export function MissionEditorPanel({ onCancel, onSaved }: MissionEditorPanelProp
 
   const nameError = !isNameValid(state.name) ? "Mission name is required" : null;
   const loopCount = parseLoopCount(state.loopCountInput);
-  const loopCountError = loopCount === null ? "Loop count must be a whole number, 1 or greater" : null;
+  const loopCountError =
+    !state.infiniteLoop && loopCount === null ? "Loop count must be a whole number, 1 or greater" : null;
   const waypointCountError = state.waypoints.length < 2 ? "At least two waypoints are required" : null;
 
   // Explicitly reset the shared editor context on cancel rather than leaving
@@ -122,13 +123,15 @@ export function MissionEditorPanel({ onCancel, onSaved }: MissionEditorPanelProp
   };
 
   const handleSave = async () => {
-    if (loopCount === null) return;
+    if (!state.infiniteLoop && loopCount === null) return;
     setSaving(true);
     try {
       const saved = await saveMission({
         missionId: state.missionId,
         name: state.name,
-        loopCount,
+        // Kept while infinite (its input is disabled), so a broken value then just falls back to 1.
+        loopCount: loopCount ?? 1,
+        infiniteLoop: state.infiniteLoop,
         waypoints: state.waypoints,
       });
       setDefinition(saved);
@@ -160,17 +163,29 @@ export function MissionEditorPanel({ onCancel, onSaved }: MissionEditorPanelProp
       </div>
 
       <div style={cardStyle}>
-        <label style={labelStyle}>
+        <div style={labelStyle}>
           Loop count
-          <input
-            type="number"
-            min={1}
-            step={1}
-            value={state.loopCountInput}
-            onChange={(e) => dispatch({ type: "SET_LOOP_COUNT_INPUT", value: e.target.value })}
-            style={inputStyle}
-          />
-        </label>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <input
+              aria-label="Loop count"
+              type="number"
+              min={1}
+              step={1}
+              value={state.loopCountInput}
+              disabled={state.infiniteLoop}
+              onChange={(e) => dispatch({ type: "SET_LOOP_COUNT_INPUT", value: e.target.value })}
+              style={{ ...inputStyle, flex: 1, opacity: state.infiniteLoop ? 0.5 : 1 }}
+            />
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, whiteSpace: "nowrap" }}>
+              <input
+                type="checkbox"
+                checked={state.infiniteLoop}
+                onChange={(e) => dispatch({ type: "SET_INFINITE_LOOP", value: e.target.checked })}
+              />
+              Infinite
+            </label>
+          </div>
+        </div>
         {loopCountError && <FieldError>{loopCountError}</FieldError>}
       </div>
 
