@@ -1,5 +1,6 @@
 import logging
 import threading
+import time
 from datetime import datetime
 
 import psycopg
@@ -7,6 +8,13 @@ import psycopg
 from models.anomaly import Anomaly
 
 logger = logging.getLogger(__name__)
+
+# A configured-but-unreachable Postgres must never stall the caller (e.g. the
+# operator's Finish request): connects give up quickly, and after a failure
+# the repository doesn't try again for a while -- writes in between are
+# dropped.
+CONNECT_TIMEOUT_SEC = 3
+RETRY_AFTER_SEC = 30.0
 
 # Write-once history: one row per anomaly, inserted at its terminal event
 # (resolved, or expired) and never updated -- see record_final(). A new table
@@ -42,13 +50,14 @@ class AnomalyRepository:
     in this codebase -- callers go through this class's methods, never issue
     SQL themselves.
 
-    Fail-soft by design: every public method swallows psycopg errors (and
-    connection failures), logs them, and returns without raising -- a
-    Postgres outage must never break the in-memory anomaly workflow
-    (detect -> divert -> resolve), only durable history. There is
-    deliberately no retry queue/backfill: an anomaly ingested while the
-    database is unreachable is simply absent from durable history once the
-    connection recovers.
+    Optional: only built when DATABASE_URL is set (bootstrap.py), and off by
+    default. Fail-soft by design: every public method swallows psycopg errors
+    (and connection failures), logs them, and returns without raising -- a
+    Postgres outage must never break the in-memory anomaly workflow, only
+    durable history. While Postgres is down, writes are dropped: there is
+    deliberately no retry queue/backfill, and reconnecting is attempted at
+    most every RETRY_AFTER_SEC with a CONNECT_TIMEOUT_SEC timeout, so a
+    caller never waits long.
 
     init_schema()'s CREATE TABLE IF NOT EXISTS is a one-time bootstrap, not
     a migration system -- it will not alter an existing table's columns if
@@ -67,6 +76,8 @@ class AnomalyRepository:
         self._lock = threading.RLock()
         self._conn: psycopg.Connection | None = None
         self._degraded = False
+        # time.monotonic() before which no reconnect is attempted.
+        self._retry_at = 0.0
 
     def is_connected(self) -> bool:
         """Active liveness probe, not a cached-state read -- a connection
@@ -84,8 +95,7 @@ class AnomalyRepository:
                 conn.execute("SELECT 1")
             except psycopg.Error:
                 logger.error("AnomalyRepository: liveness probe failed", exc_info=True)
-                self._degraded = True
-                self._conn = None
+                self._mark_down()
                 return False
             return True
 
@@ -94,8 +104,10 @@ class AnomalyRepository:
         connection can't be established right now."""
         if self._conn is not None and not self._conn.closed:
             return self._conn
+        if time.monotonic() < self._retry_at:
+            return None  # recently failed; drop this write rather than wait again
         try:
-            self._conn = psycopg.connect(self._dsn, autocommit=True)
+            self._conn = psycopg.connect(self._dsn, autocommit=True, connect_timeout=CONNECT_TIMEOUT_SEC)
         except psycopg.Error as exc:
             # Warning, not error, and no traceback -- an unreachable Postgres
             # is an expected, common state now (the "db" Compose profile is
@@ -104,14 +116,21 @@ class AnomalyRepository:
             # broke mid-operation) stay at error level -- that's a more
             # genuine problem than "never configured/started".
             if not self._degraded:
-                logger.warning("AnomalyRepository: Postgres unreachable (%s); anomaly history disabled", exc)
-            self._conn = None
-            self._degraded = True
+                logger.warning(
+                    "AnomalyRepository: Postgres unreachable (%s); anomaly history is dropped until it is back", exc
+                )
+            self._mark_down()
             return None
         if self._degraded:
             logger.info("AnomalyRepository: Postgres connection recovered")
         self._degraded = False
         return self._conn
+
+    def _mark_down(self) -> None:
+        """Caller must hold self._lock."""
+        self._conn = None
+        self._degraded = True
+        self._retry_at = time.monotonic() + RETRY_AFTER_SEC
 
     def init_schema(self) -> None:
         with self._lock:
@@ -122,8 +141,7 @@ class AnomalyRepository:
                 conn.execute(_SCHEMA)
             except psycopg.Error:
                 logger.error("AnomalyRepository: failed to initialize schema", exc_info=True)
-                self._degraded = True
-                self._conn = None
+                self._mark_down()
 
     def record_final(self, anomaly: Anomaly, closed_at: datetime) -> None:
         """Writes the anomaly's one and only history row. ON CONFLICT DO
@@ -151,9 +169,7 @@ class AnomalyRepository:
                         anomaly.mission_id, anomaly.resolution, closed_at,
                     ),
                 )
-            except psycopg.Error:
-                logger.error(
-                    "AnomalyRepository: failed to persist anomaly %s", anomaly.anomaly_id, exc_info=True
-                )
-                self._degraded = True
-                self._conn = None
+            except psycopg.Error as exc:
+                # Expected when Postgres goes away mid-run: drop the row, no traceback.
+                logger.warning("AnomalyRepository: Postgres write failed (%s); anomaly %s dropped", exc, anomaly.anomaly_id)
+                self._mark_down()
