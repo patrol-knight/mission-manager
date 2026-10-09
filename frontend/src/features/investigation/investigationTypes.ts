@@ -49,10 +49,20 @@ export function investigationFromRaw(raw: RawInvestigation): Investigation {
   };
 }
 
-/** Wire shape of `investigation.cancelled` (the robot went offline). */
-export interface RawInvestigationCancelled {
-  anomaly_id: string;
-  reason: string;
+/** Wire shape of `autonomy.aborted`: the mission and any investigation were
+ * stopped, and nothing resumes until the operator starts again. */
+export interface RawAutonomyAborted {
+  reason: "robot_disconnected" | string;
+  /** The investigation that was cancelled, if any. */
+  anomaly_id: string | null;
+}
+
+const ABORT_REASONS: Record<string, string> = {
+  robot_disconnected: "The robot was lost",
+};
+
+export function describeAbort(raw: RawAutonomyAborted): string {
+  return ABORT_REASONS[raw.reason] ?? `Stopped (${raw.reason})`;
 }
 
 /** On site without a verdict: the robot can't leave and other anomalies can't be picked yet. */

@@ -2,12 +2,14 @@ import { useEffect, useRef } from "react";
 import { getRealtimeClient } from "../../api/realtimeClient";
 import { useInvestigationStore } from "../../stores/investigationStore";
 import { useToast } from "../../components/useToast";
+import { describeAbort, type RawAutonomyAborted } from "./investigationTypes";
 
 /**
  * Renderless. Announces the transitions the system makes on its own, so a
  * change never looks like it came from nowhere (docs/investigate-mode-design.md
- * §8.8): arriving at the anomaly (which also opens the verify window) and an
- * investigation cancelled because the robot went offline. Transitions the
+ * §8.8): arriving at the anomaly (which also opens the verify window), and
+ * autonomy being aborted (e.g. the robot was lost), which stops the mission
+ * and any investigation until the operator starts again. Transitions the
  * operator triggers are announced where they're triggered.
  */
 export function InvestigationNotifier() {
@@ -31,8 +33,12 @@ export function InvestigationNotifier() {
 
   useEffect(
     () =>
-      getRealtimeClient().onInvestigationCancelled(() => {
-        show("error", "Robot offline. Investigation cancelled.");
+      getRealtimeClient().onAutonomyAborted((raw) => {
+        show(
+          "error",
+          `${describeAbort(raw as RawAutonomyAborted)}. Mission and investigation stopped.`,
+          "Start the mission or investigate again when you're ready.",
+        );
       }),
     [show],
   );

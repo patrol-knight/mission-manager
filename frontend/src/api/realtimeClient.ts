@@ -49,7 +49,7 @@ class RealtimeClient {
   private anomalyUpdateListeners = new Set<Listener<unknown>>();
   private anomalyExpiredListeners = new Set<Listener<unknown>>();
   private investigationUpdateListeners = new Set<Listener<unknown>>();
-  private investigationCancelledListeners = new Set<Listener<unknown>>();
+  private autonomyAbortedListeners = new Set<Listener<unknown>>();
   private cameraUpdateListeners = new Set<Listener<CameraState>>();
   private camerasSnapshotListeners = new Set<Listener<CameraState[]>>();
   private cameraSignalListeners = new Set<Listener<RawCameraSignal>>();
@@ -118,10 +118,10 @@ class RealtimeClient {
     return () => this.investigationUpdateListeners.delete(fn);
   }
 
-  /** Fed by `investigation.cancelled` — the robot went offline mid-investigation. */
-  onInvestigationCancelled(fn: Listener<unknown>): Unsubscribe {
-    this.investigationCancelledListeners.add(fn);
-    return () => this.investigationCancelledListeners.delete(fn);
+  /** Fed by `autonomy.aborted` — mission and investigation were stopped (e.g. the robot was lost). */
+  onAutonomyAborted(fn: Listener<unknown>): Unsubscribe {
+    this.autonomyAbortedListeners.add(fn);
+    return () => this.autonomyAbortedListeners.delete(fn);
   }
 
   /** Fed by `camera.updated` — a camera's stream_state changed (idle/connecting/live/no_signal/offline/error). */
@@ -217,8 +217,8 @@ class RealtimeClient {
       case "investigation.updated":
         this.investigationUpdateListeners.forEach((fn) => fn(msg.data));
         break;
-      case "investigation.cancelled":
-        this.investigationCancelledListeners.forEach((fn) => fn(msg.data));
+      case "autonomy.aborted":
+        this.autonomyAbortedListeners.forEach((fn) => fn(msg.data));
         break;
       case "camera.updated":
         this.cameraUpdateListeners.forEach((fn) => fn(cameraStateFromRaw(msg.data as RawCameraState)));

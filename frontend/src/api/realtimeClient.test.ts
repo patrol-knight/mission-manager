@@ -91,7 +91,7 @@ describe("realtimeClient", () => {
     expect(expired).toEqual([{ anomaly_id: "a-1" }]);
   });
 
-  it("forwards investigation.updated and investigation.cancelled", async () => {
+  it("forwards investigation.updated and autonomy.aborted", async () => {
     const { getRealtimeClient } = await import("./realtimeClient");
     const client = getRealtimeClient();
     client.connect();
@@ -99,14 +99,14 @@ describe("realtimeClient", () => {
     socket.emitOpen();
 
     const updates: unknown[] = [];
-    const cancelled: unknown[] = [];
+    const aborted: unknown[] = [];
     client.onInvestigationUpdate((data) => updates.push(data));
-    client.onInvestigationCancelled((data) => cancelled.push(data));
+    client.onAutonomyAborted((data) => aborted.push(data));
     socket.emitMessage({ type: "investigation.updated", data: null });
-    socket.emitMessage({ type: "investigation.cancelled", data: { anomaly_id: "a-1", reason: "robot_disconnected" } });
+    socket.emitMessage({ type: "autonomy.aborted", data: { reason: "robot_disconnected", anomaly_id: "a-1" } });
 
     expect(updates).toEqual([null]);
-    expect(cancelled).toEqual([{ anomaly_id: "a-1", reason: "robot_disconnected" }]);
+    expect(aborted).toEqual([{ reason: "robot_disconnected", anomaly_id: "a-1" }]);
   });
 
   it("reports connection status transitions", async () => {
