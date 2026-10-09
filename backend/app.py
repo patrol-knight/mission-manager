@@ -15,6 +15,7 @@ from api import system as system_api
 from api import websocket as websocket_api
 from bootstrap import Services, build_services
 from config import Settings
+from core.anomaly_registry import AnomalyRegistry
 from core.anomaly_response import AnomalyResponseCoordinator
 from core.device_registry import DeviceRegistry
 from core.websocket_manager import WebSocketManager
@@ -28,6 +29,7 @@ settings = Settings()
 async def monitor_devices(
     registry: DeviceRegistry,
     websocket_manager: WebSocketManager,
+    anomaly_registry: AnomalyRegistry,
     anomaly_response_coordinator: AnomalyResponseCoordinator,
     timeout_sec: float,
     interval_sec: float,
@@ -42,6 +44,10 @@ async def monitor_devices(
                 }
             )
         anomaly_response_coordinator.abort_if_robot_disconnected()
+        # Off the event loop: expire() writes expired anomalies to Postgres,
+        # which can block on an unreachable database.
+        for anomaly_id in await asyncio.to_thread(anomaly_registry.expire):
+            await websocket_manager.broadcast({"type": "anomaly.expired", "data": {"anomaly_id": anomaly_id}})
         await asyncio.sleep(interval_sec)
 
 
@@ -74,6 +80,7 @@ async def lifespan(app: FastAPI):
         monitor_devices(
             services.device_registry,
             services.websocket_manager,
+            services.anomaly_registry,
             services.anomaly_response_coordinator,
             settings.device_offline_timeout_sec,
             settings.device_monitor_interval_sec,

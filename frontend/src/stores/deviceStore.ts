@@ -25,6 +25,7 @@ interface DeviceStoreState {
   upsertDevice: (device: Device) => void;
   setAnomalies: (anomalies: Anomaly[]) => void;
   upsertAnomaly: (anomaly: Anomaly) => void;
+  removeAnomaly: (anomalyId: string) => void;
   upsertCamera: (camera: CameraState) => void;
   setDiversionStarted: (raw: RawDiversionStarted) => void;
   setDiversionReturning: (raw: RawDiversionReturning) => void;
@@ -51,6 +52,14 @@ export const useDeviceStore = create<DeviceStoreState>((set) => ({
 
   upsertAnomaly: (anomaly) =>
     set((s) => ({ anomalies: { ...s.anomalies, [anomaly.anomalyId]: anomaly } })),
+
+  removeAnomaly: (anomalyId) =>
+    set((s) => {
+      if (!(anomalyId in s.anomalies)) return s;
+      const anomalies = { ...s.anomalies };
+      delete anomalies[anomalyId];
+      return { anomalies };
+    }),
 
   setDiversionStarted: (raw) =>
     set({

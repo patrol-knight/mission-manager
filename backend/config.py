@@ -34,6 +34,8 @@ class Settings(BaseSettings):
     zenoh_router: str = "tcp/localhost:7447"
     zenoh_device_state_keyexpr: str = "devices/*/state"
     zenoh_anomaly_keyexpr: str = "anomalies/*/state"
+    # Outbound: {anomaly_id} is substituted by ZenohGateway.publish_anomaly_feedback().
+    zenoh_anomaly_feedback_keyexpr: str = "anomalies/{anomaly_id}/feedback"
     # Outbound: {device_id} is substituted by ZenohGateway.publish_command().
     zenoh_device_commands_keyexpr: str = "devices/{device_id}/commands"
 

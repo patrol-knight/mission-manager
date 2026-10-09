@@ -8,7 +8,7 @@ import {
   type RawMission,
   type RawMissionExecutionState,
 } from "../features/missions/missionTypes";
-import { anomalyFromRaw, type RawAnomaly } from "../features/anomalies/anomalyTypes";
+import { anomalyFromRaw, type RawAnomaly, type RawAnomalyExpired } from "../features/anomalies/anomalyTypes";
 import type { RawDiversionReturning, RawDiversionStarted } from "../features/anomalies/diversionTypes";
 
 /**
@@ -25,6 +25,7 @@ export function useRealtimeSubscription(): void {
   const upsertDevice = useDeviceStore((s) => s.upsertDevice);
   const setAnomalies = useDeviceStore((s) => s.setAnomalies);
   const upsertAnomaly = useDeviceStore((s) => s.upsertAnomaly);
+  const removeAnomaly = useDeviceStore((s) => s.removeAnomaly);
   const setDiversionStarted = useDeviceStore((s) => s.setDiversionStarted);
   const setDiversionReturning = useDeviceStore((s) => s.setDiversionReturning);
   const clearDiversion = useDeviceStore((s) => s.clearDiversion);
@@ -51,6 +52,7 @@ export function useRealtimeSubscription(): void {
       client.onAnomalyUpdate((raw) => {
         upsertAnomaly(anomalyFromRaw(raw as RawAnomaly));
       }),
+      client.onAnomalyExpired((raw) => removeAnomaly((raw as RawAnomalyExpired).anomaly_id)),
       client.onDiversionStarted((raw) => setDiversionStarted(raw as RawDiversionStarted)),
       client.onDiversionReturning((raw) => setDiversionReturning(raw as RawDiversionReturning)),
       client.onDiversionCleared(() => clearDiversion()),
@@ -66,6 +68,7 @@ export function useRealtimeSubscription(): void {
     upsertDevice,
     setAnomalies,
     upsertAnomaly,
+    removeAnomaly,
     setDiversionStarted,
     setDiversionReturning,
     clearDiversion,

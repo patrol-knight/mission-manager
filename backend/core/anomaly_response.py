@@ -227,7 +227,7 @@ class AnomalyResponseCoordinator:
             anomaly_id = self._queue[0]
             anomaly = self._anomaly_registry.get(anomaly_id)
             if anomaly is None or anomaly.status != AnomalyStatus.DETECTED:
-                self._queue.popleft()  # resolved or gone in the meantime
+                self._queue.popleft()  # resolved or expired in the meantime
                 continue
 
             target_point = self._map_server.snap_to_lanelet(anomaly.x, anomaly.y, anomaly.frame_id)
@@ -241,6 +241,13 @@ class AnomalyResponseCoordinator:
                 logger.warning("Anomaly %s: no route from robot to anomaly; dropped from queue", anomaly_id)
                 continue
 
+            # Claim it (DETECTED -> ROBOT_EN_ROUTE) before committing the
+            # mission to INVESTIGATING: it can expire at any moment while
+            # still DETECTED, and a ROBOT_EN_ROUTE anomaly never expires.
+            if self._anomaly_registry.claim_for_investigation(anomaly_id) is None:
+                self._queue.popleft()
+                continue
+
             # Authoritative commit gate, re-checked as late as possible:
             # enter_investigating() re-checks status atomically under
             # MissionExecutionManager's own lock and returns None if it's no
@@ -248,6 +255,7 @@ class AnomalyResponseCoordinator:
             # the anomaly queued and back out.
             if enter_investigating and self._mission_execution_manager.enter_investigating() is None:
                 logger.info("Anomaly %s: mission status changed before diversion could start", anomaly_id)
+                self._anomaly_registry.update_status(anomaly_id, AnomalyStatus.DETECTED)  # undo the claim
                 return None
 
             self._queue.popleft()
@@ -281,11 +289,13 @@ class AnomalyResponseCoordinator:
         if self._mission_drive_coordinator is not None:
             self._mission_drive_coordinator.abort()
 
+        # Already ROBOT_EN_ROUTE (claimed in _start_next_outbound()).
         self._anomaly_registry.record_mission_context(anomaly.anomaly_id, mission_id)
-        updated = self._anomaly_registry.update_status(anomaly.anomaly_id, AnomalyStatus.ROBOT_EN_ROUTE)
-        self._websocket_manager.broadcast_threadsafe(
-            {"type": "anomaly.updated", "data": updated.model_dump(mode="json")}
-        )
+        updated = self._anomaly_registry.get(anomaly.anomaly_id)
+        if updated is not None:
+            self._websocket_manager.broadcast_threadsafe(
+                {"type": "anomaly.updated", "data": updated.model_dump(mode="json")}
+            )
         self._websocket_manager.broadcast_threadsafe({"type": "anomaly.diversion.started", "data": started_payload})
 
         target = started_payload["target"]

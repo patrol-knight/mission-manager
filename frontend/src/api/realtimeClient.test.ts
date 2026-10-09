@@ -77,6 +77,20 @@ describe("realtimeClient", () => {
     expect((snapshots[0] as { deviceId: string }[])[0].deviceId).toBe("sim-robot-01");
   });
 
+  it("forwards anomaly.expired payloads to expiry listeners", async () => {
+    const { getRealtimeClient } = await import("./realtimeClient");
+    const client = getRealtimeClient();
+    client.connect();
+    const socket = FakeWebSocket.instances[0];
+    socket.emitOpen();
+
+    const expired: unknown[] = [];
+    client.onAnomalyExpired((data) => expired.push(data));
+    socket.emitMessage({ type: "anomaly.expired", data: { anomaly_id: "a-1" } });
+
+    expect(expired).toEqual([{ anomaly_id: "a-1" }]);
+  });
+
   it("reports connection status transitions", async () => {
     const { getRealtimeClient } = await import("./realtimeClient");
     const client = getRealtimeClient();

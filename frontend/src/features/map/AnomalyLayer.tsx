@@ -18,7 +18,7 @@ function buildAnomalyElement(anomaly: Anomaly): HTMLElement {
     z-index:2;
   `;
   el.textContent = "!";
-  el.title = anomaly.description ?? "Anomaly";
+  el.title = `${anomaly.types.join(", ")} (${Math.round(anomaly.confidence * 100)}%)`;
   return el;
 }
 

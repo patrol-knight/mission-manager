@@ -8,33 +8,39 @@ from models.anomaly import Anomaly
 
 logger = logging.getLogger(__name__)
 
+# Write-once history: one row per anomaly, inserted at its terminal event
+# (resolved, or expired) and never updated -- see record_final(). A new table
+# name rather than a change to the old `anomalies` table, since init_schema()
+# can't migrate an existing table (see the class docstring); the old table is
+# simply no longer used.
 _SCHEMA = """
-CREATE TABLE IF NOT EXISTS anomalies (
-    anomaly_id TEXT PRIMARY KEY,
-    frame_id TEXT NOT NULL,
-    x DOUBLE PRECISION NOT NULL,
-    y DOUBLE PRECISION NOT NULL,
-    lat DOUBLE PRECISION,
-    lon DOUBLE PRECISION,
-    type TEXT,
-    confidence DOUBLE PRECISION,
-    source_device_id TEXT,
-    mission_id TEXT,
-    detected_at TIMESTAMPTZ NOT NULL,
-    resolved_at TIMESTAMPTZ,
-    resolution TEXT CHECK (resolution IN ('true_positive', 'false_positive'))
+CREATE TABLE IF NOT EXISTS anomaly_history (
+    anomaly_id       TEXT PRIMARY KEY,
+    types            TEXT[] NOT NULL,
+    frame_id         TEXT NOT NULL,
+    x                DOUBLE PRECISION NOT NULL,
+    y                DOUBLE PRECISION NOT NULL,
+    lat              DOUBLE PRECISION,
+    lon              DOUBLE PRECISION,
+    confidence       DOUBLE PRECISION NOT NULL,
+    source_device_id TEXT NOT NULL,
+    detected_at      TIMESTAMPTZ NOT NULL,
+    last_seen_at     TIMESTAMPTZ NOT NULL,
+    mission_id       TEXT,
+    resolution       TEXT CHECK (resolution IN ('true_positive', 'false_positive', 'unclear')),
+    closed_at        TIMESTAMPTZ NOT NULL
 )
 """
 
 
 class AnomalyRepository:
-    """Durable mirror of AnomalyRegistry (backend/core/anomaly_registry.py)
-    for anomaly detections -- one row per anomaly (initial detection plus
-    final resolution only; intermediate robot_en_route/robot_arrived status
-    transitions are NOT persisted here, that's still purely in-memory/
-    ephemeral). This is the only place SQL is allowed to live in this
-    codebase -- callers (AnomalyRegistry, the Zenoh ingest path, API routes)
-    go through this class's methods, never issue SQL themselves.
+    """Durable history of anomalies from AnomalyRegistry
+    (backend/core/anomaly_registry.py) -- one row per anomaly, written once
+    when it closes: resolved by the operator (resolution set), or expired
+    (resolution NULL). Live state -- refreshes, robot_en_route/robot_arrived
+    -- stays purely in memory. This is the only place SQL is allowed to live
+    in this codebase -- callers go through this class's methods, never issue
+    SQL themselves.
 
     Fail-soft by design: every public method swallows psycopg errors (and
     connection failures), logs them, and returns without raising -- a
@@ -119,7 +125,11 @@ class AnomalyRepository:
                 self._degraded = True
                 self._conn = None
 
-    def create(self, anomaly: Anomaly) -> None:
+    def record_final(self, anomaly: Anomaly, closed_at: datetime) -> None:
+        """Writes the anomaly's one and only history row. ON CONFLICT DO
+        NOTHING makes a repeated call harmless; it also means an id that
+        expired and was later re-created by a new refresh keeps its first
+        row."""
         with self._lock:
             conn = self._get_connection()
             if conn is None:
@@ -127,58 +137,23 @@ class AnomalyRepository:
             try:
                 conn.execute(
                     """
-                    INSERT INTO anomalies (
-                        anomaly_id, frame_id, x, y, lat, lon, type, confidence,
-                        source_device_id, mission_id, detected_at, resolved_at, resolution
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    INSERT INTO anomaly_history (
+                        anomaly_id, types, frame_id, x, y, lat, lon, confidence,
+                        source_device_id, detected_at, last_seen_at, mission_id,
+                        resolution, closed_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (anomaly_id) DO NOTHING
                     """,
                     (
-                        anomaly.anomaly_id, anomaly.frame_id, anomaly.x, anomaly.y,
-                        anomaly.lat, anomaly.lon, anomaly.type, anomaly.confidence,
-                        anomaly.source_device_id, anomaly.mission_id,
-                        anomaly.detected_at, None, None,
+                        anomaly.anomaly_id, list(anomaly.types), anomaly.frame_id, anomaly.x, anomaly.y,
+                        anomaly.lat, anomaly.lon, anomaly.confidence,
+                        anomaly.source_device_id, anomaly.detected_at, anomaly.last_seen_at,
+                        anomaly.mission_id, anomaly.resolution, closed_at,
                     ),
                 )
             except psycopg.Error:
                 logger.error(
                     "AnomalyRepository: failed to persist anomaly %s", anomaly.anomaly_id, exc_info=True
-                )
-                self._degraded = True
-                self._conn = None
-
-    def update_resolution(
-        self, anomaly_id: str, resolution: str, resolved_at: datetime
-    ) -> None:
-        with self._lock:
-            conn = self._get_connection()
-            if conn is None:
-                return
-            try:
-                conn.execute(
-                    "UPDATE anomalies SET resolution = %s, resolved_at = %s WHERE anomaly_id = %s",
-                    (resolution, resolved_at, anomaly_id),
-                )
-            except psycopg.Error:
-                logger.error(
-                    "AnomalyRepository: failed to persist resolution for anomaly %s", anomaly_id, exc_info=True
-                )
-                self._degraded = True
-                self._conn = None
-
-    def update_mission_context(self, anomaly_id: str, mission_id: str) -> None:
-        with self._lock:
-            conn = self._get_connection()
-            if conn is None:
-                return
-            try:
-                conn.execute(
-                    "UPDATE anomalies SET mission_id = %s WHERE anomaly_id = %s",
-                    (mission_id, anomaly_id),
-                )
-            except psycopg.Error:
-                logger.error(
-                    "AnomalyRepository: failed to persist mission context for anomaly %s", anomaly_id, exc_info=True
                 )
                 self._degraded = True
                 self._conn = None

@@ -2,6 +2,7 @@ import json
 import logging
 import re
 import time
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from config import Settings
@@ -11,7 +12,7 @@ from core.device_registry import DeviceRegistry
 from core.errors import DeviceTypeMismatchError, MapUnavailableError
 from core.map_server import MapServer
 from core.websocket_manager import WebSocketManager
-from models.anomaly import Anomaly
+from models.anomaly import AnomalyFeedbackMessage, AnomalyStateMessage
 from models.camera import CameraState, WebRtcSignal
 from models.device import DeviceState
 
@@ -224,24 +225,34 @@ class ZenohGateway:
                     self._mission_drive_coordinator.on_device_state(view)
         return changed
 
-    def ingest_anomaly_payload(self, payload: bytes | str | dict) -> bool:
-        """Lets the anomaly-detection service (../anomaly_detection) publish
-        anomalies via Zenoh, same conditional-broadcast pattern as device
-        state. Expects the same JSON shape as
-        `Anomaly.model_dump(mode="json")` (see models/anomaly.py)."""
+    def ingest_anomaly_payload(
+        self,
+        payload: bytes | str | dict,
+        received_at: float | None = None,
+    ) -> bool:
+        """Anomaly state messages from the anomaly-detection service
+        (../anomaly_detection/docs/topics_format.md section 2.1). The first
+        message for an id creates the anomaly, later ones refresh it; refreshes
+        of an already-resolved anomaly are ignored (feedback delivery is
+        best-effort, so the producer may not have stopped yet). Returns True
+        if the message was applied."""
+        received_at = time.time() if received_at is None else received_at
+
         try:
-            anomaly = Anomaly(**self._decode_json_payload(payload))
+            message = AnomalyStateMessage(**self._decode_json_payload(payload))
         except Exception as exc:
             logger.warning("Discarding malformed anomaly payload: %s", exc)
             return False
 
-        latlon = self._project_latlon(anomaly.x, anomaly.y, anomaly.frame_id)
-        if latlon is not None:
-            lat, lon = latlon
-            anomaly = anomaly.model_copy(update={"lat": lat, "lon": lon})
-
-        is_new = self._anomaly_registry.get(anomaly.anomaly_id) is None
-        stored = self._anomaly_registry.create(anomaly)  # create() is upsert-semantics — no existence check
+        result = self._anomaly_registry.ingest(
+            message,
+            received_at=datetime.fromtimestamp(received_at, timezone.utc),
+            latlon=self._project_latlon(message.x, message.y, message.frame_id),
+        )
+        if result is None:
+            logger.debug("Ignoring refresh of resolved anomaly %s", message.anomaly_id)
+            return False
+        stored, is_new = result
 
         self._websocket_manager.broadcast_threadsafe(
             {
@@ -252,7 +263,7 @@ class ZenohGateway:
 
         if is_new and self._anomaly_response_coordinator is not None:
             # Only a genuinely new anomaly should trigger a diversion -- a
-            # re-published update to an already-known one must not retrigger it.
+            # refresh of an already-known one must not retrigger it.
             self._anomaly_response_coordinator.on_anomaly_detected(stored)
 
         return True
@@ -322,6 +333,27 @@ class ZenohGateway:
             self._session.put(key, json.dumps(signal).encode("utf-8"))
         except Exception:
             logger.error("Failed to publish camera signal to %s/%s", device_id, camera_id, exc_info=True)
+            return False
+        return True
+
+    def publish_anomaly_feedback(self, anomaly_id: str, resolution: str, resolved_at: datetime) -> bool:
+        """Tells Anomaly Detection the operator's verdict on anomalies/{id}/
+        feedback (section 2.2 of the same doc), after which it stops
+        publishing that id. Same never-raises, log-and-return-False contract
+        as publish_command -- the verdict is already recorded locally, and
+        ingest ignores any refreshes that keep arriving."""
+        if self._session is None:
+            logger.warning("Cannot publish feedback for anomaly %s: Zenoh session not open", anomaly_id)
+            return False
+
+        message = AnomalyFeedbackMessage(
+            anomaly_id=anomaly_id, resolution=resolution, resolved_at=resolved_at.timestamp()
+        )
+        key = self._settings.zenoh_anomaly_feedback_keyexpr.format(anomaly_id=anomaly_id)
+        try:
+            self._session.put(key, message.model_dump_json().encode("utf-8"))
+        except Exception:
+            logger.error("Failed to publish feedback for anomaly %s", anomaly_id, exc_info=True)
             return False
         return True
 

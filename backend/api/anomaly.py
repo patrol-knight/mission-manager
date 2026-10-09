@@ -10,6 +10,18 @@ def _registry(request: Request):
     return request.app.state.anomaly_registry
 
 
+def _after_resolve(request: Request, anomaly: Anomaly) -> None:
+    """Shared tail of verify/dismiss: tell Anomaly Detection the verdict,
+    move the robot on, and push the resolved anomaly to clients."""
+    request.app.state.zenoh_gateway.publish_anomaly_feedback(
+        anomaly.anomaly_id, anomaly.resolution, anomaly.resolved_at
+    )
+    request.app.state.anomaly_response_coordinator.resolve(anomaly.anomaly_id)
+    request.app.state.websocket_manager.broadcast_threadsafe(
+        {"type": "anomaly.updated", "data": anomaly.model_dump(mode="json")}
+    )
+
+
 @router.get("", response_model=list[Anomaly])
 def list_anomalies(request: Request) -> list[Anomaly]:
     return _registry(request).list()
@@ -32,10 +44,7 @@ def verify_anomaly(anomaly_id: str, request: Request) -> Anomaly:
     except InvalidAnomalyTransitionError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
-    request.app.state.anomaly_response_coordinator.resolve(anomaly_id)
-    request.app.state.websocket_manager.broadcast_threadsafe(
-        {"type": "anomaly.updated", "data": verified.model_dump(mode="json")}
-    )
+    _after_resolve(request, verified)
     return verified
 
 
@@ -43,7 +52,7 @@ def verify_anomaly(anomaly_id: str, request: Request) -> Anomaly:
 def dismiss_anomaly(anomaly_id: str, request: Request) -> Anomaly:
     """Operator inspected the robot's camera feed (AnomalyVerifyModal.tsx)
     and judged the anomaly a false positive -- see AnomalyRegistry._resolve's
-    docstring. Same return-to-mission trigger as verify()."""
+    docstring. Same feedback and return-to-mission trigger as verify()."""
     try:
         dismissed = _registry(request).dismiss(anomaly_id)
     except AnomalyNotFoundError as exc:
@@ -51,8 +60,5 @@ def dismiss_anomaly(anomaly_id: str, request: Request) -> Anomaly:
     except InvalidAnomalyTransitionError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
-    request.app.state.anomaly_response_coordinator.resolve(anomaly_id)
-    request.app.state.websocket_manager.broadcast_threadsafe(
-        {"type": "anomaly.updated", "data": dismissed.model_dump(mode="json")}
-    )
+    _after_resolve(request, dismissed)
     return dismissed

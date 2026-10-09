@@ -7,16 +7,23 @@ import type { Anomaly } from "./anomalyTypes";
 
 const anomaly: Anomaly = {
   anomalyId: "sim-anomaly-1",
+  types: ["lying_down"],
   x: 1,
   y: 2,
   frameId: "map",
+  confidence: 0.9,
+  sourceDeviceId: "iot-01",
   status: "robot_en_route",
   detectedAt: "2026-07-19T00:00:00Z",
   updatedAt: "2026-07-19T00:00:00Z",
-  sourceDeviceId: "sim-robot-01",
-  description: null,
+  lastSeenAt: "2026-07-19T00:00:00Z",
+  degradeSec: 30,
+  expiresAt: "2026-07-19T00:00:30Z",
   lat: 37.0,
   lon: -122.0,
+  resolution: null,
+  resolvedAt: null,
+  missionId: null,
 };
 
 function Harness() {
@@ -48,7 +55,7 @@ describe("AnomalyArrivalWatcher", () => {
     render(<Harness />);
     act(() => useDeviceStore.getState().upsertAnomaly({ ...anomaly, status: "robot_arrived" }));
     act(() =>
-      useDeviceStore.getState().upsertAnomaly({ ...anomaly, status: "robot_arrived", description: "still here" }),
+      useDeviceStore.getState().upsertAnomaly({ ...anomaly, status: "robot_arrived", confidence: 0.95 }),
     );
     expect(screen.getAllByText(/robot arrived at anomaly location/i)).toHaveLength(1);
   });

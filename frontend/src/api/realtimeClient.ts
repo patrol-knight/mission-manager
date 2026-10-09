@@ -50,6 +50,7 @@ class RealtimeClient {
   private missionExecutionListeners = new Set<Listener<unknown>>();
   private anomalySnapshotListeners = new Set<Listener<unknown[]>>();
   private anomalyUpdateListeners = new Set<Listener<unknown>>();
+  private anomalyExpiredListeners = new Set<Listener<unknown>>();
   private diversionStartedListeners = new Set<Listener<unknown>>();
   private diversionReturningListeners = new Set<Listener<unknown>>();
   private diversionClearedListeners = new Set<Listener<unknown>>();
@@ -107,6 +108,12 @@ class RealtimeClient {
   onAnomalyUpdate(fn: Listener<unknown>): Unsubscribe {
     this.anomalyUpdateListeners.add(fn);
     return () => this.anomalyUpdateListeners.delete(fn);
+  }
+
+  /** Fed by `anomaly.expired` — the anomaly's grace period ran out without a refresh. */
+  onAnomalyExpired(fn: Listener<unknown>): Unsubscribe {
+    this.anomalyExpiredListeners.add(fn);
+    return () => this.anomalyExpiredListeners.delete(fn);
   }
 
   /** Fed by `anomaly.diversion.started` — robot begins diverting to an anomaly. */
@@ -213,6 +220,9 @@ class RealtimeClient {
       case "anomaly.created":
       case "anomaly.updated":
         this.anomalyUpdateListeners.forEach((fn) => fn(msg.data));
+        break;
+      case "anomaly.expired":
+        this.anomalyExpiredListeners.forEach((fn) => fn(msg.data));
         break;
       case "anomaly.diversion.started":
         this.diversionStartedListeners.forEach((fn) => fn(msg.data));
