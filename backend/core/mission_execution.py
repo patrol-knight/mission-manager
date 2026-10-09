@@ -133,6 +133,17 @@ class MissionExecutionManager:
                 state.model_copy(update={"status": MissionStatus.RETURNING, "updated_at": datetime.now(timezone.utc)})
             )
 
+    def abort(self) -> bool:
+        """Drops a mission in progress (RUNNING/PAUSED/RETURNING) straight to a
+        fresh READY -- autonomy was aborted (MissionService.abort_autonomy) and
+        the operator has to Start again. Returns whether anything changed."""
+        with self._lock:
+            state = self._state
+            if state is None or state.status not in _EDIT_LOCKED_STATUSES:
+                return False
+            self._apply(self._fresh_state(state.mission_id))
+            return True
+
     def after_investigation(self) -> MissionExecutionState | None:
         """Hands the robot back to the mission when an investigation ends
         (core/investigation.py), so the robot always ends up doing something

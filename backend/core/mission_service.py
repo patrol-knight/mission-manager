@@ -1,4 +1,5 @@
 import logging
+import time
 import uuid
 from typing import TYPE_CHECKING
 
@@ -9,7 +10,7 @@ from core.mission_execution import MissionExecutionManager
 from core.mission_server import MissionServer
 from core.websocket_manager import WebSocketManager
 from models.mission import Mission, MissionGeo, MissionSummary, WaypointGeo
-from models.mission_execution import MissionExecutionState
+from models.mission_execution import MissionExecutionState, MissionStatus
 from transport.zenoh_gateway import ZenohGateway
 
 if TYPE_CHECKING:
@@ -17,6 +18,9 @@ if TYPE_CHECKING:
     from core.mission_drive import MissionDriveCoordinator
 
 logger = logging.getLogger(__name__)
+
+# Mission statuses in which the robot is driving (or about to) on its own.
+_ACTIVE_STATUSES = (MissionStatus.RUNNING, MissionStatus.PAUSED, MissionStatus.RETURNING)
 
 
 class MissionService:
@@ -148,6 +152,50 @@ class MissionService:
         self._drive.abort()
         self._drive.advance()  # drives the return to waypoint 0 (RETURNING)
         return result
+
+    # -- Aborting autonomy ------------------------------------------------------
+
+    def abort_autonomy(self, reason: str) -> bool:
+        """Stops everything the robot does on its own: cancels the
+        investigation (no verdict) and drops the mission to READY. Nothing
+        resumes by itself -- the operator has to Start or Investigate again.
+        Used when the robot is lost (abort_if_robot_lost) and, later, when the
+        joystick takes over. Returns whether anything was running."""
+        cancelled = self._investigation.cancel()
+        aborted = self._execution.abort()
+        if cancelled is None and not aborted:
+            return False
+        self._drive.abort()
+
+        robot = self._devices.get_robot()
+        if robot is not None:
+            if robot.connected:
+                self._gateway.publish_command(
+                    robot.device_id, "cancel_navigation", request_id=f"abort-{uuid.uuid4().hex[:8]}"
+                )
+            else:
+                self._drive.cancel_on_reconnect(robot.device_id)
+
+        self._websocket.broadcast_threadsafe(
+            {
+                "type": "autonomy.aborted",
+                "data": {"reason": reason, "anomaly_id": cancelled.anomaly_id if cancelled else None},
+            }
+        )
+        logger.warning("Autonomy aborted (%s)", reason)
+        return True
+
+    def abort_if_robot_lost(self, grace_sec: float) -> None:
+        """Call on every monitor tick. Aborts autonomy once the robot has been
+        offline for longer than `grace_sec`; a no-op otherwise, or when
+        nothing is running."""
+        robot = self._devices.get_robot()
+        if robot is None or robot.connected or time.time() - robot.last_seen < grace_sec:
+            return
+        execution = self._execution.get_state()
+        mission_active = execution is not None and execution.status in _ACTIVE_STATUSES
+        if mission_active or self._investigation.is_active():
+            self.abort_autonomy("robot_disconnected")
 
     # -- Helpers -------------------------------------------------------------
 

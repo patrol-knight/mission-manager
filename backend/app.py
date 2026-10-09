@@ -41,9 +41,10 @@ async def lifespan(app: FastAPI):
         run_monitor(
             services.device_registry,
             services.anomaly_registry,
-            services.investigation,
+            services.mission_service,
             services.websocket_manager,
             settings.device_offline_timeout_sec,
+            settings.robot_lost_grace_sec,
             settings.device_monitor_interval_sec,
         )
     )

@@ -21,6 +21,11 @@ class Settings(BaseSettings):
     app_state_path: str = "storage/app_state.yaml"
 
     device_offline_timeout_sec: float = 3.0
+    # How long the robot may stay offline before the mission and any
+    # investigation are aborted (MissionService.abort_if_robot_lost). Longer
+    # than device_offline_timeout_sec, which only drives the UI's connection
+    # dot, so a short network blip doesn't stop a mission.
+    robot_lost_grace_sec: float = 10.0
     device_monitor_interval_sec: float = 1.0
 
     # Durable anomaly-detection history (backend/core/anomaly_repository.py).

@@ -47,6 +47,11 @@ class DeviceRegistry:
             views = [device.to_view() for device in self._devices.values()]
         return sorted(views, key=lambda v: v.device_id)
 
+    def get_robot(self) -> DeviceView | None:
+        """The robot, connected or not -- first by device_id if there were
+        ever more than one (single-robot deployment)."""
+        return next((d for d in self.list_devices() if d.type == DeviceType.ROBOT), None)
+
     def get_connected_robot(self) -> DeviceView | None:
         """First connected robot device, by device_id -- deterministic
         tie-break if more than one is ever connected at once. Used to gate

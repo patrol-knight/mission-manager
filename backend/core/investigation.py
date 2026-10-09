@@ -1,5 +1,4 @@
 import logging
-import math
 import threading
 import uuid
 from datetime import datetime, timezone
@@ -17,6 +16,7 @@ from core.errors import (
     NotOnSiteError,
     VerdictRequiredError,
 )
+from core.goal_arrival import arrived_at
 from core.map_server import MapServer
 from core.mission_execution import MissionExecutionManager
 from core.websocket_manager import WebSocketManager
@@ -30,13 +30,6 @@ if TYPE_CHECKING:
     from core.mission_drive import MissionDriveCoordinator
 
 logger = logging.getLogger(__name__)
-
-# "arrived" alone doesn't say arrived at WHAT -- DeviceState carries no goal
-# id. If a mission waypoint goal races with the investigation's own goal,
-# whichever reaches the robot last wins, and the robot can genuinely arrive
-# at the wrong place. So an arrival only counts within this distance of the
-# investigation target.
-ARRIVAL_POSITION_TOLERANCE_M = 2.0
 
 
 class InvestigationCoordinator:
@@ -193,7 +186,7 @@ class InvestigationCoordinator:
             self._commit(previous)
         self._broadcast_state()
         logger.info("Investigation of anomaly %s ended (%s)", previous.anomaly_id, previous.phase.value)
-        self._hand_back(previous.robot_device_id, robot_online=True)
+        self._hand_back(previous.robot_device_id)
 
     # -- Robot events --------------------------------------------------------------
 
@@ -205,15 +198,9 @@ class InvestigationCoordinator:
             state = self._state
             if state is None or state.phase != InvestigationPhase.EN_ROUTE:
                 return
-            if view.device_id != state.robot_device_id or view.status.get("operational_state") != "arrived":
+            if view.device_id != state.robot_device_id:
                 return
-            if view.timestamp <= self._issued_after_timestamp:
-                return  # stale sample from before this goal was sent
-            distance = math.hypot(view.pose.x - state.target.x, view.pose.y - state.target.y)
-            if distance > ARRIVAL_POSITION_TOLERANCE_M:
-                logger.warning(
-                    "Investigation: robot reported arrived %.1fm from anomaly %s; ignoring", distance, state.anomaly_id
-                )
+            if not arrived_at(view, state.target.x, state.target.y, self._issued_after_timestamp):
                 return
             self._state = state.model_copy(
                 update={"phase": InvestigationPhase.ON_SITE, "arrived_at": datetime.now(timezone.utc)}
@@ -221,30 +208,20 @@ class InvestigationCoordinator:
         self._broadcast_state()
         logger.info("Investigation: robot arrived at anomaly %s", state.anomaly_id)
 
-    def abort_if_robot_disconnected(self) -> None:
-        """Call on every monitor tick (core/monitor.py). If the robot went
-        offline mid-investigation, ends it without committing anything (the
-        robot left; a verdict needs it on site) and hands back to the mission,
-        which picks up again once the robot reconnects."""
+    def cancel(self) -> InvestigationState | None:
+        """Ends the investigation without a verdict and without handing the
+        robot back to the mission -- for when autonomy is aborted altogether
+        (MissionService.abort_autonomy). Returns what was cancelled, if
+        anything."""
         with self._lock:
             state = self._state
             if state is None:
-                return
-            robot = self._devices.get(state.robot_device_id)
-            if robot is not None and robot.connected:
-                return
+                return None
             self._state = None
             self._anomalies.set_target(None)
-
         self._broadcast_state()
-        self._websocket.broadcast_threadsafe(
-            {
-                "type": "investigation.cancelled",
-                "data": {"anomaly_id": state.anomaly_id, "reason": "robot_disconnected"},
-            }
-        )
-        logger.warning("Investigation of anomaly %s cancelled: robot disconnected", state.anomaly_id)
-        self._hand_back(state.robot_device_id, robot_online=False)
+        logger.warning("Investigation of anomaly %s cancelled", state.anomaly_id)
+        return state
 
     # -- Internals -------------------------------------------------------------------
 
@@ -263,7 +240,7 @@ class InvestigationCoordinator:
             self._gateway.publish_anomaly_feedback(anomaly.anomaly_id, state.draft_verdict, anomaly.resolved_at)
         self._websocket.broadcast_threadsafe({"type": "anomaly.updated", "data": anomaly.model_dump(mode="json")})
 
-    def _hand_back(self, robot_device_id: str, *, robot_online: bool) -> None:
+    def _hand_back(self, robot_device_id: str) -> None:
         """The fallback rules (design doc §5): the mission takes the robot
         back -- rejoining the route, or returning to waypoint 0 -- or, with no
         mission to go back to, the robot holds where it is."""
@@ -274,10 +251,9 @@ class InvestigationCoordinator:
                     self._drive.request_rejoin()
                 self._drive.advance()
             return
-        if robot_online:
-            self._gateway.publish_command(
-                robot_device_id, "cancel_navigation", request_id=f"investigate-hold-{uuid.uuid4().hex[:8]}"
-            )
+        self._gateway.publish_command(
+            robot_device_id, "cancel_navigation", request_id=f"investigate-hold-{uuid.uuid4().hex[:8]}"
+        )
 
     def _broadcast_state(self) -> None:
         state = self.get_state()

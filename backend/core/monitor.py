@@ -2,21 +2,23 @@ import asyncio
 
 from core.anomaly_registry import AnomalyRegistry
 from core.device_registry import DeviceRegistry
-from core.investigation import InvestigationCoordinator
+from core.mission_service import MissionService
 from core.websocket_manager import WebSocketManager
 
 
 async def run_monitor(
     device_registry: DeviceRegistry,
     anomaly_registry: AnomalyRegistry,
-    investigation: InvestigationCoordinator,
+    mission_service: MissionService,
     websocket_manager: WebSocketManager,
     offline_timeout_sec: float,
+    robot_lost_grace_sec: float,
     interval_sec: float,
 ) -> None:
     """Periodic housekeeping, every `interval_sec` until cancelled: marks
-    silent devices offline, cancels an investigation whose robot went offline, and
-    expires anomalies whose grace period ran out."""
+    silent devices offline, aborts the mission and investigation once the
+    robot has been lost for longer than its grace period, and expires
+    anomalies whose grace period ran out."""
     while True:
         if device_registry.mark_offline_devices(offline_timeout_sec):
             await websocket_manager.broadcast(
@@ -25,7 +27,7 @@ async def run_monitor(
                     "data": [d.model_dump(mode="json") for d in device_registry.list_devices()],
                 }
             )
-        investigation.abort_if_robot_disconnected()
+        mission_service.abort_if_robot_lost(robot_lost_grace_sec)
         # Off the event loop: expire() writes expired anomalies to Postgres,
         # which can block on an unreachable database.
         for anomaly_id in await asyncio.to_thread(anomaly_registry.expire):

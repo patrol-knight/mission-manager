@@ -1,11 +1,13 @@
 import asyncio
 import logging
 import threading
+import uuid
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from config import Settings
 from core.device_registry import DeviceRegistry
+from core.goal_arrival import arrived_at
 from core.map_server import MapServer
 from core.mission_execution import MissionExecutionManager
 from core.mission_server import MissionServer
@@ -34,6 +36,8 @@ class _ActiveGoal:
     # aggregator republishes at a fixed rate, so this timestamp reliably
     # increases.
     issued_after_timestamp: float
+    target_x: float
+    target_y: float
     # First goal after an investigation (see request_rejoin()).
     rejoin: bool
 
@@ -76,6 +80,9 @@ class MissionDriveCoordinator:
         self._lock = threading.RLock()
         self._active: _ActiveGoal | None = None
         self._rejoin_pending = False
+        # Robots to send cancel_navigation as soon as they report in again
+        # (see cancel_on_reconnect()).
+        self._cancel_on_reconnect: set[str] = set()
         self._next_token = 0
 
     def bind_investigation(self, investigation: "InvestigationCoordinator") -> None:
@@ -135,6 +142,8 @@ class MissionDriveCoordinator:
                 robot_device_id=robot.device_id,
                 target_waypoint_index=next_index,
                 issued_after_timestamp=robot.timestamp,
+                target_x=target.x,
+                target_y=target.y,
                 rejoin=rejoin,
             )
 
@@ -174,31 +183,36 @@ class MissionDriveCoordinator:
                 best = (length, index)
         return best[1] if best is not None else None
 
+    def cancel_on_reconnect(self, device_id: str) -> None:
+        """Autonomy was aborted while the robot was unreachable, so it may
+        still be driving to its last goal. Stop it the moment it reports in
+        again; the operator decides what it does next."""
+        with self._lock:
+            self._cancel_on_reconnect.add(device_id)
+
     def on_device_state(self, view: DeviceView) -> None:
+        with self._lock:
+            cancel = view.connected and view.device_id in self._cancel_on_reconnect
+            if cancel:
+                self._cancel_on_reconnect.discard(view.device_id)
+        if cancel:
+            logger.info("Mission drive: robot %s is back; cancelling its last goal", view.device_id)
+            self._zenoh_gateway.publish_command(
+                view.device_id, "cancel_navigation", request_id=f"reconnect-{uuid.uuid4().hex[:8]}"
+            )
+
         if self._robot_is_investigating(view.device_id):
             return  # this sample belongs to the investigation, not us
 
         with self._lock:
             active = self._active
-            if active is None:
-                idle = True
-            else:
-                idle = False
-                if active.robot_device_id != view.device_id:
-                    return
-                if view.status.get("operational_state") != "arrived":
-                    return
-                if view.timestamp <= active.issued_after_timestamp:
-                    return  # stale sample from before this goal was issued
-                waypoint_index = active.target_waypoint_index
-                rejoin = active.rejoin
-                self._active = None
-
-        if idle:
-            # Nothing in flight, but there may be work to do -- e.g. the robot
-            # just reconnected while the mission is RUNNING. No-op otherwise.
-            self.advance()
-            return
+            if active is None or active.robot_device_id != view.device_id:
+                return
+            if not arrived_at(view, active.target_x, active.target_y, active.issued_after_timestamp):
+                return
+            waypoint_index = active.target_waypoint_index
+            rejoin = active.rejoin
+            self._active = None
 
         self._mission_execution_manager.record_waypoint_reached(waypoint_index, rejoined=rejoin)
         self.advance()
