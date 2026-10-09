@@ -6,15 +6,17 @@ from typing import TYPE_CHECKING
 
 from config import Settings
 from core.device_registry import DeviceRegistry
+from core.map_server import MapServer
 from core.mission_execution import MissionExecutionManager
 from core.mission_server import MissionServer
 from core.websocket_manager import WebSocketManager
 from models.device import DeviceView
+from models.mission import Mission
 from models.mission_execution import MissionStatus
 from transport.zenoh_gateway import ZenohGateway
 
 if TYPE_CHECKING:
-    from core.anomaly_response import AnomalyResponseCoordinator
+    from core.investigation import InvestigationCoordinator
 
 logger = logging.getLogger(__name__)
 
@@ -24,60 +26,72 @@ class _ActiveGoal:
     token: int
     robot_device_id: str
     target_waypoint_index: int
-    # The tracked robot's own DeviceState.timestamp at the moment this goal
-    # was issued -- an "arrived" sample only completes this goal if its
-    # timestamp is strictly newer. Without this, a stale "arrived" sample
-    # left over from whatever the robot was doing *before* this goal (most
-    # notably: the same sample that just made AnomalyResponseCoordinator
-    # hand the robot back via advance(), re-processed by this coordinator
-    # a moment later) would satisfy a goal that was never actually acted
-    # on. The aggregator republishes at a fixed rate regardless of change,
-    # so this timestamp is reliably strictly increasing.
+    # The robot's own DeviceState.timestamp when this goal was issued -- an
+    # "arrived" sample only completes the goal if it is strictly newer.
+    # Otherwise a stale "arrived" left over from whatever the robot did
+    # *before* this goal (e.g. reaching an anomaly just as the investigation
+    # handed the robot back) would satisfy a goal never acted on. The
+    # aggregator republishes at a fixed rate, so this timestamp reliably
+    # increases.
     issued_after_timestamp: float
+    # First goal after an investigation (see request_rejoin()).
+    rejoin: bool
 
 
 class MissionDriveCoordinator:
-    """Autonomously drives the current mission: sends the next waypoint as
-    a `navigate_to_goal` command (see ZenohGateway.publish_command), waits
-    for the tracked robot's own reported arrival (on_device_state(), same
-    signal AnomalyResponseCoordinator watches), advances
-    MissionExecutionManager via record_waypoint_reached(), and sends the
-    next one -- looping through the mission the same way DevSimulator used
-    to before it was removed, except the robot now actually moves.
+    """Autonomously drives the current mission: sends the next waypoint as a
+    `navigate_to_goal` command, waits for the robot's own reported arrival
+    (on_device_state()), advances MissionExecutionManager via
+    record_waypoint_reached(), and sends the next one. RUNNING loops through
+    the waypoints; RETURNING heads for waypoint 0.
 
-    Yields to AnomalyResponseCoordinator: never sends a goal while a
-    diversion is active for the same robot, and ignores arrivals reported
-    while one is (they belong to the diversion, not a mission waypoint) --
-    the two must never command the robot at once.
+    Yields to the investigation: never sends a goal while the robot is
+    investigating, and ignores arrivals reported meanwhile (they belong to the
+    investigation) -- the two must never command the robot at once.
 
-    advance() is the only entry point that starts something, and it's
-    always safe to call speculatively: it re-checks every precondition
-    (mission RUNNING, a connected robot, no diversion/goal already in
-    flight) and is a no-op if any fails. Call it after start()/resume()
-    and whenever a diversion ends (see AnomalyResponseCoordinator).
-    """
+    advance() is the only entry point that starts something, and it's always
+    safe to call speculatively: it re-checks every precondition (mission
+    RUNNING/RETURNING, a connected robot, no investigation or goal in flight)
+    and is a no-op if any fails."""
 
     def __init__(
         self,
         mission_execution_manager: MissionExecutionManager,
         mission_server: MissionServer,
+        map_server: MapServer,
         device_registry: DeviceRegistry,
-        anomaly_response_coordinator: "AnomalyResponseCoordinator",
         zenoh_gateway: ZenohGateway,
         websocket_manager: WebSocketManager,
         settings: Settings,
     ) -> None:
         self._mission_execution_manager = mission_execution_manager
         self._mission_server = mission_server
+        self._map_server = map_server
         self._device_registry = device_registry
-        self._anomaly_response_coordinator = anomaly_response_coordinator
         self._zenoh_gateway = zenoh_gateway
         self._websocket_manager = websocket_manager
         self._settings = settings
+        self._investigation: "InvestigationCoordinator | None" = None
 
         self._lock = threading.RLock()
         self._active: _ActiveGoal | None = None
+        self._rejoin_pending = False
         self._next_token = 0
+
+    def bind_investigation(self, investigation: "InvestigationCoordinator") -> None:
+        """Late-bound: the investigation coordinator needs this class too
+        (see bootstrap.py)."""
+        self._investigation = investigation
+
+    def _robot_is_investigating(self, device_id: str) -> bool:
+        return self._investigation is not None and self._investigation.is_active_for(device_id)
+
+    def request_rejoin(self) -> None:
+        """The robot was driven off-route (an investigation). The next RUNNING
+        goal goes to the waypoint closest by lanelet route distance instead
+        of simply the next one in order."""
+        with self._lock:
+            self._rejoin_pending = True
 
     def advance(self) -> None:
         if not self._settings.mission_drive_enabled:
@@ -88,28 +102,31 @@ class MissionDriveCoordinator:
                 return  # a goal is already in flight
 
             exec_state = self._mission_execution_manager.get_state()
-            if exec_state is None or exec_state.status not in (MissionStatus.RUNNING, MissionStatus.RETURNING_HOME):
+            if exec_state is None or exec_state.status not in (MissionStatus.RUNNING, MissionStatus.RETURNING):
                 return
 
             robot = self._device_registry.get_connected_robot()
-            if robot is None:
+            if robot is None or self._robot_is_investigating(robot.device_id):
                 return
-            if self._anomaly_response_coordinator.is_active_for(robot.device_id):
-                return  # anomaly diversion owns the robot right now
 
             mission = self._mission_server.get_mission(exec_state.mission_id)
             if mission is None or not mission.waypoints:
                 return
 
-            # RETURNING_HOME (after Stop) always heads for waypoint 0 --
-            # record_waypoint_reached(0) is what resets it straight to READY
-            # (not COMPLETED -- that's reserved for finishing all configured
-            # loops naturally, see mission_execution.py::_finish_mission).
-            next_index = (
-                0
-                if exec_state.status == MissionStatus.RETURNING_HOME
-                else (exec_state.current_waypoint_index + 1) % len(mission.waypoints)
-            )
+            rejoin = False
+            if exec_state.status == MissionStatus.RETURNING:
+                # Reaching waypoint 0 is what resets RETURNING to READY (see
+                # MissionExecutionManager.record_waypoint_reached).
+                next_index = 0
+            elif self._rejoin_pending:
+                closest = self._closest_waypoint_index((robot.pose.x, robot.pose.y), mission)
+                next_index = closest if closest is not None else exec_state.current_waypoint_index
+                rejoin = True
+            else:
+                next_index = (exec_state.current_waypoint_index + 1) % len(mission.waypoints)
+            # RETURNING doesn't need the rejoin any more, and RUNNING has just
+            # used it.
+            self._rejoin_pending = False
             target = mission.waypoints[next_index]
 
             token = self._next_token = self._next_token + 1
@@ -118,6 +135,7 @@ class MissionDriveCoordinator:
                 robot_device_id=robot.device_id,
                 target_waypoint_index=next_index,
                 issued_after_timestamp=robot.timestamp,
+                rejoin=rejoin,
             )
 
         fields = {"x": target.x, "y": target.y, "frame_id": mission.frame_id}
@@ -134,26 +152,55 @@ class MissionDriveCoordinator:
 
         self._websocket_manager.run_coroutine_threadsafe(self._timeout_then_retry(token))
         logger.info(
-            "Mission drive: robot %s heading to waypoint %s (index %d)",
-            robot.device_id, target.waypoint_id, next_index,
+            "Mission drive: robot %s heading to waypoint %s (index %d%s)",
+            robot.device_id, target.waypoint_id, next_index, ", rejoining" if rejoin else "",
         )
 
+    def _closest_waypoint_index(self, from_xy: tuple[float, float], mission: Mission) -> int | None:
+        """Index of the waypoint with the shortest lanelet route from
+        `from_xy` -- not straight-line distance: lanelets are one-way, so a
+        waypoint a few meters behind the robot can be a full lap away. None
+        if the map is unavailable or no waypoint is routable."""
+        if not self._map_server.is_available():
+            return None
+        fx, fy = from_xy
+        best: tuple[float, int] | None = None
+        for index, waypoint in enumerate(mission.waypoints):
+            route = self._map_server.get_route([{"x": fx, "y": fy}, {"x": waypoint.x, "y": waypoint.y}])
+            if route is None:
+                continue
+            length = route["properties"]["length_m"]
+            if best is None or length < best[0]:
+                best = (length, index)
+        return best[1] if best is not None else None
+
     def on_device_state(self, view: DeviceView) -> None:
-        if self._anomaly_response_coordinator.is_active_for(view.device_id):
-            return  # this arrival belongs to an active diversion, not us
+        if self._robot_is_investigating(view.device_id):
+            return  # this sample belongs to the investigation, not us
 
         with self._lock:
             active = self._active
-            if active is None or active.robot_device_id != view.device_id:
-                return
-            if view.status.get("operational_state") != "arrived":
-                return
-            if view.timestamp <= active.issued_after_timestamp:
-                return  # stale sample from before this goal was issued
-            waypoint_index = active.target_waypoint_index
-            self._active = None
+            if active is None:
+                idle = True
+            else:
+                idle = False
+                if active.robot_device_id != view.device_id:
+                    return
+                if view.status.get("operational_state") != "arrived":
+                    return
+                if view.timestamp <= active.issued_after_timestamp:
+                    return  # stale sample from before this goal was issued
+                waypoint_index = active.target_waypoint_index
+                rejoin = active.rejoin
+                self._active = None
 
-        self._mission_execution_manager.record_waypoint_reached(waypoint_index)
+        if idle:
+            # Nothing in flight, but there may be work to do -- e.g. the robot
+            # just reconnected while the mission is RUNNING. No-op otherwise.
+            self.advance()
+            return
+
+        self._mission_execution_manager.record_waypoint_reached(waypoint_index, rejoined=rejoin)
         self.advance()
 
     async def _timeout_then_retry(self, token: int) -> None:
@@ -161,14 +208,16 @@ class MissionDriveCoordinator:
         with self._lock:
             if self._active is None or self._active.token != token:
                 return  # already arrived, or superseded
+            rejoin = self._active.rejoin
             self._active = None
+            self._rejoin_pending = self._rejoin_pending or rejoin
         logger.warning("Mission drive: navigate_to_goal timed out; retrying")
         self.advance()
 
     def abort(self) -> None:
-        """Call when the mission is paused/stopped/switched, or a
-        diversion is about to take over the robot -- clears any in-flight
-        goal bookkeeping so a stale arrival can't advance a mission that's
-        no longer running, or race with the diversion."""
+        """Call when the mission is paused/stopped/switched, or an
+        investigation is about to take over the robot -- clears any in-flight
+        goal bookkeeping so a stale arrival can't advance a mission that's no
+        longer running."""
         with self._lock:
             self._active = None

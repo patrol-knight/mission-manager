@@ -24,10 +24,10 @@ def _snapshot_events(services: Services) -> list[dict]:
         {"type": "cameras.snapshot", "data": [c.model_dump(mode="json") for c in services.camera_registry.list()]},
         {"type": "anomalies.snapshot", "data": [a.model_dump(mode="json") for a in services.anomaly_registry.list()]},
     ]
-    active = services.anomaly_response_coordinator.get_active()
-    if active is not None:
-        event_type, data = active
-        events.append({"type": event_type, "data": data})
+    investigation = services.investigation.get_state()
+    events.append(
+        {"type": "investigation.updated", "data": investigation.model_dump(mode="json") if investigation else None}
+    )
     return events
 
 

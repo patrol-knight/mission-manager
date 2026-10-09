@@ -10,13 +10,18 @@ from core.errors import (
     InsufficientWaypointsError,
     InvalidAnomalyTransitionError,
     InvalidExecutionTransitionError,
+    InvestigationActiveError,
     MapUnavailableError,
     MissionAlreadyExistsError,
     MissionExecutionLockedError,
     MissionNotFoundError,
     MissionValidationError,
+    NoActiveInvestigationError,
     NoConnectedRobotError,
     NoCurrentMissionError,
+    NoRouteError,
+    NotOnSiteError,
+    VerdictRequiredError,
 )
 
 # The one place domain errors (core/errors.py) become HTTP status codes, so
@@ -35,6 +40,11 @@ _STATUS_BY_ERROR: dict[type[Exception], int] = {
     NoConnectedRobotError: 409,
     InvalidAnomalyTransitionError: 409,
     DeviceNotConnectedError: 409,
+    InvestigationActiveError: 409,
+    NoActiveInvestigationError: 409,
+    VerdictRequiredError: 409,
+    NotOnSiteError: 409,
+    NoRouteError: 409,
     MapUnavailableError: 503,
     DeviceUnreachableError: 503,
 }

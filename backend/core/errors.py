@@ -60,3 +60,23 @@ class CameraUnavailableError(Exception):
 
 class DeviceUnreachableError(Exception):
     pass
+
+
+class InvestigationActiveError(Exception):
+    pass
+
+
+class NoActiveInvestigationError(Exception):
+    pass
+
+
+class VerdictRequiredError(Exception):
+    pass
+
+
+class NotOnSiteError(Exception):
+    pass
+
+
+class NoRouteError(Exception):
+    pass

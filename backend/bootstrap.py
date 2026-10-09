@@ -4,11 +4,11 @@ from dataclasses import dataclass
 from config import Settings
 from core.anomaly_registry import AnomalyRegistry
 from core.anomaly_repository import AnomalyRepository
-from core.anomaly_response import AnomalyResponseCoordinator
 from core.camera_registry import CameraRegistry
 from core.camera_stream import CameraStreamService
 from core.device_registry import DeviceRegistry
 from core.errors import MapUnavailableError
+from core.investigation import InvestigationCoordinator
 from core.map_server import MapServer
 from core.mission_drive import MissionDriveCoordinator
 from core.mission_execution import MissionExecutionManager
@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 class Services:
     """Every long-lived service, built once at startup. Routers reach these
     through api/deps.py; they should call the use-case services
-    (mission_service, camera_stream, anomaly_response_coordinator) rather
+    (mission_service, camera_stream, investigation) rather
     than sequencing the lower-level ones themselves."""
 
     map_server: MapServer
@@ -34,7 +34,7 @@ class Services:
     camera_registry: CameraRegistry
     anomaly_registry: AnomalyRegistry
     anomaly_repository: AnomalyRepository | None
-    anomaly_response_coordinator: AnomalyResponseCoordinator
+    investigation: InvestigationCoordinator
     mission_drive_coordinator: MissionDriveCoordinator
     mission_service: MissionService
     camera_stream: CameraStreamService
@@ -68,43 +68,40 @@ def build_services(settings: Settings) -> Services:
     mission_execution_manager = MissionExecutionManager(mission_server, websocket_manager, device_registry)
     mission_execution_manager.sync_with_current()
 
-    # zenoh_gateway is constructed before the two coordinators below: both
-    # need it to send commands through, and it needs them for its own ingest
-    # callbacks, so the two directions are wired up after the fact via
-    # bind_coordinators()/bind_mission_drive() to avoid a construction cycle.
+    # zenoh_gateway is constructed before the coordinators: they send
+    # commands through it, and it feeds them device state. The investigation
+    # and mission drive also need each other. Both cycles are closed after
+    # construction with bind_*() calls.
     zenoh_gateway = ZenohGateway(
         settings, device_registry, websocket_manager, anomaly_registry, map_server, camera_registry
     )
-
-    anomaly_response_coordinator = AnomalyResponseCoordinator(
+    investigation = InvestigationCoordinator(
         anomaly_registry=anomaly_registry,
+        mission_execution_manager=mission_execution_manager,
+        map_server=map_server,
+        device_registry=device_registry,
+        zenoh_gateway=zenoh_gateway,
+        websocket_manager=websocket_manager,
+    )
+    mission_drive_coordinator = MissionDriveCoordinator(
         mission_execution_manager=mission_execution_manager,
         mission_server=mission_server,
         map_server=map_server,
         device_registry=device_registry,
-        websocket_manager=websocket_manager,
-        zenoh_gateway=zenoh_gateway,
-        settings=settings,
-    )
-
-    mission_drive_coordinator = MissionDriveCoordinator(
-        mission_execution_manager=mission_execution_manager,
-        mission_server=mission_server,
-        device_registry=device_registry,
-        anomaly_response_coordinator=anomaly_response_coordinator,
         zenoh_gateway=zenoh_gateway,
         websocket_manager=websocket_manager,
         settings=settings,
     )
-    anomaly_response_coordinator.bind_mission_drive(mission_drive_coordinator)
-    zenoh_gateway.bind_coordinators(anomaly_response_coordinator, mission_drive_coordinator)
+    investigation.bind_mission_drive(mission_drive_coordinator)
+    mission_drive_coordinator.bind_investigation(investigation)
+    zenoh_gateway.bind_coordinators(investigation, mission_drive_coordinator)
 
     mission_service = MissionService(
         mission_server=mission_server,
         map_server=map_server,
         execution_manager=mission_execution_manager,
         mission_drive=mission_drive_coordinator,
-        anomaly_response=anomaly_response_coordinator,
+        investigation=investigation,
         device_registry=device_registry,
         zenoh_gateway=zenoh_gateway,
         websocket_manager=websocket_manager,
@@ -118,7 +115,7 @@ def build_services(settings: Settings) -> Services:
         camera_registry=camera_registry,
         anomaly_registry=anomaly_registry,
         anomaly_repository=anomaly_repository,
-        anomaly_response_coordinator=anomaly_response_coordinator,
+        investigation=investigation,
         mission_drive_coordinator=mission_drive_coordinator,
         mission_service=mission_service,
         camera_stream=CameraStreamService(device_registry, camera_registry, zenoh_gateway),

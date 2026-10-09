@@ -3,7 +3,7 @@ import uuid
 from typing import TYPE_CHECKING
 
 from core.device_registry import DeviceRegistry
-from core.errors import MapUnavailableError, MissionNotFoundError, NoCurrentMissionError
+from core.errors import InvestigationActiveError, MapUnavailableError, MissionNotFoundError, NoCurrentMissionError
 from core.map_server import MapServer
 from core.mission_execution import MissionExecutionManager
 from core.mission_server import MissionServer
@@ -13,7 +13,7 @@ from models.mission_execution import MissionExecutionState
 from transport.zenoh_gateway import ZenohGateway
 
 if TYPE_CHECKING:
-    from core.anomaly_response import AnomalyResponseCoordinator
+    from core.investigation import InvestigationCoordinator
     from core.mission_drive import MissionDriveCoordinator
 
 logger = logging.getLogger(__name__)
@@ -23,11 +23,15 @@ class MissionService:
     """The mission use cases the API exposes -- mission CRUD and
     start/pause/resume/stop -- each tying together the pieces that must move
     in step: MissionServer (definitions + YAML), MissionExecutionManager
-    (runtime status), MissionDriveCoordinator (robot goals),
-    AnomalyResponseCoordinator (diversions) and the robot itself. Routers in
-    api/ call exactly one method here and never sequence those pieces
-    themselves. Raises core/errors.py exceptions, which api/errors.py maps to
-    HTTP status codes."""
+    (runtime status), MissionDriveCoordinator (robot goals) and the robot
+    itself. Routers in api/ call exactly one method here and never sequence
+    those pieces themselves. Raises core/errors.py exceptions, which
+    api/errors.py maps to HTTP status codes.
+
+    While the robot is investigating, the mission is frozen: every transition
+    and any change to the current mission raises InvestigationActiveError.
+    The investigation hands the robot back itself when it ends
+    (InvestigationCoordinator._hand_back)."""
 
     def __init__(
         self,
@@ -35,7 +39,7 @@ class MissionService:
         map_server: MapServer,
         execution_manager: MissionExecutionManager,
         mission_drive: "MissionDriveCoordinator",
-        anomaly_response: "AnomalyResponseCoordinator",
+        investigation: "InvestigationCoordinator",
         device_registry: DeviceRegistry,
         zenoh_gateway: ZenohGateway,
         websocket_manager: WebSocketManager,
@@ -44,7 +48,7 @@ class MissionService:
         self._map = map_server
         self._execution = execution_manager
         self._drive = mission_drive
-        self._anomaly_response = anomaly_response
+        self._investigation = investigation
         self._devices = device_registry
         self._gateway = zenoh_gateway
         self._websocket = websocket_manager
@@ -80,6 +84,7 @@ class MissionService:
         return self._with_geo(self._missions.create_mission(mission))
 
     def update_mission(self, mission_id: str, mission: Mission) -> MissionGeo:
+        self._assert_current_unlocked(mission_id)
         self._execution.assert_editable(mission_id)
         updated = self._missions.update_mission(mission_id, mission)
         self._execution.on_edited(mission_id)
@@ -87,20 +92,17 @@ class MissionService:
         return self._with_geo(updated)
 
     def delete_mission(self, mission_id: str) -> None:
-        # No diversion abort here, deliberately: assert_editable blocks
-        # deleting the current mission while it's executing (the only window
-        # a diversion can be active in), so aborting would only ever clear a
-        # legitimate diversion on a *different*, still-running mission.
+        self._assert_current_unlocked(mission_id)
         self._execution.assert_editable(mission_id)
         self._missions.delete_mission(mission_id)
         self._execution.on_deleted(mission_id)
         self._broadcast_current()
 
     def activate(self, mission_id: str) -> MissionGeo:
+        self._assert_not_investigating()
         activated = self._missions.activate(mission_id)
         self._execution.on_activated(mission_id)
         self._broadcast_current()
-        self._anomaly_response.end_run("mission_switched")
         return self._with_geo(activated)
 
     def set_default(self, mission_id: str) -> MissionGeo:
@@ -115,12 +117,13 @@ class MissionService:
         return state
 
     def start(self) -> MissionExecutionState:
+        self._assert_not_investigating()
         result = self._execution.start()
-        self._anomaly_response.begin_run()
         self._drive.advance()
         return result
 
     def pause(self) -> MissionExecutionState:
+        self._assert_not_investigating()
         result = self._execution.pause()
         self._drive.abort()
         # The robot has no concept of "pause" and keeps driving toward its
@@ -134,19 +137,28 @@ class MissionService:
         return result
 
     def resume(self) -> MissionExecutionState:
+        self._assert_not_investigating()
         result = self._execution.resume()
-        self._anomaly_response.dispatch_pending()  # anomalies queued while paused
         self._drive.advance()
         return result
 
     def stop(self) -> MissionExecutionState:
+        self._assert_not_investigating()
         result = self._execution.stop()
         self._drive.abort()
-        self._anomaly_response.end_run("mission_stopped")
-        self._drive.advance()  # drives the return to waypoint 0 (RETURNING_HOME)
+        self._drive.advance()  # drives the return to waypoint 0 (RETURNING)
         return result
 
     # -- Helpers -------------------------------------------------------------
+
+    def _assert_not_investigating(self) -> None:
+        if self._investigation.is_active():
+            raise InvestigationActiveError("Not available while the robot is investigating")
+
+    def _assert_current_unlocked(self, mission_id: str) -> None:
+        current = self._missions.get_current()
+        if current is not None and current.mission_id == mission_id:
+            self._assert_not_investigating()
 
     def _with_geo(self, mission: Mission) -> MissionGeo:
         waypoints = []

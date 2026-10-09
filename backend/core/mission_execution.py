@@ -21,8 +21,7 @@ MIN_WAYPOINTS_TO_START = 2
 _EDIT_LOCKED_STATUSES = (
     MissionStatus.RUNNING,
     MissionStatus.PAUSED,
-    MissionStatus.RETURNING_HOME,
-    MissionStatus.INVESTIGATING,
+    MissionStatus.RETURNING,
 )
 
 
@@ -84,7 +83,7 @@ class MissionExecutionManager:
         with self._lock:
             state = self._require_state()
             if state.status not in (MissionStatus.READY, MissionStatus.COMPLETED):
-                raise InvalidExecutionTransitionError(f"Cannot start mission from status {state.status}")
+                raise InvalidExecutionTransitionError(f"Cannot start mission from status {state.status.value}")
 
             mission = self._mission_server.get_mission(state.mission_id)
             if mission is None or len(mission.waypoints) < MIN_WAYPOINTS_TO_START:
@@ -111,7 +110,7 @@ class MissionExecutionManager:
         with self._lock:
             state = self._require_state()
             if state.status != MissionStatus.RUNNING:
-                raise InvalidExecutionTransitionError(f"Cannot pause from status {state.status}")
+                raise InvalidExecutionTransitionError(f"Cannot pause from status {state.status.value}")
             return self._apply(
                 state.model_copy(update={"status": MissionStatus.PAUSED, "updated_at": datetime.now(timezone.utc)})
             )
@@ -120,69 +119,62 @@ class MissionExecutionManager:
         with self._lock:
             state = self._require_state()
             if state.status != MissionStatus.PAUSED:
-                raise InvalidExecutionTransitionError(f"Cannot resume from status {state.status}")
+                raise InvalidExecutionTransitionError(f"Cannot resume from status {state.status.value}")
             return self._apply(
                 state.model_copy(update={"status": MissionStatus.RUNNING, "updated_at": datetime.now(timezone.utc)})
             )
 
     def stop(self) -> MissionExecutionState:
-        """Allowed from INVESTIGATING as well as RUNNING/PAUSED -- Stop is
-        the one control that stays available during a robot diversion, an
-        escape hatch given there's no automatic timeout on one (see
-        core/anomaly_response.py). AnomalyResponseCoordinator.end_run()
-        (called by MissionService.stop() right after this) tears down whatever
-        diversion bookkeeping was in flight and clears the anomaly queue."""
         with self._lock:
             state = self._require_state()
-            if state.status not in (MissionStatus.RUNNING, MissionStatus.PAUSED, MissionStatus.INVESTIGATING):
-                raise InvalidExecutionTransitionError(f"Cannot stop from status {state.status}")
+            if state.status not in (MissionStatus.RUNNING, MissionStatus.PAUSED):
+                raise InvalidExecutionTransitionError(f"Cannot stop from status {state.status.value}")
             return self._apply(
-                state.model_copy(
-                    update={"status": MissionStatus.RETURNING_HOME, "updated_at": datetime.now(timezone.utc)}
-                )
+                state.model_copy(update={"status": MissionStatus.RETURNING, "updated_at": datetime.now(timezone.utc)})
             )
 
-    def enter_investigating(self) -> MissionExecutionState | None:
-        """Called by AnomalyResponseCoordinator right before it commits to
-        starting a diversion -- the authoritative gate, since this is the
-        only check done atomically under this manager's own lock (the
-        map/route lookups leading up to it aren't). Returns None (no-op)
-        if the mission isn't RUNNING right now, e.g. a pause()/stop() won
-        the race in the meantime -- the caller must treat that as "don't
-        start the diversion", not proceed anyway."""
+    def after_investigation(self) -> MissionExecutionState | None:
+        """Hands the robot back to the mission when an investigation ends
+        (core/investigation.py), so the robot always ends up doing something
+        the mission card shows:
+
+        - PAUSED -> RUNNING: the robot is off-route now, so it rejoins rather
+          than sitting where the operator paused it (possibly long ago).
+        - READY -> RETURNING: back to waypoint 0, then READY again.
+        - RUNNING / RETURNING: unchanged, the robot carries on.
+
+        Returns the resulting state, or None if there's no current mission."""
         with self._lock:
-            if self._state is None or self._state.status != MissionStatus.RUNNING:
+            state = self._state
+            if state is None:
                 return None
-            return self._apply(
-                self._state.model_copy(
-                    update={"status": MissionStatus.INVESTIGATING, "updated_at": datetime.now(timezone.utc)}
-                )
-            )
+            if state.status == MissionStatus.PAUSED:
+                next_status = MissionStatus.RUNNING
+            elif state.status in (MissionStatus.READY, MissionStatus.COMPLETED):
+                mission = self._mission_server.get_mission(state.mission_id)
+                if mission is None or not mission.waypoints:
+                    return state.model_copy(deep=True)
+                next_status = MissionStatus.RETURNING
+            else:
+                return state.model_copy(deep=True)
+            return self._apply(state.model_copy(update={"status": next_status, "updated_at": datetime.now(timezone.utc)}))
 
-    def exit_investigating(self) -> MissionExecutionState | None:
-        """Called whenever a diversion ends/aborts. No-op if the mission
-        isn't INVESTIGATING right now -- safe to call even when Stop
-        already moved status straight to RETURNING_HOME (the escape-hatch
-        path), since that isn't INVESTIGATING anymore either."""
-        with self._lock:
-            if self._state is None or self._state.status != MissionStatus.INVESTIGATING:
-                return None
-            return self._apply(
-                self._state.model_copy(update={"status": MissionStatus.RUNNING, "updated_at": datetime.now(timezone.utc)})
-            )
+    def record_waypoint_reached(self, waypoint_index: int, *, rejoined: bool = False) -> MissionExecutionState | None:
+        """Called by MissionDriveCoordinator whenever the robot arrives at a
+        waypoint. No-ops (returns the unchanged state) outside RUNNING/
+        RETURNING — never raises, since an arrival racing a Stop is expected,
+        not exceptional.
 
-    def record_waypoint_reached(self, waypoint_index: int) -> MissionExecutionState | None:
-        """Producer-agnostic: called by the dev simulator (and, in principle,
-        a future real-telemetry path) whenever the robot arrives at a
-        waypoint. No-ops (returns the unchanged state) outside running/
-        returning_home — never raises, since telemetry arriving after a Stop
-        race is expected, not exceptional."""
+        `rejoined` marks the first waypoint reached after an investigation:
+        the robot jumped there from off-route, so it doesn't count as
+        finishing a loop even if it is waypoint 0 -- the loop just restarts,
+        rather than the mission completing with waypoints skipped."""
         with self._lock:
             if self._state is None:
                 return None
             state = self._state
 
-            if state.status == MissionStatus.RETURNING_HOME:
+            if state.status == MissionStatus.RETURNING:
                 if waypoint_index == 0:
                     # Unlike finishing all configured loops naturally (below),
                     # a manual Stop never reports COMPLETED -- that status
@@ -207,7 +199,7 @@ class MissionExecutionManager:
             current_loop = state.current_loop
             status = state.status
 
-            if waypoint_index == 0 and state.current_waypoint_index != 0:
+            if waypoint_index == 0 and state.current_waypoint_index != 0 and not rejoined:
                 completed_loops += 1
                 if completed_loops >= mission.loop_count:
                     status = MissionStatus.COMPLETED
@@ -230,7 +222,7 @@ class MissionExecutionManager:
     def _finish_mission(self, completed_state: MissionExecutionState) -> MissionExecutionState:
         """Only reached by naturally finishing all configured loops while
         RUNNING (see record_waypoint_reached) -- a manual Stop's
-        RETURNING_HOME->READY path deliberately does NOT call this, since
+        RETURNING->READY path deliberately does NOT call this, since
         that's not the same outcome. Broadcasts the COMPLETED transition --
         so a client can catch it going by (e.g. MissionCompleteWatcher's
         toast, which reads the final loop count off this exact message) --
@@ -249,7 +241,7 @@ class MissionExecutionManager:
                 return
             if self._state.status in _EDIT_LOCKED_STATUSES:
                 raise MissionExecutionLockedError(
-                    "Mission editing is unavailable while the robot is executing or returning home."
+                    "Mission editing is unavailable while the robot is executing or returning to start."
                 )
 
     def on_activated(self, mission_id: str) -> None:

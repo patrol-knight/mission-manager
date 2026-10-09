@@ -24,7 +24,7 @@ _CAMERA_SIGNAL_KEY_RE = re.compile(
 )
 
 if TYPE_CHECKING:
-    from core.anomaly_response import AnomalyResponseCoordinator
+    from core.investigation import InvestigationCoordinator
     from core.mission_drive import MissionDriveCoordinator
 
 logger = logging.getLogger(__name__)
@@ -38,7 +38,7 @@ class ZenohGateway:
     importable and testable when `eclipse-zenoh` is not installed or
     ZENOH_ENABLED=false.
 
-    `anomaly_response_coordinator`/`mission_drive_coordinator` are bound
+    `investigation`/`mission_drive_coordinator` are bound
     after construction via `bind_coordinators()`, not passed into
     __init__ — both of them need a `ZenohGateway` to send commands through
     (see `publish_command`), so this side of the dependency has to be
@@ -60,7 +60,7 @@ class ZenohGateway:
         self._anomaly_registry = anomaly_registry
         self._map_server = map_server
         self._camera_registry = camera_registry
-        self._anomaly_response_coordinator: "AnomalyResponseCoordinator | None" = None
+        self._investigation: "InvestigationCoordinator | None" = None
         self._mission_drive_coordinator: "MissionDriveCoordinator | None" = None
         self._session = None
         self._device_subscriber = None
@@ -70,10 +70,10 @@ class ZenohGateway:
 
     def bind_coordinators(
         self,
-        anomaly_response_coordinator: "AnomalyResponseCoordinator",
+        investigation: "InvestigationCoordinator",
         mission_drive_coordinator: "MissionDriveCoordinator",
     ) -> None:
-        self._anomaly_response_coordinator = anomaly_response_coordinator
+        self._investigation = investigation
         self._mission_drive_coordinator = mission_drive_coordinator
 
     def start(self) -> None:
@@ -219,8 +219,8 @@ class ZenohGateway:
             # operational_state transition here rather than a separate
             # Zenoh subscription of their own.
             if view is not None:
-                if self._anomaly_response_coordinator is not None:
-                    self._anomaly_response_coordinator.on_device_state(view)
+                if self._investigation is not None:
+                    self._investigation.on_device_state(view)
                 if self._mission_drive_coordinator is not None:
                     self._mission_drive_coordinator.on_device_state(view)
         return changed
@@ -260,12 +260,6 @@ class ZenohGateway:
                 "data": stored.model_dump(mode="json"),
             }
         )
-
-        if is_new and self._anomaly_response_coordinator is not None:
-            # Only a genuinely new anomaly should trigger a diversion -- a
-            # refresh of an already-known one must not retrigger it.
-            self._anomaly_response_coordinator.on_anomaly_detected(stored)
-
         return True
 
     def ingest_camera_state_payload(self, payload: bytes | str | dict) -> bool:

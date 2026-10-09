@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from api import anomaly as anomaly_api
 from api import camera as camera_api
 from api import device as device_api
+from api import investigation as investigation_api
 from api import map as map_api
 from api import mission as mission_api
 from api import system as system_api
@@ -40,7 +41,7 @@ async def lifespan(app: FastAPI):
         run_monitor(
             services.device_registry,
             services.anomaly_registry,
-            services.anomaly_response_coordinator,
+            services.investigation,
             services.websocket_manager,
             settings.device_offline_timeout_sec,
             settings.device_monitor_interval_sec,
@@ -76,6 +77,7 @@ def create_app() -> FastAPI:
     fastapi_app.include_router(mission_api.router, prefix="/api/missions", tags=["missions"])
     fastapi_app.include_router(device_api.router, prefix="/api/devices", tags=["devices"])
     fastapi_app.include_router(anomaly_api.router, prefix="/api/anomalies", tags=["anomalies"])
+    fastapi_app.include_router(investigation_api.router, prefix="/api/investigation", tags=["investigation"])
     fastapi_app.include_router(map_api.router, prefix="/api/map", tags=["map"])
     fastapi_app.include_router(camera_api.router, prefix="/api/cameras", tags=["cameras"])
     fastapi_app.include_router(system_api.router, prefix="/api/system", tags=["system"])

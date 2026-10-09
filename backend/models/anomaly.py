@@ -1,5 +1,4 @@
 from datetime import datetime
-from enum import Enum
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -7,14 +6,12 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 # The anomaly categories Anomaly Detection may report -- see
 # ../anomaly_detection/docs/topics_format.md section 2.1.
 AnomalyType = Literal["lying_down", "loitering", "trespassing"]
+# What the operator can conclude on site. Only the first two are final and
+# sent to Anomaly Detection as feedback; "unclear" (camera blocked, person
+# already gone, ...) keeps the anomaly on the map for another look.
 AnomalyResolution = Literal["true_positive", "false_positive"]
-
-
-class AnomalyStatus(str, Enum):
-    DETECTED = "detected"
-    ROBOT_EN_ROUTE = "robot_en_route"
-    ROBOT_ARRIVED = "robot_arrived"
-    VERIFIED = "verified"
+AnomalyVerdict = Literal["true_positive", "false_positive", "unclear"]
+FINAL_VERDICTS: tuple[AnomalyResolution, ...] = ("true_positive", "false_positive")
 
 
 class AnomalyStateMessage(BaseModel):
@@ -67,10 +64,9 @@ class Anomaly(BaseModel):
     frame_id: str = "map"
     confidence: float = Field(ge=0.0, le=1.0)
     source_device_id: str
-    status: AnomalyStatus = AnomalyStatus.DETECTED
     # From the first state message; never changes on refresh.
     detected_at: datetime
-    # Last time this record changed for any reason (refresh or status change).
+    # Last time this record changed for any reason (refresh or verdict).
     updated_at: datetime
     # Receive time of the last state message -- backend clock, not the
     # producer's, so device clock skew doesn't matter.
@@ -78,7 +74,7 @@ class Anomaly(BaseModel):
     degrade_sec: float
     # max(previous expires_at, receive time + degrade_sec), per the contract's
     # lifetime rule. AnomalyRegistry.expire() removes the anomaly once this
-    # passes, unless a robot is investigating it.
+    # passes, unless the robot is investigating it.
     expires_at: datetime
     # Computed once per message, server-side, at Zenoh ingest time (see
     # transport/zenoh_gateway.py's ingest_anomaly_payload) using MapServer's
@@ -86,13 +82,14 @@ class Anomaly(BaseModel):
     # itself. Same rationale as Pose2D.lat/lon in models/device.py.
     lat: float | None = None
     lon: float | None = None
-    # Set by AnomalyRegistry.resolve() (see core/anomaly_registry.py)
-    # -- operator's judgment call after inspecting the robot's camera feed.
-    resolution: AnomalyResolution | None = None
+    # The operator's verdict, set by AnomalyRegistry.resolve() when the robot
+    # leaves the anomaly. None = never verified. A final verdict
+    # (FINAL_VERDICTS) closes the anomaly; "unclear" leaves it on the map.
+    resolution: AnomalyVerdict | None = None
     resolved_at: datetime | None = None
-    # Set by AnomalyResponseCoordinator.on_anomaly_detected() (see
-    # core/anomaly_response.py) at the moment a diversion actually starts --
-    # which mission the robot was executing when it diverted to this
-    # anomaly, not merely whichever mission happened to be loaded at
-    # detection time.
+    # The current mission when the verdict was given, if any.
     mission_id: str | None = None
+
+    @property
+    def is_closed(self) -> bool:
+        return self.resolution in FINAL_VERDICTS

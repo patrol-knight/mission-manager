@@ -50,8 +50,8 @@ class DeviceRegistry:
     def get_connected_robot(self) -> DeviceView | None:
         """First connected robot device, by device_id -- deterministic
         tie-break if more than one is ever connected at once. Used to gate
-        mission start and to source a robot's current pose for anomaly
-        diversion routing."""
+        mission start and investigations, and to route from the robot's
+        current pose."""
         return next(
             (d for d in self.list_devices() if d.type == DeviceType.ROBOT and d.connected), None
         )

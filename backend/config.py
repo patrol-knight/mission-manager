@@ -51,8 +51,6 @@ class Settings(BaseSettings):
         "devices/{device_id}/cameras/{camera_id}/webrtc/to-device"
     )
 
-    # AnomalyResponseCoordinator (core/anomaly_response.py) -- kill switch.
-    anomaly_response_enabled: bool = True
     # MissionDriveCoordinator (core/mission_drive.py) -- kill switch for
     # autonomously driving the current mission's waypoints.
     mission_drive_enabled: bool = True
@@ -60,6 +58,6 @@ class Settings(BaseSettings):
     # MissionDriveCoordinator: how long to wait for the robot to report
     # "arrived" after a waypoint navigate_to_goal before re-sending it. The
     # robot is the source of truth for arrival -- this is only a safety net
-    # for a lost command, not a simulated travel time. (Anomaly diversions
-    # deliberately have no timeout; see core/anomaly_response.py.)
+    # for a lost command, not a simulated travel time. (Investigations
+    # deliberately have no timeout; the operator decides when to Stop.)
     navigation_timeout_sec: float = 60.0
