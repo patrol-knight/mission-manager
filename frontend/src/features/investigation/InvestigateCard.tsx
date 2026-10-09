@@ -12,13 +12,8 @@ import { VERDICT_COLORS, VERDICT_LABELS, type AnomalyVerdict } from "../anomalie
 import { fallbackAfterInvestigation } from "./fallback";
 import type { Investigation } from "./investigationTypes";
 
-/** EN_ROUTE has no timeout by design, so show a hint (never act) when the
- * robot hasn't got meaningfully closer for this long. */
-const STUCK_AFTER_MS = 30_000;
-const PROGRESS_STEP_M = 0.5;
-
 /** Top of the right panel while investigating. Keyed by anomaly so switching
- * targets mounts a fresh card (slide-in, reset progress tracking). */
+ * targets mounts a fresh card (slide-in). */
 export function InvestigateCard() {
   const investigation = useInvestigationStore((s) => s.investigation);
   if (!investigation) return null;
@@ -40,14 +35,6 @@ function InvestigateCardBody({ investigation }: { investigation: Investigation }
   const distanceM = robot
     ? Math.hypot(robot.pose.x - investigation.target.x, robot.pose.y - investigation.target.y)
     : null;
-
-  // Last time the robot got meaningfully closer. Adjusted during render (not
-  // in an effect) so it never lags a frame behind the distance it tracks.
-  const [progress, setProgress] = useState({ bestM: distanceM ?? Infinity, at: now });
-  if (distanceM !== null && distanceM < progress.bestM - PROGRESS_STEP_M) {
-    setProgress({ bestM: distanceM, at: now });
-  }
-  const looksStuck = !onSite && robot !== null && now - progress.at > STUCK_AFTER_MS;
 
   const fallback = fallbackAfterInvestigation(execution, definition);
   const verdict = investigation.draftVerdict;
@@ -81,11 +68,6 @@ function InvestigateCardBody({ investigation }: { investigation: Investigation }
         {anomaly && <AnomalyInfoRows anomaly={anomaly} showGrace={false} />}
       </div>
 
-      {looksStuck && (
-        <p style={{ margin: "10px 0 0", fontSize: 12, color: "#e8590c" }}>
-          The robot doesn't seem to be moving. Stop if it is stuck.
-        </p>
-      )}
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 12 }}>
         {onSite ? (
