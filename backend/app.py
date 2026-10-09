@@ -21,48 +21,49 @@ from core.monitor import run_monitor
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-settings = Settings()
 
+def create_app(settings: Settings | None = None) -> FastAPI:
+    """`settings` defaults to the environment / .env; tests pass their own
+    (e.g. a temporary storage folder)."""
+    settings = settings if settings is not None else Settings()
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    services = build_services(settings)
-    app.state.services = services
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        services = build_services(settings)
+        app.state.services = services
 
-    services.websocket_manager.bind_loop(asyncio.get_running_loop())
+        services.websocket_manager.bind_loop(asyncio.get_running_loop())
 
-    if settings.zenoh_enabled:
-        try:
-            services.zenoh_gateway.start()
-        except Exception:
-            logger.error("Failed to start Zenoh gateway; continuing without it", exc_info=True)
+        if settings.zenoh_enabled:
+            try:
+                services.zenoh_gateway.start()
+            except Exception:
+                logger.error("Failed to start Zenoh gateway; continuing without it", exc_info=True)
 
-    monitor_task = asyncio.create_task(
-        run_monitor(
-            services.device_registry,
-            services.anomaly_registry,
-            services.mission_service,
-            services.websocket_manager,
-            settings.device_offline_timeout_sec,
-            settings.robot_lost_grace_sec,
-            settings.device_monitor_interval_sec,
+        monitor_task = asyncio.create_task(
+            run_monitor(
+                services.device_registry,
+                services.anomaly_registry,
+                services.mission_service,
+                services.websocket_manager,
+                settings.device_offline_timeout_sec,
+                settings.robot_lost_grace_sec,
+                settings.device_monitor_interval_sec,
+            )
         )
-    )
 
-    logger.info("[Backend] Started")
-    try:
-        yield
-    finally:
-        monitor_task.cancel()
+        logger.info("[Backend] Started")
         try:
-            await monitor_task
-        except asyncio.CancelledError:
-            pass
-        services.zenoh_gateway.stop()
-        logger.info("[Backend] Stopped")
+            yield
+        finally:
+            monitor_task.cancel()
+            try:
+                await monitor_task
+            except asyncio.CancelledError:
+                pass
+            services.zenoh_gateway.stop()
+            logger.info("[Backend] Stopped")
 
-
-def create_app() -> FastAPI:
     fastapi_app = FastAPI(lifespan=lifespan)
 
     allow_credentials = "*" not in settings.cors_origins
