@@ -13,7 +13,7 @@ from core.map_server import MapServer
 from core.mission_execution import MissionExecutionManager
 from core.mission_server import MissionServer
 from core.websocket_manager import WebSocketManager
-from models.anomaly import Anomaly, AnomalyStatus
+from models.anomaly import Anomaly, AnomalyResolution, AnomalyStatus
 from models.anomaly_response import DiversionPhase, DiversionReturning, DiversionStarted
 from models.device import DeviceView
 from models.mission_execution import MissionStatus
@@ -50,7 +50,7 @@ class _ActiveDiversion:
     # silently advancing this phase past OUTBOUND/RETURNING before the
     # robot has moved at all, so the real arrival later is never recognized.
     issued_after_timestamp: float
-    # Set only once the RETURNING leg starts (see resolve()): the mission
+    # Set only once the RETURNING leg starts (see _continue_after_resolution()): the mission
     # waypoint the robot is heading back to, chosen as the one closest to
     # the last investigated anomaly by lanelet route distance.
     return_waypoint_index: int | None = None
@@ -62,7 +62,7 @@ class _ActiveDiversion:
 # goal/request-id to correlate against. If MissionDriveCoordinator's "go to
 # the next waypoint" command physically races with this diversion's own "go
 # to the anomaly" command (both can be in flight within the same instant --
-# see abort()'s call site in on_anomaly_detected), whichever reaches the
+# see abort()'s call site in _announce_outbound), whichever reaches the
 # robot last wins, and the robot can genuinely, freshly arrive at the WRONG
 # place. issued_after_timestamp alone can't catch that (the sample is
 # legitimately new, just for a different goal), so on_device_state also
@@ -106,11 +106,10 @@ class AnomalyResponseCoordinator:
     from any thread (Zenoh's subscriber thread or a FastAPI sync-route
     thread-pool thread) -- exactly like MissionExecutionManager.
 
-    Orchestration mostly happens at the call site (zenoh_gateway's ingest,
-    api/anomaly.py's verify/dismiss, api/mission.py's/api/mission_execution.py's
-    abort triggers), matching this codebase's existing convention (see
-    api/mission.py) -- but this class DOES mutate MissionExecutionManager
-    in one specific way: entering/exiting the INVESTIGATING status, via
+    Triggers come from outside: zenoh_gateway's ingest (on_anomaly_detected,
+    on_device_state), the operator's verdict (resolve_anomaly) and
+    MissionService's run boundaries (begin_run/end_run/dispatch_pending).
+    This class also mutates MissionExecutionManager in one specific way: entering/exiting the INVESTIGATING status, via
     enter_investigating()/exit_investigating(). That status has to be
     genuinely authoritative (it's what blocks Pause/Resume/Stop-as-normal
     during a diversion), so it can't just be inferred by reading state --
@@ -186,7 +185,7 @@ class AnomalyResponseCoordinator:
         the mission, which a queued anomaly interrupts). Always safe to
         call speculatively -- a no-op whenever the queue is empty or the
         preconditions don't hold. Called on every new anomaly, after
-        resume() (api/mission_execution.py), and whenever the robot
+        MissionService.resume(), and whenever the robot
         reports state with no diversion active (so a queue left waiting on
         a disconnected robot picks back up once it reconnects)."""
         if not self._settings.anomaly_response_enabled:
@@ -344,7 +343,7 @@ class AnomalyResponseCoordinator:
                     # target -- most likely a mission-drive goal that raced
                     # with this diversion's own command and reached the
                     # robot last (see abort()'s call site in
-                    # on_anomaly_detected). Not this leg's arrival; ignore.
+                    # _announce_outbound). Not this leg's arrival; ignore.
                     logger.warning(
                         "Anomaly %s: robot reported arrived %.1fm from expected %s target; ignoring",
                         active.anomaly_id, distance, phase.value,
@@ -384,10 +383,20 @@ class AnomalyResponseCoordinator:
         logger.info("Anomaly %s: diversion cleared (return_complete)", anomaly_id)
         self._end_diversion(reached_waypoint_index=waypoint_index)
 
-    def resolve(self, anomaly_id: str) -> None:
-        """Call after verify() or dismiss() succeeds -- both resolve an
-        anomaly identically (see anomaly_registry._resolve's docstring).
-        Moves on to the next queued anomaly if there is one; otherwise
+    def resolve_anomaly(self, anomaly_id: str, resolution: AnomalyResolution) -> Anomaly:
+        """The operator's verdict on the anomaly the robot is parked at:
+        records it, tells Anomaly Detection (feedback), moves the robot on,
+        and pushes the resolved anomaly to clients."""
+        resolved = self._anomaly_registry.resolve(anomaly_id, resolution)
+        self._zenoh_gateway.publish_anomaly_feedback(anomaly_id, resolution, resolved.resolved_at)
+        self._continue_after_resolution(anomaly_id)
+        self._websocket_manager.broadcast_threadsafe(
+            {"type": "anomaly.updated", "data": resolved.model_dump(mode="json")}
+        )
+        return resolved
+
+    def _continue_after_resolution(self, anomaly_id: str) -> None:
+        """Moves on to the next queued anomaly if there is one; otherwise
         heads back to the mission."""
         with self._lock:
             active = self._active
@@ -488,7 +497,7 @@ class AnomalyResponseCoordinator:
         return (best[1], best[2]) if best is not None else None
 
     def begin_run(self) -> None:
-        """Call on Start (api/mission_execution.py), before mission drive
+        """Call on Start (MissionService.start()), before mission drive
         sends the first waypoint -- a new run starts with an empty queue.
         Normally already empty (end_run() clears it on Stop/switch, and a
         run only completes once the queue is empty); this is the backstop."""

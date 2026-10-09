@@ -1,64 +1,34 @@
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException
 
-from core.errors import AnomalyNotFoundError, InvalidAnomalyTransitionError
+from api.deps import get_services
+from bootstrap import Services
 from models.anomaly import Anomaly
 
 router = APIRouter()
 
 
-def _registry(request: Request):
-    return request.app.state.anomaly_registry
-
-
-def _after_resolve(request: Request, anomaly: Anomaly) -> None:
-    """Shared tail of verify/dismiss: tell Anomaly Detection the verdict,
-    move the robot on, and push the resolved anomaly to clients."""
-    request.app.state.zenoh_gateway.publish_anomaly_feedback(
-        anomaly.anomaly_id, anomaly.resolution, anomaly.resolved_at
-    )
-    request.app.state.anomaly_response_coordinator.resolve(anomaly.anomaly_id)
-    request.app.state.websocket_manager.broadcast_threadsafe(
-        {"type": "anomaly.updated", "data": anomaly.model_dump(mode="json")}
-    )
-
-
 @router.get("", response_model=list[Anomaly])
-def list_anomalies(request: Request) -> list[Anomaly]:
-    return _registry(request).list()
+def list_anomalies(services: Services = Depends(get_services)) -> list[Anomaly]:
+    return services.anomaly_registry.list()
 
 
 @router.get("/{anomaly_id}", response_model=Anomaly)
-def get_anomaly(anomaly_id: str, request: Request) -> Anomaly:
-    anomaly = _registry(request).get(anomaly_id)
+def get_anomaly(anomaly_id: str, services: Services = Depends(get_services)) -> Anomaly:
+    anomaly = services.anomaly_registry.get(anomaly_id)
     if anomaly is None:
         raise HTTPException(status_code=404, detail=f"Anomaly not found: {anomaly_id}")
     return anomaly
 
 
 @router.post("/{anomaly_id}/verify", response_model=Anomaly)
-def verify_anomaly(anomaly_id: str, request: Request) -> Anomaly:
-    try:
-        verified = _registry(request).verify(anomaly_id)
-    except AnomalyNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except InvalidAnomalyTransitionError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-
-    _after_resolve(request, verified)
-    return verified
+def verify_anomaly(anomaly_id: str, services: Services = Depends(get_services)) -> Anomaly:
+    """Operator confirmed the anomaly is real after inspecting the robot's
+    camera feed."""
+    return services.anomaly_response_coordinator.resolve_anomaly(anomaly_id, "true_positive")
 
 
 @router.post("/{anomaly_id}/dismiss", response_model=Anomaly)
-def dismiss_anomaly(anomaly_id: str, request: Request) -> Anomaly:
-    """Operator inspected the robot's camera feed (AnomalyVerifyModal.tsx)
-    and judged the anomaly a false positive -- see AnomalyRegistry._resolve's
-    docstring. Same feedback and return-to-mission trigger as verify()."""
-    try:
-        dismissed = _registry(request).dismiss(anomaly_id)
-    except AnomalyNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except InvalidAnomalyTransitionError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-
-    _after_resolve(request, dismissed)
-    return dismissed
+def dismiss_anomaly(anomaly_id: str, services: Services = Depends(get_services)) -> Anomaly:
+    """Operator judged the anomaly a false positive after inspecting the
+    robot's camera feed."""
+    return services.anomaly_response_coordinator.resolve_anomaly(anomaly_id, "false_positive")

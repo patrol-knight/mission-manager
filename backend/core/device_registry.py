@@ -67,7 +67,3 @@ class DeviceRegistry:
                     if device.mark_offline():
                         changed = True
         return changed
-
-    def remove(self, device_id: str) -> bool:
-        with self._lock:
-            return self._devices.pop(device_id, None) is not None

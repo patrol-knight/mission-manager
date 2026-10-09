@@ -57,10 +57,9 @@ class Settings(BaseSettings):
     # autonomously driving the current mission's waypoints.
     mission_drive_enabled: bool = True
 
-    # Shared by both coordinators above: how long to wait for the tracked
-    # robot's operational_state to report "arrived" after a navigate_to_goal
-    # command, before giving up (anomaly diversion reverts/clears; mission
-    # drive just retries). The robot itself is the source of truth for
-    # arrival -- this is only a safety net for a stuck/disconnected robot,
-    # not a simulated travel time.
+    # MissionDriveCoordinator: how long to wait for the robot to report
+    # "arrived" after a waypoint navigate_to_goal before re-sending it. The
+    # robot is the source of truth for arrival -- this is only a safety net
+    # for a lost command, not a simulated travel time. (Anomaly diversions
+    # deliberately have no timeout; see core/anomaly_response.py.)
     navigation_timeout_sec: float = 60.0

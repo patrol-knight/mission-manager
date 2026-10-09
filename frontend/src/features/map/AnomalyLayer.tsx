@@ -22,7 +22,7 @@ function buildAnomalyElement(anomaly: Anomaly): HTMLElement {
   return el;
 }
 
-/** Display-only per plan §8.4 — anomaly markers aren't clickable; the
+/** Display-only — anomaly markers aren't clickable; the
  * arrival-toast -> verify-window flow is the intended interaction path.
  * Resolved anomalies ("verified" covers both Verify and Dismiss -- see
  * backend AnomalyRegistry._resolve's docstring) drop off the map entirely

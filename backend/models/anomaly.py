@@ -86,7 +86,7 @@ class Anomaly(BaseModel):
     # itself. Same rationale as Pose2D.lat/lon in models/device.py.
     lat: float | None = None
     lon: float | None = None
-    # Set by AnomalyRegistry.verify()/dismiss() (see core/anomaly_registry.py)
+    # Set by AnomalyRegistry.resolve() (see core/anomaly_registry.py)
     # -- operator's judgment call after inspecting the robot's camera feed.
     resolution: AnomalyResolution | None = None
     resolved_at: datetime | None = None

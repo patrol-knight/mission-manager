@@ -30,11 +30,8 @@ const MAX_DELAY = 30_000;
 
 /**
  * Typed pub/sub wrapper around the backend's single /ws channel — see
- * backend/api/websocket.py for the protocol. `onMissionUpdate`/`onMissionExecutionUpdate`/
- * `onAnomalySnapshot`/`onAnomalyUpdate` are wired up front so consumers (missionStore,
- * deviceStore) have a stable subscription surface; the underlying `mission.execution.updated`
- * and `anomaly.*` events simply won't fire until the backend milestones that emit them
- * (B2/B3) land — that's a no-op, not an error, until then.
+ * backend/api/websocket.py for the protocol. One `on*` method per event type,
+ * so consumers (missionStore, deviceStore) subscribe without parsing envelopes.
  */
 class RealtimeClient {
   private ws: WebSocket | null = null;
@@ -92,19 +89,19 @@ class RealtimeClient {
     return () => this.missionUpdateListeners.delete(fn);
   }
 
-  /** Fed by `mission.execution`/`mission.execution.updated` (added in backend milestone B2). */
+  /** Fed by `mission.execution` (connect snapshot) and `mission.execution.updated`. */
   onMissionExecutionUpdate(fn: Listener<unknown>): Unsubscribe {
     this.missionExecutionListeners.add(fn);
     return () => this.missionExecutionListeners.delete(fn);
   }
 
-  /** Fed by `anomalies.snapshot` (added in backend milestone B3). */
+  /** Fed by `anomalies.snapshot` (connect snapshot). */
   onAnomalySnapshot(fn: Listener<unknown[]>): Unsubscribe {
     this.anomalySnapshotListeners.add(fn);
     return () => this.anomalySnapshotListeners.delete(fn);
   }
 
-  /** Fed by `anomaly.created`/`anomaly.updated` (added in backend milestone B3). */
+  /** Fed by `anomaly.created`/`anomaly.updated`. */
   onAnomalyUpdate(fn: Listener<unknown>): Unsubscribe {
     this.anomalyUpdateListeners.add(fn);
     return () => this.anomalyUpdateListeners.delete(fn);

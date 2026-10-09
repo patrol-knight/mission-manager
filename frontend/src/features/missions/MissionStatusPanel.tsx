@@ -60,8 +60,8 @@ export function MissionStatusPanel({ onOpenLibrary }: MissionStatusPanelProps) {
   // in (see AnomalyVerifyModal's docstring for the bug this fixes).
   const arrivedAnomaly = anomalies.find((a) => a.status === "robot_arrived") ?? null;
 
-  // Editing is blocked only while the robot is executing or returning home
-  // (plan §10.1) — ready/completed (or no execution data yet) are editable.
+  // Editing is blocked only while the robot is executing or returning home —
+  // ready/completed (or no execution data yet) are editable.
   const canEdit = execution === null || execution.status === "ready" || execution.status === "completed";
   const showEditButton = execution === null || canEdit;
 

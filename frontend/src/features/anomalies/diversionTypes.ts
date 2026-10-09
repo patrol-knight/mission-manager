@@ -47,9 +47,3 @@ export interface RawDiversionReturning {
   target_waypoint_id: string;
   started_at: string;
 }
-
-/** Wire shape -- see backend/core/anomaly_response.py's cleared broadcasts. */
-export interface RawDiversionCleared {
-  anomaly_id: string;
-  reason: string;
-}

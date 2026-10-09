@@ -77,3 +77,18 @@ class MissionSummary(BaseModel):
     is_current: bool = False
     is_default: bool = False
     updated_at: datetime | None = None
+
+
+class WaypointGeo(Waypoint):
+    """Response-only Waypoint plus its lat/lon, computed server-side with
+    MapServer's lanelet2 projector (null whenever the map is unavailable).
+    Never persisted -- the YAML files hold plain Waypoints. Lets the
+    frontend's map layers render waypoints with no per-marker xy-to-lnglat
+    round trip."""
+
+    lat: float | None = None
+    lon: float | None = None
+
+
+class MissionGeo(Mission):
+    waypoints: list[WaypointGeo]

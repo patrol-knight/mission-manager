@@ -10,15 +10,12 @@ from api import camera as camera_api
 from api import device as device_api
 from api import map as map_api
 from api import mission as mission_api
-from api import mission_execution as mission_execution_api
 from api import system as system_api
 from api import websocket as websocket_api
-from bootstrap import Services, build_services
+from api.errors import register_error_handlers
+from bootstrap import build_services
 from config import Settings
-from core.anomaly_registry import AnomalyRegistry
-from core.anomaly_response import AnomalyResponseCoordinator
-from core.device_registry import DeviceRegistry
-from core.websocket_manager import WebSocketManager
+from core.monitor import run_monitor
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -26,47 +23,10 @@ logger = logging.getLogger(__name__)
 settings = Settings()
 
 
-async def monitor_devices(
-    registry: DeviceRegistry,
-    websocket_manager: WebSocketManager,
-    anomaly_registry: AnomalyRegistry,
-    anomaly_response_coordinator: AnomalyResponseCoordinator,
-    timeout_sec: float,
-    interval_sec: float,
-) -> None:
-    while True:
-        changed = registry.mark_offline_devices(timeout_sec)
-        if changed:
-            await websocket_manager.broadcast(
-                {
-                    "type": "devices.snapshot",
-                    "data": [d.model_dump(mode="json") for d in registry.list_devices()],
-                }
-            )
-        anomaly_response_coordinator.abort_if_robot_disconnected()
-        # Off the event loop: expire() writes expired anomalies to Postgres,
-        # which can block on an unreachable database.
-        for anomaly_id in await asyncio.to_thread(anomaly_registry.expire):
-            await websocket_manager.broadcast({"type": "anomaly.expired", "data": {"anomaly_id": anomaly_id}})
-        await asyncio.sleep(interval_sec)
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    services: Services = build_services(settings)
-
-    app.state.settings = settings
-    app.state.map_server = services.map_server
-    app.state.mission_server = services.mission_server
-    app.state.mission_execution_manager = services.mission_execution_manager
-    app.state.device_registry = services.device_registry
-    app.state.camera_registry = services.camera_registry
-    app.state.anomaly_registry = services.anomaly_registry
-    app.state.anomaly_repository = services.anomaly_repository
-    app.state.anomaly_response_coordinator = services.anomaly_response_coordinator
-    app.state.mission_drive_coordinator = services.mission_drive_coordinator
-    app.state.websocket_manager = services.websocket_manager
-    app.state.zenoh_gateway = services.zenoh_gateway
+    services = build_services(settings)
+    app.state.services = services
 
     services.websocket_manager.bind_loop(asyncio.get_running_loop())
 
@@ -77,11 +37,11 @@ async def lifespan(app: FastAPI):
             logger.error("Failed to start Zenoh gateway; continuing without it", exc_info=True)
 
     monitor_task = asyncio.create_task(
-        monitor_devices(
+        run_monitor(
             services.device_registry,
-            services.websocket_manager,
             services.anomaly_registry,
             services.anomaly_response_coordinator,
+            services.websocket_manager,
             settings.device_offline_timeout_sec,
             settings.device_monitor_interval_sec,
         )
@@ -111,11 +71,9 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    register_error_handlers(fastapi_app)
 
     fastapi_app.include_router(mission_api.router, prefix="/api/missions", tags=["missions"])
-    fastapi_app.include_router(
-        mission_execution_api.router, prefix="/api/missions", tags=["missions", "execution"]
-    )
     fastapi_app.include_router(device_api.router, prefix="/api/devices", tags=["devices"])
     fastapi_app.include_router(anomaly_api.router, prefix="/api/anomalies", tags=["anomalies"])
     fastapi_app.include_router(map_api.router, prefix="/api/map", tags=["map"])

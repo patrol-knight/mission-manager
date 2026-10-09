@@ -1,6 +1,5 @@
 import logging
 import os
-import re
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
@@ -16,21 +15,6 @@ from core.map_server import MapServer
 from models.mission import Mission, MissionSummary
 
 logger = logging.getLogger(__name__)
-
-_HHMM_RE = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)$")
-
-
-def _parse_hhmm(value: str) -> int:
-    hh, mm = value.split(":")
-    return int(hh) * 60 + int(mm)
-
-
-def _time_in_slot(now_minutes: int, start_minutes: int, end_minutes: int) -> bool:
-    if start_minutes <= end_minutes:
-        return start_minutes <= now_minutes < end_minutes
-    # Overnight slot, e.g. 22:00-06:00.
-    return now_minutes >= start_minutes or now_minutes < end_minutes
-
 
 def _atomic_write_yaml(path: Path, data: dict) -> None:
     tmp_path = path.with_suffix(path.suffix + ".tmp")
@@ -231,24 +215,3 @@ class MissionServer:
             self._default_id = mission_id
             self._persist_app_state()
             return self.get_mission(mission_id)
-
-    def resolve_by_time(self, time_str: str) -> Mission | None:
-        if not _HHMM_RE.match(time_str):
-            raise MissionValidationError(f"Invalid HH:MM time: {time_str!r}")
-        now_minutes = _parse_hhmm(time_str)
-
-        with self._lock:
-            matches = []
-            for mission in self._missions.values():
-                slot = mission.time_slot
-                if slot is None or slot.start is None or slot.end is None:
-                    continue
-                if _time_in_slot(
-                    now_minutes, _parse_hhmm(slot.start), _parse_hhmm(slot.end)
-                ):
-                    matches.append(mission)
-
-            if not matches:
-                return None
-            matches.sort(key=lambda m: m.mission_id)
-            return matches[0].model_copy(deep=True)

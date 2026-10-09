@@ -111,8 +111,7 @@ export interface RawMission {
   description: string | null;
   time_slot: RawTimeSlot | null;
   waypoints: RawWaypoint[];
-  /** Absent until backend milestone B2 lands; defaults to 1. */
-  loop_count?: number;
+  loop_count: number;
   created_at: string | null;
   updated_at: string | null;
   metadata: Record<string, unknown>;
@@ -136,7 +135,7 @@ export function missionDefinitionFromRaw(raw: RawMission): MissionDefinition {
       lat: wp.lat,
       lon: wp.lon,
     })),
-    loopCount: raw.loop_count ?? 1,
+    loopCount: raw.loop_count,
     createdAt: raw.created_at,
     updatedAt: raw.updated_at,
     metadata: raw.metadata,

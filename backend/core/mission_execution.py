@@ -130,7 +130,7 @@ class MissionExecutionManager:
         the one control that stays available during a robot diversion, an
         escape hatch given there's no automatic timeout on one (see
         core/anomaly_response.py). AnomalyResponseCoordinator.end_run()
-        (called from the API layer right after this) tears down whatever
+        (called by MissionService.stop() right after this) tears down whatever
         diversion bookkeeping was in flight and clears the anomaly queue."""
         with self._lock:
             state = self._require_state()

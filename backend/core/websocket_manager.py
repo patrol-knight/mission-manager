@@ -48,9 +48,8 @@ class WebSocketManager:
 
     def run_coroutine_threadsafe(self, coro: Coroutine) -> None:
         """Schedules an arbitrary coroutine on the bound event loop from any
-        thread -- same escape hatch as broadcast_threadsafe, but for
-        AnomalyResponseCoordinator's delayed-transition tasks rather than a
-        broadcast specifically."""
+        thread -- same escape hatch as broadcast_threadsafe, used for
+        MissionDriveCoordinator's navigation-timeout task."""
         if self._loop is None:
             logger.warning("WebSocketManager loop not bound; dropping scheduled coroutine")
             coro.close()  # avoid "coroutine was never awaited" warning

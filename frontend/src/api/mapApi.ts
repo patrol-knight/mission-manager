@@ -15,13 +15,6 @@ export interface MapPoint {
   laneletId: number | null;
 }
 
-export interface ReachableGoal {
-  x: number;
-  y: number;
-  frameId: string;
-  reachable: boolean;
-}
-
 export interface RouteWaypoint {
   x: number;
   y: number;
@@ -58,13 +51,6 @@ interface RawMapPoint {
   y: number;
   frame_id: string;
   lanelet_id: number | null;
-}
-
-interface RawReachableGoal {
-  x: number;
-  y: number;
-  frame_id: string;
-  reachable: boolean;
 }
 
 interface RawXY {
@@ -116,19 +102,6 @@ export async function isInLanelet(x: number, y: number, frameId = "map"): Promis
 export async function snapWaypoint(x: number, y: number, frameId = "map"): Promise<MapPoint> {
   const raw = await http.post<RawMapPoint>("/api/map/snap-waypoint", { x, y, frame_id: frameId });
   return { x: raw.x, y: raw.y, frameId: raw.frame_id, laneletId: raw.lanelet_id };
-}
-
-export async function projectReachableGoal(
-  x: number,
-  y: number,
-  frameId = "map",
-): Promise<ReachableGoal> {
-  const raw = await http.post<RawReachableGoal>("/api/map/project-reachable-goal", {
-    x,
-    y,
-    frame_id: frameId,
-  });
-  return { x: raw.x, y: raw.y, frameId: raw.frame_id, reachable: raw.reachable };
 }
 
 export function routePreview(waypoints: RouteWaypoint[]): Promise<RoutePreviewResult> {

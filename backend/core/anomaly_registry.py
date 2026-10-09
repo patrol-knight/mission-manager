@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 
 from core.anomaly_repository import AnomalyRepository
 from core.errors import AnomalyNotFoundError, InvalidAnomalyTransitionError
-from models.anomaly import Anomaly, AnomalyStateMessage, AnomalyStatus
+from models.anomaly import Anomaly, AnomalyResolution, AnomalyStateMessage, AnomalyStatus
 
 # A robot is physically committed to these -- expiry never removes them (the
 # contract: "an anomaly under investigation by a robot is never removed by
@@ -134,14 +134,11 @@ class AnomalyRegistry:
             self._anomalies[anomaly_id] = updated
             return updated.model_copy(deep=True)
 
-    def _resolve(self, anomaly_id: str, resolution: str) -> Anomaly:
-        """Shared by verify() and dismiss() -- both end anomaly review via
-        the same status transition (VERIFIED), but record distinct
-        resolutions: verify() -> true_positive, dismiss() -> false_positive.
-        Both are only reachable from AnomalyVerifyModal.tsx after the
-        operator has actually inspected the robot's camera feed (there is no
-        "dismiss without inspecting" path in the frontend), so dismiss here
-        genuinely means "confirmed false," not "skipped."
+    def resolve(self, anomaly_id: str, resolution: AnomalyResolution) -> Anomaly:
+        """The operator's verdict after inspecting the robot's camera feed
+        (AnomalyVerifyModal.tsx): true_positive (confirmed real) or
+        false_positive (confirmed false, not "skipped"). Both move the
+        anomaly to VERIFIED.
 
         This is the anomaly's terminal event, so it's written to the
         repository here. It stays in memory (hidden from the map by its
@@ -170,18 +167,12 @@ class AnomalyRegistry:
             self._repository.record_final(stored, closed_at=resolved_at)
         return stored
 
-    def verify(self, anomaly_id: str) -> Anomaly:
-        return self._resolve(anomaly_id, "true_positive")
-
-    def dismiss(self, anomaly_id: str) -> Anomaly:
-        return self._resolve(anomaly_id, "false_positive")
-
     # Quoted: inside this class body, `list` is the method above, not the builtin.
     def expire(self, now: datetime | None = None) -> "list[str]":
         """Removes every anomaly whose expires_at has passed, except those a
         robot is investigating. Unresolved ones are written to the repository
         here (their terminal event); resolved ones were already written by
-        _resolve(). Returns the removed ids. Call periodically (app.py's
+        resolve(). Returns the removed ids. Call periodically (app.py's
         monitor loop)."""
         now = datetime.now(timezone.utc) if now is None else now
         with self._lock:
