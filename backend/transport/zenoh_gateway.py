@@ -13,7 +13,7 @@ from core.errors import DeviceTypeMismatchError, MapUnavailableError
 from core.map_server import MapServer
 from core.websocket_manager import WebSocketManager
 from models.anomaly import AnomalyFeedbackMessage, AnomalyStateMessage
-from models.camera import CameraState, WebRtcSignal
+from models.camera import CameraState, CommandResult, WebRtcSignal
 from models.device import DeviceState
 
 # Matches devices/{device_id}/cameras/{camera_id}/webrtc/to-backend --
@@ -24,6 +24,7 @@ _CAMERA_SIGNAL_KEY_RE = re.compile(
 )
 
 if TYPE_CHECKING:
+    from core.camera_stream import CameraStreamService
     from core.investigation import InvestigationCoordinator
     from core.mission_drive import MissionDriveCoordinator
 
@@ -67,6 +68,14 @@ class ZenohGateway:
         self._anomaly_subscriber = None
         self._camera_state_subscriber = None
         self._camera_signal_subscriber = None
+        self._events_subscriber = None
+        self._camera_sessions: "CameraStreamService | None" = None
+
+    def bind_camera_sessions(self, camera_sessions: "CameraStreamService") -> None:
+        """Late-bound for the same reason as bind_coordinators: the service
+        sends commands through this gateway, which feeds it results, states
+        and signals."""
+        self._camera_sessions = camera_sessions
 
     def bind_coordinators(
         self,
@@ -106,13 +115,18 @@ class ZenohGateway:
                 self._settings.zenoh_camera_webrtc_to_backend_keyexpr,
                 self._on_zenoh_camera_signal_sample,
             )
+            self._events_subscriber = self._session.declare_subscriber(
+                self._settings.zenoh_device_events_keyexpr,
+                self._on_zenoh_event_sample,
+            )
             logger.info(
-                "Zenoh session opened on %s; subscribed to %s, %s, %s, and %s",
+                "Zenoh session opened on %s; subscribed to %s, %s, %s, %s, and %s",
                 self._settings.zenoh_router,
                 self._settings.zenoh_device_state_keyexpr,
                 self._settings.zenoh_anomaly_keyexpr,
                 self._settings.zenoh_camera_state_keyexpr,
                 self._settings.zenoh_camera_webrtc_to_backend_keyexpr,
+                self._settings.zenoh_device_events_keyexpr,
             )
         except Exception:
             self._session = None
@@ -120,6 +134,7 @@ class ZenohGateway:
             self._anomaly_subscriber = None
             self._camera_state_subscriber = None
             self._camera_signal_subscriber = None
+            self._events_subscriber = None
             logger.error("Failed to start Zenoh gateway", exc_info=True)
             raise
 
@@ -136,6 +151,9 @@ class ZenohGateway:
         if self._camera_signal_subscriber is not None:
             self._camera_signal_subscriber.undeclare()
             self._camera_signal_subscriber = None
+        if self._events_subscriber is not None:
+            self._events_subscriber.undeclare()
+            self._events_subscriber = None
         if self._session is not None:
             self._session.close()
             self._session = None
@@ -153,6 +171,9 @@ class ZenohGateway:
 
     def _on_zenoh_camera_signal_sample(self, sample) -> None:
         self.ingest_camera_signal_payload(bytes(sample.payload), str(sample.key_expr))
+
+    def _on_zenoh_event_sample(self, sample) -> None:
+        self.ingest_command_result_payload(bytes(sample.payload))
 
     def _project_latlon(self, x: float, y: float, frame_id: str) -> tuple[float, float] | None:
         """Best-effort lat/lon for an incoming x/y -- None (not an
@@ -263,28 +284,41 @@ class ZenohGateway:
         return True
 
     def ingest_camera_state_payload(self, payload: bytes | str | dict) -> bool:
-        """CameraStatePayload from zenoh_bridge's per-camera frame-arrival
-        watchdog (idle/connecting/live/no_signal/offline/error). Same
-        conditional-broadcast pattern as device state."""
+        """CameraStatePayload from zenoh_bridge's camera session authority.
+        Applied only if newer than what's known ((instance_id, revision) --
+        see CameraRegistry); everyone gets the public view, the session's
+        owner gets the rest through the camera session service."""
         try:
             state = CameraState(**self._decode_json_payload(payload))
         except Exception as exc:
             logger.warning("Discarding malformed camera state payload: %s", exc)
             return False
 
-        changed = self._camera_registry.upsert(state)
-        if changed:
-            self._websocket_manager.broadcast_threadsafe(
-                {"type": "camera.updated", "data": state.model_dump(mode="json")}
-            )
-        return changed
+        newer = self._camera_registry.upsert(state)
+        if newer:
+            self._websocket_manager.broadcast_threadsafe({"type": "camera.updated", "data": state.public_view()})
+            if self._camera_sessions is not None:
+                self._camera_sessions.on_camera_state(state)
+        return newer
+
+    def ingest_command_result_payload(self, payload: bytes | str | dict) -> bool:
+        """CommandResult on devices/{id}/events -- the outcome of a command
+        this backend (or anyone) sent, matched to it by request_id."""
+        try:
+            result = CommandResult(**self._decode_json_payload(payload))
+        except Exception as exc:
+            logger.warning("Discarding malformed command result payload: %s", exc)
+            return False
+        if self._camera_sessions is not None:
+            self._camera_sessions.on_command_result(result)
+        return True
 
     def ingest_camera_signal_payload(self, payload: bytes | str | dict, key_expr: str) -> bool:
-        """WebRtcSignalPayload (offer/answer/ice-candidate) relayed from
-        zenoh_bridge's WebRtcSignalingBridge -- forwarded to the browser
-        over the existing WebSocket rather than a new REST endpoint, per
-        the design doc. device_id/camera_id come from the key expression,
-        not the payload body (see _CAMERA_SIGNAL_KEY_RE)."""
+        """WebRtcSignalPayload (offer/ice-candidate) relayed from
+        zenoh_bridge's WebRtcSignalingBridge -- forwarded over the WebSocket
+        to the connection that owns the session. device_id/camera_id come
+        from the key expression, not the payload body (see
+        _CAMERA_SIGNAL_KEY_RE)."""
         match = _CAMERA_SIGNAL_KEY_RE.match(key_expr)
         if match is None:
             logger.warning("Discarding camera signal on unrecognized key: %s", key_expr)
@@ -296,16 +330,10 @@ class ZenohGateway:
             logger.warning("Discarding malformed camera signal payload: %s", exc)
             return False
 
-        self._websocket_manager.broadcast_threadsafe(
-            {
-                "type": "camera.signal",
-                "data": {
-                    "device_id": match.group("device_id"),
-                    "camera_id": match.group("camera_id"),
-                    **signal.model_dump(mode="json"),
-                },
-            }
-        )
+        if self._camera_sessions is None:
+            return False
+        # Only to the owning connection -- never broadcast.
+        self._camera_sessions.route_outbound_signal(match.group("device_id"), match.group("camera_id"), signal)
         return True
 
     def publish_camera_signal(self, device_id: str, camera_id: str, signal: dict) -> bool:
