@@ -1,4 +1,4 @@
-import { startWebrtcSession, type WebrtcSession } from "./webrtcClient";
+import { describeCameraSessionError, releaseAbandonedSession, startWebrtcSession, type WebrtcSession } from "./webrtcClient";
 import { useDeviceStore } from "../stores/deviceStore";
 import type { CameraInfo } from "../types/domain";
 import type { InspectionSession } from "./cameraApi";
@@ -9,10 +9,18 @@ interface ActiveSession {
 }
 
 const activeSessions = new Map<string, ActiveSession>();
+let abandonedSessionReleased = false;
 
 function toCameraInfo(deviceId: string): CameraInfo | null {
   const camera = useDeviceStore.getState().cameras[deviceId];
-  return camera ? { status: camera.streamState } : null;
+  return camera
+    ? {
+        status: camera.streamState,
+        sessionState: camera.sessionState,
+        videoSource: camera.videoSource,
+        detail: camera.failureCode ? describeCameraSessionError(camera.failureCode) : null,
+      }
+    : null;
 }
 
 /** One camera per device (see the design doc's scope note) -- resolves
@@ -52,17 +60,33 @@ export async function openInspectionSession(
   onUpdate: (camera: CameraInfo | null) => void,
   onStream: (stream: MediaStream | null) => void,
 ): Promise<InspectionSession> {
+  if (!abandonedSessionReleased) {
+    // A session a previous load of this tab left running (reload, crash).
+    abandonedSessionReleased = true;
+    releaseAbandonedSession();
+  }
   if (!hasCameraCapability) return { sessionId: "", camera: null };
 
   const cameraId = await waitForCameraId(deviceId);
   if (!cameraId) return { sessionId: "", camera: null };
 
-  const unsubscribeStore = useDeviceStore.subscribe(() => onUpdate(toCameraInfo(deviceId)));
+  let ended = false;
+  const unsubscribeStore = useDeviceStore.subscribe(() => {
+    if (!ended) onUpdate(toCameraInfo(deviceId));
+  });
 
   let session: WebrtcSession;
   try {
     session = await startWebrtcSession(deviceId, cameraId, {
       onTrack: onStream,
+      onEnded: (reason) => {
+        // Ended by the gateway/backend, not by closeInspectionSession.
+        ended = true;
+        unsubscribeStore();
+        activeSessions.delete(session?.sessionId);
+        onStream(null);
+        onUpdate({ status: "error", detail: describeCameraSessionError(reason) });
+      },
     });
   } catch (err) {
     unsubscribeStore();

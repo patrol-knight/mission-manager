@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { openInspectionSession, closeInspectionSession } from "../../api/cameraApi";
+import { describeCameraSessionError } from "../../api/webrtcClient";
 import type { CameraInfo } from "../../types/domain";
 
 /**
@@ -42,7 +43,7 @@ export function useCameraSession(
         setCamera(session.camera);
       })
       .catch((err: unknown) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : "Failed to open camera session");
+        if (!cancelled) setError(describeCameraSessionError(err));
       });
 
     return () => {
