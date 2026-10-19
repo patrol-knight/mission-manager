@@ -22,6 +22,31 @@ export interface RawCameraSignal {
   sdp_mline_index?: number | null;
 }
 
+/** `camera.session.ended` -- the backend forgot the session (stopped, ended
+ * by the gateway, or the gateway restarted). */
+export interface CameraSessionEnded {
+  device_id: string;
+  camera_id: string;
+  session_id: string;
+  reason: string;
+  failure_code: string | null;
+  failure_reason: string | null;
+}
+
+/** Replies about one camera session: `camera.signal.rejected`,
+ * `camera.session.resumed`, `camera.session.resume_failed`. */
+export interface CameraSessionReply {
+  session_id: string;
+  code?: string;
+}
+
+export type CameraSessionReplyKind = "signal_rejected" | "resumed" | "resume_failed";
+
+type OutboundMessage =
+  | { type: "ping" }
+  | { type: "camera.signal"; data: RawCameraSignal }
+  | { type: "camera.session.resume"; data: { session_id: string; previous_connection_id: string | null } };
+
 type Unsubscribe = () => void;
 type Listener<T> = (payload: T) => void;
 
@@ -53,6 +78,12 @@ class RealtimeClient {
   private cameraUpdateListeners = new Set<Listener<CameraState>>();
   private camerasSnapshotListeners = new Set<Listener<CameraState[]>>();
   private cameraSignalListeners = new Set<Listener<RawCameraSignal>>();
+  private cameraSessionUpdateListeners = new Set<Listener<CameraState>>();
+  private cameraSessionEndedListeners = new Set<Listener<CameraSessionEnded>>();
+  private cameraSessionReplyListeners = new Set<(kind: CameraSessionReplyKind, reply: CameraSessionReply) => void>();
+  private connectionReadyListeners = new Set<Listener<string>>();
+  /** From the latest `connection.ready`; null while (re)connecting. */
+  private connectionId: string | null = null;
 
   connect(): void {
     if (this.ws || this.destroyed) return;
@@ -136,16 +167,65 @@ class RealtimeClient {
     return () => this.camerasSnapshotListeners.delete(fn);
   }
 
-  /** Fed by `camera.signal` — WebRTC offer/ICE relayed from the device's gateway. */
+  /** Fed by `camera.signal` — WebRTC offer/ICE from the device's gateway, for a session this connection owns. */
   onCameraSignal(fn: Listener<RawCameraSignal>): Unsubscribe {
     this.cameraSignalListeners.add(fn);
     return () => this.cameraSignalListeners.delete(fn);
   }
 
-  send(msg: { type: "ping" } | { type: "camera.signal"; data: RawCameraSignal }): void {
+  /** Fed by `camera.session.updated` — the full camera state, sent only to the owner of the session it names. */
+  onCameraSessionUpdate(fn: Listener<CameraState>): Unsubscribe {
+    this.cameraSessionUpdateListeners.add(fn);
+    return () => this.cameraSessionUpdateListeners.delete(fn);
+  }
+
+  /** Fed by `camera.session.ended`. */
+  onCameraSessionEnded(fn: Listener<CameraSessionEnded>): Unsubscribe {
+    this.cameraSessionEndedListeners.add(fn);
+    return () => this.cameraSessionEndedListeners.delete(fn);
+  }
+
+  /** Fed by `camera.signal.rejected`, `camera.session.resumed` and `camera.session.resume_failed`. */
+  onCameraSessionReply(fn: (kind: CameraSessionReplyKind, reply: CameraSessionReply) => void): Unsubscribe {
+    this.cameraSessionReplyListeners.add(fn);
+    return () => this.cameraSessionReplyListeners.delete(fn);
+  }
+
+  /** Fed by `connection.ready` — once per (re)connection, with the id the backend gave it. */
+  onConnectionReady(fn: Listener<string>): Unsubscribe {
+    this.connectionReadyListeners.add(fn);
+    return () => this.connectionReadyListeners.delete(fn);
+  }
+
+  /** The current connection's id (it identifies a camera session's owner), or null while disconnected. */
+  getConnectionId(): string | null {
+    return this.connectionId;
+  }
+
+  /** Resolves with the connection id once connected; rejects after `timeoutMs`. */
+  waitForConnection(timeoutMs: number): Promise<string> {
+    if (this.connectionId) return Promise.resolve(this.connectionId);
+    this.connect();
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        unsubscribe();
+        reject(new Error("realtime connection not available"));
+      }, timeoutMs);
+      const unsubscribe = this.onConnectionReady((id) => {
+        clearTimeout(timer);
+        unsubscribe();
+        resolve(id);
+      });
+    });
+  }
+
+  /** True if the message went out; false if the socket isn't open (nothing is queued here). */
+  send(msg: OutboundMessage): boolean {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(msg));
+      return true;
     }
+    return false;
   }
 
   private setStatus(s: ConnectionStatus): void {
@@ -181,6 +261,7 @@ class RealtimeClient {
     };
 
     ws.onclose = () => {
+      this.connectionId = null;
       if (this.destroyed) return;
       this.setStatus("disconnected");
       this.scheduleReconnect();
@@ -231,7 +312,32 @@ class RealtimeClient {
       case "camera.signal":
         this.cameraSignalListeners.forEach((fn) => fn(msg.data as RawCameraSignal));
         break;
-      case "connection.ready":
+      case "camera.session.updated":
+        this.cameraSessionUpdateListeners.forEach((fn) => fn(cameraStateFromRaw(msg.data as RawCameraState)));
+        break;
+      case "camera.session.ended":
+        this.cameraSessionEndedListeners.forEach((fn) => fn(msg.data as CameraSessionEnded));
+        break;
+      case "camera.signal.rejected":
+      case "camera.session.resumed":
+      case "camera.session.resume_failed": {
+        const kind: CameraSessionReplyKind =
+          msg.type === "camera.signal.rejected"
+            ? "signal_rejected"
+            : msg.type === "camera.session.resumed"
+              ? "resumed"
+              : "resume_failed";
+        this.cameraSessionReplyListeners.forEach((fn) => fn(kind, msg.data as CameraSessionReply));
+        break;
+      }
+      case "connection.ready": {
+        const id = (msg.data as { connection_id?: unknown } | null)?.connection_id;
+        if (typeof id === "string") {
+          this.connectionId = id;
+          this.connectionReadyListeners.forEach((fn) => fn(id));
+        }
+        break;
+      }
       case "pong":
         break;
       default:
