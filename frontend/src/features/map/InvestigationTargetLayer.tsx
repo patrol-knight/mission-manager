@@ -3,14 +3,15 @@ import { MapContext } from "./MapContext";
 import { useMarkerList, type UseMarkerListOptions } from "./mapMarkers";
 import { useInvestigationStore } from "../../stores/investigationStore";
 import type { InvestigationTarget } from "../investigation/investigationTypes";
+import { mapPalette } from "./mapPalette";
 
 function buildTargetElement(): HTMLElement {
   const el = document.createElement("div");
   el.style.cssText = `
     width:20px;height:20px;border-radius:50%;
-    background:#FFD700;
-    border:2px solid white;
-    box-shadow:0 1px 5px rgba(0,0,0,0.5);
+    background:${mapPalette.investigation};
+    border:2px solid ${mapPalette.markerBorder};
+    box-shadow:${mapPalette.markerShadow};
     animation: investigation-target-pulse 1.4s ease-out infinite;
     z-index:3;
   `;

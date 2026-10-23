@@ -1,5 +1,14 @@
+@import "./styles/tokens.css";
+
 :root {
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
+  font-family: var(--font-family);
+  font-feature-settings: "tnum";
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
 }
 
 * {
@@ -35,8 +44,85 @@ body {
   animation: card-enter 220ms ease-out;
 }
 
+/* Map marker pulses (AnomalyLayer, InvestigationTargetLayer) and the camera
+   loading spinner (CameraStreamView). Global, since marker elements are
+   built outside React and referenced by name. */
+@keyframes anomaly-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(224, 49, 49, 0.7);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(224, 49, 49, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(224, 49, 49, 0);
+  }
+}
+
+@keyframes investigation-target-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(255, 215, 0, 0.8);
+  }
+  70% {
+    box-shadow: 0 0 0 12px rgba(255, 215, 0, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 215, 0, 0);
+  }
+}
+
+@keyframes waypoint-target-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(255, 138, 31, 0.75);
+  }
+  70% {
+    box-shadow: 0 0 0 12px rgba(255, 138, 31, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 138, 31, 0);
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .card-enter {
     animation: none;
   }
 }
+
+/* MapLibre hover popups in the panel's dark style. */
+.maplibregl-popup-content {
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-floating);
+  padding: 8px 12px;
+}
+
+.maplibregl-popup-anchor-top .maplibregl-popup-tip,
+.maplibregl-popup-anchor-top-left .maplibregl-popup-tip,
+.maplibregl-popup-anchor-top-right .maplibregl-popup-tip {
+  border-bottom-color: var(--color-surface-raised);
+}
+
+.maplibregl-popup-anchor-bottom .maplibregl-popup-tip,
+.maplibregl-popup-anchor-bottom-left .maplibregl-popup-tip,
+.maplibregl-popup-anchor-bottom-right .maplibregl-popup-tip {
+  border-top-color: var(--color-surface-raised);
+}
+
+.maplibregl-popup-anchor-left .maplibregl-popup-tip {
+  border-right-color: var(--color-surface-raised);
+}
+
+.maplibregl-popup-anchor-right .maplibregl-popup-tip {
+  border-left-color: var(--color-surface-raised);
+}
+
+

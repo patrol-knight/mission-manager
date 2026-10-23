@@ -1,0 +1,24 @@
+.note {
+  margin: 0;
+  font-size: var(--text-md);
+}
+
+.sm {
+  font-size: var(--text-sm);
+}
+
+.muted {
+  color: var(--color-text-muted);
+}
+
+.danger {
+  color: var(--color-danger);
+}
+
+.success {
+  color: var(--color-success);
+}
+
+.caution {
+  color: var(--color-caution);
+}

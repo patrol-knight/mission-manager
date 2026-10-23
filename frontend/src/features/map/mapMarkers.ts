@@ -20,6 +20,9 @@ export interface UseMarkerListOptions<T> {
    * layer can update in-place (rotation, color) without recreating the marker. */
   updateElement?: (el: HTMLElement, item: T) => void;
   onClick?: (item: T) => void;
+  /** Clockwise degrees from map north (e.g. a robot's heading). Markers
+   * that rotate are aligned to the map, so they turn with it. */
+  rotationOf?: (item: T) => number;
   draggable?: (item: T) => boolean;
   onDragEnd?: (item: T, lngLat: LngLat, marker: maplibregl.Marker) => void;
 }
@@ -94,6 +97,7 @@ export function useMarkerList<T>(
               element: el,
               anchor: "center",
               draggable: opts.draggable?.(item) ?? false,
+              ...(opts.rotationOf && { rotationAlignment: "map" as const, rotation: opts.rotationOf(item) }),
             })
               .setLngLat([pos.lng, pos.lat])
               .addTo(map);
@@ -107,6 +111,7 @@ export function useMarkerList<T>(
             markersRef.current.set(key, marker);
           }
           marker.setLngLat([pos.lng, pos.lat]);
+          if (opts.rotationOf) marker.setRotation(opts.rotationOf(item));
           if (opts.draggable) marker.setDraggable(opts.draggable(item));
           opts.updateElement?.(marker.getElement(), item);
         }

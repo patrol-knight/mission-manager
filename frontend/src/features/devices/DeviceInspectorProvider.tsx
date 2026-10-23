@@ -1,4 +1,4 @@
-import { useCallback, useState, type ReactNode } from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { DeviceInspectorContext } from "./deviceInspectorContextObject";
 
 export function DeviceInspectorProvider({ children }: { children: ReactNode }) {
@@ -15,16 +15,10 @@ export function DeviceInspectorProvider({ children }: { children: ReactNode }) {
     setSelectedDeviceId(null);
   }, []);
 
-  return (
-    <DeviceInspectorContext.Provider
-      value={{
-        selectedDeviceId,
-        inspectorOpen,
-        openInspector,
-        closeInspector,
-      }}
-    >
-      {children}
-    </DeviceInspectorContext.Provider>
+  const value = useMemo(
+    () => ({ selectedDeviceId, inspectorOpen, openInspector, closeInspector }),
+    [selectedDeviceId, inspectorOpen, openInspector, closeInspector],
   );
+
+  return <DeviceInspectorContext.Provider value={value}>{children}</DeviceInspectorContext.Provider>;
 }

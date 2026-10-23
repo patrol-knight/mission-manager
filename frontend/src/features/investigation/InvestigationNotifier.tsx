@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { getRealtimeClient } from "../../api/realtimeClient";
 import { useInvestigationStore } from "../../stores/investigationStore";
 import { useToast } from "../../components/useToast";
-import { describeAbort, type RawAutonomyAborted } from "./investigationTypes";
+import { describeAbort } from "./investigationTypes";
 
 /**
  * Renderless. Announces the transitions the system makes on its own, so a
@@ -33,10 +33,10 @@ export function InvestigationNotifier() {
 
   useEffect(
     () =>
-      getRealtimeClient().onAutonomyAborted((raw) => {
+      getRealtimeClient().on("autonomy.aborted", (aborted) => {
         show(
           "error",
-          `${describeAbort(raw as RawAutonomyAborted)}. Mission and investigation stopped.`,
+          `${describeAbort(aborted)}. Mission and investigation stopped.`,
           "Start the mission or investigate again when you're ready.",
         );
       }),

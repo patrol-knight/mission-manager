@@ -52,7 +52,7 @@ describe("realtimeClient", () => {
     socket.emitOpen();
 
     const snapshots: unknown[] = [];
-    client.onDevicesSnapshot((devices) => snapshots.push(devices));
+    client.on("devices.snapshot", (devices) => snapshots.push(devices));
 
     socket.emitMessage({
       type: "devices.snapshot",
@@ -77,7 +77,7 @@ describe("realtimeClient", () => {
     expect((snapshots[0] as { deviceId: string }[])[0].deviceId).toBe("sim-robot-01");
   });
 
-  it("forwards anomaly.expired payloads to expiry listeners", async () => {
+  it("forwards anomaly.expired as the expired anomaly's id", async () => {
     const { getRealtimeClient } = await import("./realtimeClient");
     const client = getRealtimeClient();
     client.connect();
@@ -85,10 +85,10 @@ describe("realtimeClient", () => {
     socket.emitOpen();
 
     const expired: unknown[] = [];
-    client.onAnomalyExpired((data) => expired.push(data));
+    client.on("anomaly.expired", (anomalyId) => expired.push(anomalyId));
     socket.emitMessage({ type: "anomaly.expired", data: { anomaly_id: "a-1" } });
 
-    expect(expired).toEqual([{ anomaly_id: "a-1" }]);
+    expect(expired).toEqual(["a-1"]);
   });
 
   it("forwards investigation.updated and autonomy.aborted", async () => {
@@ -100,8 +100,8 @@ describe("realtimeClient", () => {
 
     const updates: unknown[] = [];
     const aborted: unknown[] = [];
-    client.onInvestigationUpdate((data) => updates.push(data));
-    client.onAutonomyAborted((data) => aborted.push(data));
+    client.on("investigation.updated", (data) => updates.push(data));
+    client.on("autonomy.aborted", (data) => aborted.push(data));
     socket.emitMessage({ type: "investigation.updated", data: null });
     socket.emitMessage({ type: "autonomy.aborted", data: { reason: "robot_disconnected", anomaly_id: "a-1" } });
 
@@ -123,6 +123,39 @@ describe("realtimeClient", () => {
     expect(statuses).toEqual(["connecting", "connected", "disconnected"]);
   });
 
+  it("feeds mission.execution and mission.execution.updated to one event, adapted to camelCase", async () => {
+    const { getRealtimeClient } = await import("./realtimeClient");
+    const client = getRealtimeClient();
+    client.connect();
+    const socket = FakeWebSocket.instances[0];
+    socket.emitOpen();
+
+    const states: unknown[] = [];
+    client.on("mission.execution", (state) => states.push(state));
+    const raw = {
+      mission_id: "m-1",
+      status: "running",
+      current_loop: 1,
+      completed_loops: 0,
+      current_waypoint_index: 2,
+      updated_at: null,
+    };
+    socket.emitMessage({ type: "mission.execution", data: raw });
+    socket.emitMessage({ type: "mission.execution.updated", data: null });
+
+    expect(states).toEqual([
+      {
+        missionId: "m-1",
+        status: "running",
+        currentLoop: 1,
+        completedLoops: 0,
+        currentWaypointIndex: 2,
+        updatedAt: null,
+      },
+      null,
+    ]);
+  });
+
   it("ignores unknown/forward-compatible event types without throwing", async () => {
     const { getRealtimeClient } = await import("./realtimeClient");
     const client = getRealtimeClient();
@@ -130,6 +163,6 @@ describe("realtimeClient", () => {
     const socket = FakeWebSocket.instances[0];
     socket.emitOpen();
 
-    expect(() => socket.emitMessage({ type: "mission.execution.updated", data: {} })).not.toThrow();
+    expect(() => socket.emitMessage({ type: "some.future.event", data: {} })).not.toThrow();
   });
 });

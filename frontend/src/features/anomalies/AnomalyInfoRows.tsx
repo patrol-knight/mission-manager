@@ -1,32 +1,16 @@
 import { useNow, formatAge } from "../../hooks/useNow";
-import { formatAnomalyTypes, formatConfidence, shortAnomalyId, type Anomaly } from "./anomalyTypes";
+import { InfoList, InfoRow } from "../../components/ui/InfoRow";
+import { formatAnomalyTypes, formatConfidence, type Anomaly } from "./anomalyTypes";
 
-/** The facts an operator weighs before and during an investigation -- shared
- * by AnomalyCard and InvestigateCard. */
-export function AnomalyInfoRows({ anomaly, showGrace }: { anomaly: Anomaly; showGrace: boolean }) {
+/** The three facts an operator weighs about an anomaly -- shared by the
+ * anomaly card and the investigation card. */
+export function AnomalyInfoRows({ anomaly }: { anomaly: Anomaly }) {
   const now = useNow();
-  const graceSec = Math.max(0, Math.round((Date.parse(anomaly.expiresAt) - now) / 1000));
-
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+    <InfoList gap={6}>
       <InfoRow label="Type" value={formatAnomalyTypes(anomaly.types)} />
       <InfoRow label="Confidence" value={formatConfidence(anomaly.confidence)} />
       <InfoRow label="Detected" value={`${formatAge(anomaly.detectedAt, now)} ago`} />
-      <InfoRow label="Source" value={anomaly.sourceDeviceId} />
-      {showGrace && <InfoRow label="Disappears in" value={`${graceSec} s without refresh`} />}
-      {anomaly.resolution === "unclear" && <InfoRow label="Last verdict" value="UNCLEAR" />}
-      <InfoRow label="ID" value={shortAnomalyId(anomaly.anomalyId)} title={anomaly.anomalyId} />
-    </div>
-  );
-}
-
-export function InfoRow({ label, value, title }: { label: string; value: string; title?: string }) {
-  return (
-    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 13 }}>
-      <span style={{ color: "#6c757d" }}>{label}</span>
-      <span style={{ color: "#212529", fontWeight: 500, textAlign: "right" }} title={title}>
-        {value}
-      </span>
-    </div>
+    </InfoList>
   );
 }

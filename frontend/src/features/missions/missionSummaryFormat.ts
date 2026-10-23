@@ -31,7 +31,7 @@ export function formatDuration(seconds: number | null): string {
   return minutes === 0 ? `~${hours}h` : `~${hours}h ${minutes}m`;
 }
 
-/** "3", or "∞" for a mission that loops until stopped. */
+/** "3", or "inf" for a mission that loops until stopped. */
 export function formatLoopTotal(mission: { loopCount: number; infiniteLoop: boolean }): string {
-  return mission.infiniteLoop ? "∞" : String(mission.loopCount);
+  return mission.infiniteLoop ? "inf" : String(mission.loopCount);
 }

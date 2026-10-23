@@ -74,7 +74,7 @@ export async function startWebrtcSession(
     });
   };
 
-  const unsubscribe = client.onCameraSignal((signal: RawCameraSignal) => {
+  const unsubscribe = client.on("camera.signal", (signal: RawCameraSignal) => {
     if (signal.session_id !== sessionId) return;
 
     if (signal.type === "offer" && signal.sdp) {

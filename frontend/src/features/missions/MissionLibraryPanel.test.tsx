@@ -6,6 +6,7 @@ import { MissionEditorProvider } from "./MissionEditorContext";
 import { useMissionEditor } from "./useMissionEditor";
 import { MissionLibraryPanel } from "./MissionLibraryPanel";
 import { useMissionStore } from "../../stores/missionStore";
+import { useLibraryStore } from "../../stores/libraryStore";
 import * as missionApi from "../../api/missionApi";
 import type { MissionSummary, MissionDefinition } from "./missionTypes";
 
@@ -85,20 +86,29 @@ describe("MissionLibraryPanel", () => {
     vi.mocked(missionApi.deleteMission).mockResolvedValue(undefined);
     vi.mocked(missionApi.activateMission).mockResolvedValue(fullMission);
     useMissionStore.setState({ definition: null, execution: null });
+    useLibraryStore.setState({ selectedMissionId: null });
   });
 
-  it("renders each mission's summary (waypoints, home, distance, ETA), badges and infinite loops", async () => {
+  async function selectRow(name: string) {
+    await userEvent.click(await screen.findByRole("button", { name: new RegExp(name) }));
+  }
+
+  it("lists every mission as a row, the active one first and opened", async () => {
     render(<Harness />);
     expect(await screen.findByText("Patrol A")).toBeInTheDocument();
-    expect(screen.getByText("3 · Loop count 2")).toBeInTheDocument();
-    expect(screen.getByText("(1.50, -2.25)")).toBeInTheDocument();
-    expect(screen.getByText("142 m")).toBeInTheDocument();
-    expect(screen.getByText("Active")).toBeInTheDocument();
-    expect(screen.getByText("2 · Loop count ∞")).toBeInTheDocument();
-    expect(screen.getByText("ETA / loop")).toBeInTheDocument();
+    expect(screen.getByText("3 waypoints · 142 m")).toBeInTheDocument();
+    expect(screen.getByText("2 waypoints · —")).toBeInTheDocument();
+    // The active row opens in an effect after the list renders.
+    await waitFor(() => expect(screen.getAllByRole("button", { expanded: true })).toHaveLength(1));
+    expect(screen.getByRole("button", { expanded: true })).toHaveTextContent("Patrol A");
+    expect(useLibraryStore.getState().selectedMissionId).toBe("current-mission");
+  });
 
-    expect(screen.getByText("Patrol B")).toBeInTheDocument();
-    expect(screen.getAllByText("—")).not.toHaveLength(0);
+  it("opens another row on click, showing its loops and ETA", async () => {
+    render(<Harness />);
+    await selectRow("Patrol B");
+    expect(useLibraryStore.getState().selectedMissionId).toBe("other-mission");
+    expect(screen.getByText("ETA / loop")).toBeInTheDocument();
   });
 
   it("calls onBack when Back is clicked", async () => {
@@ -109,11 +119,11 @@ describe("MissionLibraryPanel", () => {
     expect(onBack).toHaveBeenCalled();
   });
 
-  it("opens a blank draft and enters the editor on + New Mission", async () => {
+  it("opens a blank draft and enters the editor on New mission", async () => {
     const onEnterEditor = vi.fn();
     render(<Harness onEnterEditor={onEnterEditor} />);
     await screen.findByText("Patrol A");
-    await userEvent.click(screen.getByText("+ New Mission"));
+    await userEvent.click(screen.getByText("New mission"));
     expect(onEnterEditor).toHaveBeenCalled();
     expect(screen.getByText("editor-mission-id=none")).toBeInTheDocument();
   });
@@ -121,32 +131,28 @@ describe("MissionLibraryPanel", () => {
   it("loads the mission and enters the editor on Edit", async () => {
     const onEnterEditor = vi.fn();
     render(<Harness onEnterEditor={onEnterEditor} />);
-    await screen.findByText("Patrol B");
-    const editButtons = screen.getAllByText("Edit");
-    await userEvent.click(editButtons[1]);
+    await selectRow("Patrol B");
+    await userEvent.click(screen.getByRole("button", { name: "Edit" }));
     await waitFor(() => expect(onEnterEditor).toHaveBeenCalled());
     expect(missionApi.getMission).toHaveBeenCalledWith("other-mission");
     expect(await screen.findByText("editor-mission-id=other-mission")).toBeInTheDocument();
   });
 
-  it("disables Set Current for the already-current mission", async () => {
+  it("can't activate the mission that is already active", async () => {
     render(<Harness />);
     await screen.findByText("Patrol A");
-    const setCurrentButtons = screen.getAllByText("Set Current");
-    expect(setCurrentButtons[0]).toBeDisabled();
-    expect(setCurrentButtons[1]).not.toBeDisabled();
+    expect(screen.getByRole("button", { name: "Active" })).toBeDisabled();
   });
 
   it("activates a mission directly when nothing else is running", async () => {
     render(<Harness />);
-    await screen.findByText("Patrol B");
-    const setCurrentButtons = screen.getAllByText("Set Current");
-    await userEvent.click(setCurrentButtons[1]);
+    await selectRow("Patrol B");
+    await userEvent.click(screen.getByRole("button", { name: "Activate" }));
     await waitFor(() => expect(missionApi.activateMission).toHaveBeenCalledWith("other-mission"));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
-  it("warns before switching current mission while another is running", async () => {
+  it("warns before switching the active mission while another is running", async () => {
     useMissionStore.setState({
       execution: {
         missionId: "current-mission",
@@ -158,9 +164,8 @@ describe("MissionLibraryPanel", () => {
       },
     });
     render(<Harness />);
-    await screen.findByText("Patrol B");
-    const setCurrentButtons = screen.getAllByText("Set Current");
-    await userEvent.click(setCurrentButtons[1]);
+    await selectRow("Patrol B");
+    await userEvent.click(screen.getByRole("button", { name: "Activate" }));
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(missionApi.activateMission).not.toHaveBeenCalled();
 
@@ -170,9 +175,8 @@ describe("MissionLibraryPanel", () => {
 
   it("deletes a mission after confirming", async () => {
     render(<Harness />);
-    await screen.findByText("Patrol B");
-    const deleteButtons = screen.getAllByText("Delete");
-    await userEvent.click(deleteButtons[1]);
+    await selectRow("Patrol B");
+    await userEvent.click(screen.getByRole("button", { name: "Delete" }));
     const dialog = screen.getByRole("dialog");
     await userEvent.click(within(dialog).getByText("Delete"));
     await waitFor(() => expect(missionApi.deleteMission).toHaveBeenCalledWith("other-mission"));

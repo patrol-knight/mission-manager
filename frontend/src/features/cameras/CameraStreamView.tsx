@@ -17,7 +17,7 @@ interface CameraStreamViewProps {
 
 /**
  * Shared rendering surface for a device's one camera feed -- the seam
- * DeviceInspectorOverlay and AnomalyVerifyModal both render
+ * DeviceInspectorOverlay and VerifyModal both render
  * through, so the <video>/placeholder/status-badge markup exists in exactly
  * one place instead of being duplicated. Fills its container; sizing and
  * chrome (button frame, grid slot, dialog panel) are the caller's job.
@@ -44,8 +44,8 @@ export function CameraStreamView({ camera, stream }: CameraStreamViewProps) {
           justifyContent: "center",
           height: "100%",
           width: "100%",
-          color: "#868e96",
-          fontSize: 14,
+          color: "var(--color-text-muted)",
+          fontSize: "var(--text-base)",
         }}
       >
         No camera available for this device.
@@ -62,8 +62,8 @@ export function CameraStreamView({ camera, stream }: CameraStreamViewProps) {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        background: "#111317",
-        borderRadius: 8,
+        background: "var(--color-surface-media)",
+        borderRadius: "var(--radius-md)",
         overflow: "hidden",
         color: "#fff",
       }}
@@ -79,7 +79,9 @@ export function CameraStreamView({ camera, stream }: CameraStreamViewProps) {
       ) : camera.status === "connecting" ? (
         <Spinner />
       ) : (
-        <span style={{ fontSize: 32 }}>{camera.status === "error" ? "⚠" : "📴"}</span>
+        <span style={{ fontSize: "var(--text-base)", color: "#8b8f98" }}>
+          {camera.status === "error" ? "Camera error" : "No video"}
+        </span>
       )}
       <div
         style={{
@@ -91,7 +93,7 @@ export function CameraStreamView({ camera, stream }: CameraStreamViewProps) {
           background: "rgba(0,0,0,0.6)",
           display: "flex",
           justifyContent: "flex-end",
-          fontSize: 11,
+          fontSize: "var(--text-xs)",
         }}
       >
         <span>{STATUS_LABEL[camera.status]}</span>
@@ -109,7 +111,7 @@ function Spinner() {
         borderRadius: "50%",
         border: "3px solid rgba(255,255,255,0.2)",
         borderTopColor: "#fff",
-        animation: "camera-tile-spin 0.8s linear infinite",
+        animation: "spin 0.8s linear infinite",
       }}
     />
   );

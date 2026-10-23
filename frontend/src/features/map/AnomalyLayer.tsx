@@ -9,39 +9,31 @@ import { useToast } from "../../components/useToast";
 import { useNow, formatAge } from "../../hooks/useNow";
 import { needsVerdict } from "../investigation/investigationTypes";
 import { groupAnomalies, type AnomalyGroup } from "./anomalyGroups";
+import { mapPalette } from "./mapPalette";
 import {
   formatAnomalyTypes,
   formatConfidence,
   isClosed,
   type Anomaly,
-  type AnomalyType,
 } from "../anomalies/anomalyTypes";
 
-const TYPE_COLORS: Record<AnomalyType, string> = {
-  lying_down: "#e03131",
-  loitering: "#f08c00",
-  trespassing: "#7048e8",
-};
-const TARGET_RING = "#FFD700";
-const SELECTED_RING = "#1c7ed6";
 /** Markers start fading once less than this share of the grace period is left. */
 const FADE_FROM = 0.5;
 const MIN_OPACITY = 0.3;
 /** First zoom level a group click goes to (see groupOptions.onClick). */
 const COMFORT_ZOOM = 21;
 
+/** A small red dot with a pulsing halo -- small on purpose: anomalies sit a
+ * meter or two from the tower that saw them, and the tower's alert badge and
+ * the right panel carry the detail. */
 function buildAnomalyElement(): HTMLElement {
   const el = document.createElement("div");
   el.style.cssText = `
-    width:22px;height:22px;border-radius:50%;
-    box-shadow:0 1px 5px rgba(0,0,0,0.5);
-    display:flex;align-items:center;justify-content:center;
-    color:white;font-size:12px;font-weight:bold;
+    width:14px;height:14px;border-radius:50%;box-sizing:border-box;
     cursor:pointer;
     transition:opacity 1s linear;
     z-index:5;
   `;
-  el.textContent = "!";
   return el;
 }
 
@@ -53,15 +45,20 @@ function expiryOpacity(anomaly: Anomaly, now: number): number {
   return MIN_OPACITY + (1 - MIN_OPACITY) * Math.max(0, left / FADE_FROM);
 }
 
+/** A cluster marker grows with its member count (22 px for two, up to
+ * 40 px), so a big pile of anomalies reads as bigger at a glance. */
+function groupSize(count: number): number {
+  return Math.min(40, 22 + 6 * Math.log2(count - 1));
+}
+
 function buildGroupElement(): HTMLElement {
   const el = document.createElement("div");
   el.style.cssText = `
-    width:28px;height:28px;border-radius:50%;
-    background:#c92a2a;
-    border:2px solid white;
-    box-shadow:0 1px 5px rgba(0,0,0,0.5);
+    border-radius:50%;box-sizing:border-box;
+    background:${mapPalette.anomaly};
+    border:2px solid ${mapPalette.markerBorder};
     display:flex;align-items:center;justify-content:center;
-    color:white;font-size:13px;font-weight:bold;
+    color:${mapPalette.markerText};font:700 11px system-ui,sans-serif;
     cursor:zoom-in;
     transition:opacity 1s linear;
     animation: anomaly-pulse 1.4s ease-out infinite;
@@ -161,11 +158,25 @@ export function AnomalyLayer() {
       updateElement: (el, a) => {
         const targeted = a.anomalyId === targetId;
         const selected = a.anomalyId === selectedId;
-        el.style.background = TYPE_COLORS[a.types[0]] ?? TYPE_COLORS.lying_down;
-        el.style.border = `${targeted || selected ? 3 : 2}px solid ${targeted ? TARGET_RING : selected ? SELECTED_RING : "white"}`;
+        // An "unclear" verdict leaves the anomaly open: drawn hollow.
+        const unclear = a.resolution === "unclear";
+        // The investigated one turns solid yellow and larger, matching its
+        // yellow route; the rest stay small red dots.
+        const size = targeted ? 22 : 14;
+        el.style.width = `${size}px`;
+        el.style.height = `${size}px`;
+        el.style.background = targeted
+          ? mapPalette.investigation
+          : unclear
+            ? mapPalette.markerBorder
+            : mapPalette.anomaly;
+        const ring = selected ? mapPalette.selectedRing : unclear ? mapPalette.anomaly : mapPalette.markerBorder;
+        el.style.border = `${selected || unclear ? 3 : 2}px solid ${ring}`;
         el.style.opacity = targeted ? "1" : String(expiryOpacity(a, now));
+        // The investigated anomaly sits on top of its neighbours (only the
+        // robot is higher, see DeviceMarkerLayer), then the selected one.
+        el.style.zIndex = targeted ? "8" : selected ? "6" : "5";
         el.style.animation = targeted ? "investigation-target-pulse 1.4s ease-out infinite" : "anomaly-pulse 1.4s ease-out infinite";
-        el.textContent = a.resolution === "unclear" ? "?" : "!";
         el.setAttribute("aria-label", `Anomaly: ${formatAnomalyTypes(a.types)}`);
       },
       onClick: (a) => {
@@ -196,6 +207,10 @@ export function AnomalyLayer() {
         return el;
       },
       updateElement: (el, g) => {
+        const size = groupSize(g.members.length);
+        el.style.width = `${size}px`;
+        el.style.height = `${size}px`;
+        el.style.fontSize = `${Math.round(size * 0.45)}px`;
         el.textContent = String(g.members.length);
         el.style.opacity = String(Math.max(...g.members.map((m) => expiryOpacity(m, now))));
         el.setAttribute("aria-label", `${g.members.length} anomalies, click to zoom in`);

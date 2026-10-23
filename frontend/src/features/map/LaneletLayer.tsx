@@ -1,8 +1,18 @@
 import { useContext, useEffect } from "react";
+import type maplibregl from "maplibre-gl";
 import { MapContext } from "./MapContext";
 import { useLaneletMap } from "../../hooks/useMapData";
+import { mapPalette } from "./mapPalette";
 
 const LAYER_IDS = ["ll-arrows", "ll-center", "ll-right", "ll-left"];
+
+/** Id of the layer drawn right after `layerId`, to insert new layers in
+ * front of -- undefined (the very top) if there is none. */
+function layerAfter(map: maplibregl.Map, layerId: string): string | undefined {
+  const layers = map.getStyle().layers;
+  const index = layers.findIndex((l) => l.id === layerId);
+  return index >= 0 ? layers[index + 1]?.id : undefined;
+}
 
 export function LaneletLayer() {
   const { map } = useContext(MapContext);
@@ -17,36 +27,40 @@ export function LaneletLayer() {
     if (map.getSource("lanelet")) map.removeSource("lanelet");
 
     map.addSource("lanelet", { type: "geojson", data: geojson });
+    // The map data arrives after the route and FOV layers may already exist,
+    // so insert just above the OSM tiles -- under everything else -- rather
+    // than on top of the mission route.
+    const beforeId = layerAfter(map, "osm-tiles");
     map.addLayer({
       id: "ll-left",
       type: "line",
       source: "lanelet",
       filter: ["==", ["get", "type"], "left"],
-      paint: { "line-color": "#555555", "line-width": 2 },
-    });
+      paint: { "line-color": mapPalette.lanelet, "line-width": 2 },
+    }, beforeId);
     map.addLayer({
       id: "ll-right",
       type: "line",
       source: "lanelet",
       filter: ["==", ["get", "type"], "right"],
-      paint: { "line-color": "#555555", "line-width": 2 },
-    });
+      paint: { "line-color": mapPalette.lanelet, "line-width": 2 },
+    }, beforeId);
     map.addLayer({
       id: "ll-center",
       type: "line",
       source: "lanelet",
       filter: ["==", ["get", "type"], "center"],
-      paint: { "line-color": "#555555", "line-width": 1.5, "line-dasharray": [4, 3] },
-    });
+      paint: { "line-color": mapPalette.lanelet, "line-width": 1.5, "line-dasharray": [4, 3] },
+    }, beforeId);
 
-    const arrowSvg =
-      '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20"><polygon points="19,10 5,3 8,10 5,17" fill="#555555"/></svg>';
+    const arrowSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20"><polygon points="19,10 5,3 8,10 5,17" fill="${mapPalette.lanelet}"/></svg>`;
     const blob = new Blob([arrowSvg], { type: "image/svg+xml" });
     const url = URL.createObjectURL(blob);
     const img = new Image(20, 20);
     img.onload = () => {
       if (!map.hasImage("arrow-icon")) map.addImage("arrow-icon", img, { sdf: false });
       if (map.getLayer("ll-arrows")) map.removeLayer("ll-arrows");
+      if (!map.getLayer("ll-center")) return; // torn down while the icon loaded
       map.addLayer({
         id: "ll-arrows",
         type: "symbol",
@@ -62,7 +76,7 @@ export function LaneletLayer() {
           "icon-allow-overlap": true,
           "icon-ignore-placement": true,
         },
-      });
+      }, layerAfter(map, "ll-center"));
       URL.revokeObjectURL(url);
     };
     img.src = url;

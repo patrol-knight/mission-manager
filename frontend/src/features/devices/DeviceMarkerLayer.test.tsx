@@ -28,6 +28,9 @@ const { FakeMarker } = vi.hoisted(() => {
     setDraggable() {
       return this;
     }
+    setRotation() {
+      return this;
+    }
     getElement() {
       return this.element;
     }

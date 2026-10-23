@@ -1,7 +1,7 @@
 import type { Anomaly } from "../anomalies/anomalyTypes";
 
-/** Markers are 22 px wide; closer than this they overlap enough to be hard to click. */
-export const GROUP_RADIUS_PX = 28;
+/** Markers are 14 px wide; closer than this they overlap enough to be hard to click. */
+export const GROUP_RADIUS_PX = 18;
 
 export interface ScreenPoint {
   x: number;

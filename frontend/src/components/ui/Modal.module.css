@@ -1,0 +1,64 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-backdrop);
+}
+
+/* Small centred confirmation box. */
+.dialogBackdrop {
+  z-index: var(--z-dialog);
+}
+
+.dialog {
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  min-width: 320px;
+  box-shadow: var(--shadow-dialog);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Near full-screen window around a camera feed. */
+.fullscreenBackdrop {
+  z-index: var(--z-modal);
+  backdrop-filter: blur(4px);
+}
+
+.fullscreen {
+  width: 90vw;
+  height: 90vh;
+  background: var(--color-surface);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-modal);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.dialog:focus,
+.fullscreen:focus {
+  outline: none;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.headerTitle {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.headerClose {
+  margin-left: auto;
+}

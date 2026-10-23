@@ -91,26 +91,14 @@ export function MapWorkspace({ containerRef, map, ready, children }: MapWorkspac
             alignItems: "center",
             justifyContent: "center",
             background: "rgba(15,15,20,0.7)",
-            color: "#adb5bd",
-            fontSize: 14,
+            color: "var(--color-text-disabled)",
+            fontSize: "var(--text-base)",
           }}
         >
           Loading map…
         </div>
       )}
       {ready && children}
-      <style>{`
-        @keyframes anomaly-pulse {
-          0%   { box-shadow: 0 0 0 0 rgba(224,49,49,0.7); }
-          70%  { box-shadow: 0 0 0 10px rgba(224,49,49,0); }
-          100% { box-shadow: 0 0 0 0 rgba(224,49,49,0); }
-        }
-        @keyframes investigation-target-pulse {
-          0%   { box-shadow: 0 0 0 0 rgba(255,215,0,0.8); }
-          70%  { box-shadow: 0 0 0 12px rgba(255,215,0,0); }
-          100% { box-shadow: 0 0 0 0 rgba(255,215,0,0); }
-        }
-      `}</style>
     </div>
   );
 }

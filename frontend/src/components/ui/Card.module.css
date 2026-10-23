@@ -1,0 +1,69 @@
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+  box-shadow: var(--shadow-card);
+  color: var(--color-text);
+}
+
+.compact {
+  padding: 10px 14px;
+}
+
+/* A ring drawn as a shadow, so selecting a card doesn't shift its content. */
+.selected {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 1px var(--color-primary);
+}
+
+/* Marks the card as belonging to the current mode (the investigation card
+   inside .mode-investigate): a border in the mode's color, no fill. */
+.accent {
+  border-color: color-mix(in srgb, var(--color-primary) 70%, var(--color-border));
+}
+
+/* The whole card is the button (robot card). */
+.interactive {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  transition:
+    background var(--duration-fast),
+    border-color var(--duration-fast);
+}
+
+.interactive:hover {
+  background: var(--color-surface-hover);
+  border-color: var(--color-border-strong);
+}
+
+.interactive:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.header:not(:last-child) {
+  margin-bottom: 12px;
+}
+
+.title {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--color-text);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

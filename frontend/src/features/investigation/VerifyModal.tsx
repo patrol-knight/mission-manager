@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { useDeviceStore } from "../../stores/deviceStore";
 import { useInvestigationStore } from "../../stores/investigationStore";
 import { useToast } from "../../components/useToast";
 import { setVerdict } from "../../api/investigationApi";
 import { useCameraSession } from "../devices/useCameraSession";
 import { CameraStreamView } from "../cameras/CameraStreamView";
+import { Modal, ModalHeader } from "../../components/ui/Modal";
+import { Note } from "../../components/ui/Note";
 import {
   formatAnomalyTypes,
   formatConfidence,
@@ -14,7 +16,6 @@ import {
 } from "../anomalies/anomalyTypes";
 import type { Investigation } from "./investigationTypes";
 
-const FOCUSABLE_SELECTOR = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
 const VERDICTS: AnomalyVerdict[] = ["true_positive", "false_positive", "unclear"];
 const VERDICT_HINTS: Record<AnomalyVerdict, string> = {
   true_positive: "Real event",
@@ -40,37 +41,6 @@ function VerifyDialog({ investigation }: { investigation: Investigation }) {
   const { camera, stream, error } = useCameraSession(investigation.robotDeviceId, true);
   const { show } = useToast();
   const [pending, setPending] = useState<AnomalyVerdict | null>(null);
-  const dialogRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const previouslyFocused = document.activeElement as HTMLElement | null;
-    dialogRef.current?.focus();
-
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        closeVerify();
-        return;
-      }
-      if (e.key === "Tab" && dialogRef.current) {
-        const focusable = dialogRef.current.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR);
-        if (focusable.length === 0) return;
-        const first = focusable[0];
-        const last = focusable[focusable.length - 1];
-        if (e.shiftKey && document.activeElement === first) {
-          e.preventDefault();
-          last.focus();
-        } else if (!e.shiftKey && document.activeElement === last) {
-          e.preventDefault();
-          first.focus();
-        }
-      }
-    };
-    window.addEventListener("keydown", handleKey);
-    return () => {
-      window.removeEventListener("keydown", handleKey);
-      previouslyFocused?.focus();
-    };
-  }, [closeVerify]);
 
   const choose = async (verdict: AnomalyVerdict) => {
     if (verdict === investigation.draftVerdict) return;
@@ -85,89 +55,55 @@ function VerifyDialog({ investigation }: { investigation: Investigation }) {
   };
 
   return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.6)",
-        backdropFilter: "blur(4px)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 20000,
-      }}
-    >
+    <Modal label="Verify anomaly" onClose={closeVerify} variant="fullscreen">
+      <ModalHeader title="Verify anomaly" onClose={closeVerify}>
+        {anomaly && (
+          <span style={{ fontSize: "var(--text-md)", color: "var(--color-text-faint)" }}>
+            {formatAnomalyTypes(anomaly.types)} · {formatConfidence(anomaly.confidence)}
+          </span>
+        )}
+      </ModalHeader>
+      <div style={{ flex: 1, padding: 16, minHeight: 0 }}>
+        {error ? <Note tone="danger">{error}</Note> : <CameraStreamView camera={camera} stream={stream} />}
+      </div>
       <div
-        ref={dialogRef}
-        role="dialog"
-        aria-modal="true"
-        aria-label="Verify anomaly"
-        tabIndex={-1}
         style={{
-          width: "90vw",
-          height: "90vh",
-          background: "#1a1b1e",
-          borderRadius: 16,
-          boxShadow: "0 20px 60px rgba(0,0,0,0.5)",
+          padding: 16,
+          borderTop: "1px solid var(--color-border)",
           display: "flex",
-          flexDirection: "column",
-          overflow: "hidden",
+          alignItems: "center",
+          gap: 8,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 20px", borderBottom: "1px solid #343a40" }}>
-          <span style={{ fontSize: 16, fontWeight: 600, color: "#fff" }}>Verify anomaly</span>
-          {anomaly && (
-            <span style={{ fontSize: 13, color: "#adb5bd" }}>
-              {formatAnomalyTypes(anomaly.types)} · {formatConfidence(anomaly.confidence)}
-            </span>
-          )}
-          <button
-            onClick={closeVerify}
-            aria-label="Close"
-            style={{ marginLeft: "auto", border: "none", background: "none", color: "#adb5bd", fontSize: 22, cursor: "pointer" }}
-          >
-            ×
-          </button>
-        </div>
-        <div style={{ flex: 1, padding: 16, minHeight: 0 }}>
-          {error ? (
-            <div style={{ color: "#ff8787", fontSize: 13 }}>{error}</div>
-          ) : (
-            <CameraStreamView camera={camera} stream={stream} />
-          )}
-        </div>
-        <div style={{ padding: 16, borderTop: "1px solid #343a40", display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ fontSize: 13, color: "#adb5bd", marginRight: "auto" }}>
-            Saved as a draft. It's recorded when you press Finish.
-          </span>
-          {VERDICTS.map((verdict) => {
-            const selected = investigation.draftVerdict === verdict;
-            return (
-              <button
-                key={verdict}
-                onClick={() => void choose(verdict)}
-                disabled={pending !== null}
-                aria-pressed={selected}
-                title={VERDICT_HINTS[verdict]}
-                style={{
-                  minWidth: 110,
-                  padding: "10px 20px",
-                  borderRadius: 8,
-                  border: `2px solid ${VERDICT_COLORS[verdict]}`,
-                  background: selected ? VERDICT_COLORS[verdict] : "transparent",
-                  color: "#fff",
-                  fontWeight: 700,
-                  fontSize: 14,
-                  cursor: pending !== null ? "wait" : "pointer",
-                }}
-              >
-                {pending === verdict ? "Saving…" : VERDICT_LABELS[verdict]}
-              </button>
-            );
-          })}
-        </div>
+        <span style={{ fontSize: "var(--text-md)", color: "var(--color-text-faint)", marginRight: "auto" }}>
+          Saved as a draft. It's recorded when you press Finish.
+        </span>
+        {VERDICTS.map((verdict) => {
+          const selected = investigation.draftVerdict === verdict;
+          return (
+            <button
+              key={verdict}
+              onClick={() => void choose(verdict)}
+              disabled={pending !== null}
+              aria-pressed={selected}
+              title={VERDICT_HINTS[verdict]}
+              style={{
+                minWidth: 110,
+                padding: "10px 20px",
+                borderRadius: "var(--radius-md)",
+                border: `2px solid ${VERDICT_COLORS[verdict]}`,
+                background: selected ? VERDICT_COLORS[verdict] : "transparent",
+                color: "var(--color-text-on-accent)",
+                fontWeight: 700,
+                fontSize: "var(--text-base)",
+                cursor: pending !== null ? "wait" : "pointer",
+              }}
+            >
+              {pending === verdict ? "Saving…" : VERDICT_LABELS[verdict]}
+            </button>
+          );
+        })}
       </div>
-      <style>{`@keyframes camera-tile-spin { to { transform: rotate(360deg); } }`}</style>
-    </div>
+    </Modal>
   );
 }

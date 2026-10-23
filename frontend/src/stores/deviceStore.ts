@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import type { CameraState, Device } from "../types/domain";
-import type { Anomaly } from "../features/anomalies/anomalyTypes";
+import { isClosed, type Anomaly } from "../features/anomalies/anomalyTypes";
 
 interface DeviceStoreState {
   devices: Record<string, Device>;
@@ -57,7 +57,23 @@ export function selectAnomalyList(state: DeviceStoreState): Anomaly[] {
   return Object.values(state.anomalies).sort((a, b) => a.detectedAt.localeCompare(b.detectedAt));
 }
 
-/** The robot (single-robot deployment), connected or not. */
+/** Open (not yet closed by a verdict) anomalies per reporting device id --
+ * a tower's alert count. Use with useShallow. */
+export function selectAlertCounts(state: DeviceStoreState): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const a of Object.values(state.anomalies)) {
+    if (!isClosed(a)) counts[a.sourceDeviceId] = (counts[a.sourceDeviceId] ?? 0) + 1;
+  }
+  return counts;
+}
+
+/** The robot (single-robot deployment), connected or not -- the lowest
+ * device_id if there are ever several, matching selectDeviceList's order.
+ * Runs on every device update, so it scans instead of sorting. */
 export function selectRobot(state: DeviceStoreState): Device | null {
-  return selectDeviceList(state).find((d) => d.type === "robot") ?? null;
+  let robot: Device | null = null;
+  for (const d of Object.values(state.devices)) {
+    if (d.type === "robot" && (robot === null || d.deviceId.localeCompare(robot.deviceId) < 0)) robot = d;
+  }
+  return robot;
 }

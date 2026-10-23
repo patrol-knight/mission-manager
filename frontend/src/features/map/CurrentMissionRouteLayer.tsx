@@ -1,37 +1,27 @@
-import { useContext, useMemo } from "react";
+import { useContext } from "react";
 import type maplibregl from "maplibre-gl";
 import { MapContext } from "./MapContext";
 import { useMissionStore } from "../../stores/missionStore";
 import { useInvestigationStore } from "../../stores/investigationStore";
 import { useMissionRoutePreview } from "../missions/useMissionRoutePreview";
 import { useGeoJsonLineLayer } from "./useGeoJsonLineLayer";
+import { mapPalette, routeLineWidth } from "./mapPalette";
 
-const ACTIVE_COLOR = "#FF8C00";
-export const INVESTIGATING_COLOR = "#868e96";
+const PAINT: maplibregl.LineLayerSpecification["paint"] = {
+  "line-color": mapPalette.route,
+  "line-width": routeLineWidth,
+  "line-opacity": 0.95,
+};
 
-/** Monitor-view counterpart to the Editor's MissionRouteLayer — shows the
- * persisted (current) mission's route, auto-computed rather than gated behind
- * an explicit Validate step. Shares rendering via useGeoJsonLineLayer.
- *
- * Grays out while the robot is investigating — MissionWaypointMarkersLayer
- * grays its waypoints the same way, and InvestigationRouteLayer/
- * InvestigationTargetLayer show the yellow route/target meanwhile. */
+/** Monitor view: the active mission's route, in orange. Hidden while the
+ * robot investigates (like its waypoints), leaving the yellow investigation
+ * route as the only path on the map. */
 export function CurrentMissionRouteLayer() {
   const { map } = useContext(MapContext);
   const definition = useMissionStore((s) => s.definition);
   const investigating = useInvestigationStore((s) => s.investigation !== null);
   const { route } = useMissionRoutePreview(definition?.waypoints ?? null);
 
-  const paint = useMemo<maplibregl.LineLayerSpecification["paint"]>(
-    () => ({
-      "line-color": investigating ? INVESTIGATING_COLOR : ACTIVE_COLOR,
-      "line-width": 8,
-      "line-opacity": 0.9,
-    }),
-    [investigating],
-  );
-
-  useGeoJsonLineLayer(map, "current-mission-route", "current-mission-route-line", route, paint);
-
+  useGeoJsonLineLayer(map, "current-mission-route", "current-mission-route-line", investigating ? null : route, PAINT);
   return null;
 }
