@@ -19,10 +19,14 @@ function buildTargetElement(): HTMLElement {
 }
 
 /** Yellow marker where the robot is actually headed: the anomaly's position
- * snapped to the lanelet network (lat/lon computed server-side). */
+ * snapped to the lanelet network (lat/lon computed server-side). Gone once
+ * the robot is there -- it would only pile up under the robot and the
+ * anomaly. */
 export function InvestigationTargetLayer() {
   const { map } = useContext(MapContext);
-  const target = useInvestigationStore((s) => s.investigation?.target ?? null);
+  const target = useInvestigationStore((s) =>
+    s.investigation && s.investigation.phase !== "on_site" ? s.investigation.target : null,
+  );
   const targets = useMemo(() => (target ? [target] : []), [target]);
 
   const options = useMemo<UseMarkerListOptions<InvestigationTarget>>(

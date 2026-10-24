@@ -5,11 +5,7 @@ import { MapContext } from "./MapContext";
 import { useDeviceStore, selectDeviceList } from "../../stores/deviceStore";
 import { fovSector } from "./geo";
 import { mapPalette } from "./mapPalette";
-
-/** Assumed camera coverage of a tower -- the backend doesn't report it yet.
- * Anomalies are reported within ~5 m of the tower that saw them. */
-const TOWER_FOV_DEG = 90;
-const TOWER_RANGE_M = 6;
+import { isLiveTower, towerFov } from "../devices/towers";
 
 const SOURCE_ID = "tower-fov";
 const FILL_ID = "tower-fov-fill";
@@ -17,7 +13,8 @@ const LINE_ID = "tower-fov-line";
 const EMPTY: GeoJSON.FeatureCollection = { type: "FeatureCollection", features: [] };
 
 /** Where each IoT tower's camera looks: a faint sector in front of it, so an
- * anomaly reads as "seen by that tower" at a glance. */
+ * anomaly reads as "seen by that tower" at a glance. Only towers that report
+ * their coverage (see towerFov) get one. */
 export function TowerFovLayer() {
   const { map } = useContext(MapContext);
   const devices = useDeviceStore(useShallow(selectDeviceList));
@@ -25,18 +22,20 @@ export function TowerFovLayer() {
   const sectors = useMemo<GeoJSON.FeatureCollection>(
     () => ({
       type: "FeatureCollection",
-      features: devices
-        .filter((d) => d.type === "iot" && d.pose.lat != null && d.pose.lon != null)
-        .map((d) => ({
-          type: "Feature" as const,
-          properties: { deviceId: d.deviceId },
-          geometry: {
-            type: "Polygon" as const,
-            coordinates: [
-              fovSector(d.pose.lon as number, d.pose.lat as number, d.pose.yaw, (TOWER_FOV_DEG * Math.PI) / 180, TOWER_RANGE_M),
-            ],
+      features: devices.flatMap((d) => {
+        const fov = isLiveTower(d) ? towerFov(d) : null;
+        if (!fov || d.pose.lat == null || d.pose.lon == null) return [];
+        return [
+          {
+            type: "Feature" as const,
+            properties: { deviceId: d.deviceId },
+            geometry: {
+              type: "Polygon" as const,
+              coordinates: [fovSector(d.pose.lon, d.pose.lat, d.pose.yaw, fov.fovRad, fov.rangeM)],
+            },
           },
-        })),
+        ];
+      }),
     }),
     [devices],
   );

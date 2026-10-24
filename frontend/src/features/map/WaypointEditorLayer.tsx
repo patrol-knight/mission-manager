@@ -8,6 +8,7 @@ import { xyToLngLat, lngLatToXy, isInLanelet, snapWaypoint } from "../../api/map
 import { buildWaypointMarkerElement } from "../missions/waypointMarker";
 import { mapPalette } from "./mapPalette";
 import type { Waypoint } from "../missions/missionTypes";
+import { setMarkerGlyph } from "./markerGlyph";
 
 /**
  * Where a click or drop on the map puts a waypoint: its local x/y snapped
@@ -63,7 +64,7 @@ export function WaypointEditorLayer() {
         el.style.height = `${size}px`;
         el.style.fontSize = selected ? "14px" : "12px";
         el.style.zIndex = selected ? "2" : "1";
-        el.textContent = String(index + 1);
+        setMarkerGlyph(el, String(index + 1));
       },
       draggable: () => true,
       onDragEnd: async (wp, lngLat, marker) => {

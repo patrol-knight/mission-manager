@@ -45,7 +45,7 @@ export function WaypointList() {
                     variant="ghost"
                     size="sm"
                     onClick={() => dispatch({ type: "DELETE_WAYPOINT", id: wp.waypointId })}
-                    title="Remove (Delete)"
+                    data-hint="Remove (Delete)"
                   >
                     Remove
                   </Button>

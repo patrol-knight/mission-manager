@@ -23,7 +23,7 @@ interface ProgressTrackProps {
  * bar; an open-ended run, a plain track. */
 export function ProgressTrack({ total, done, fraction, label, color }: ProgressTrackProps) {
   return (
-    <div className={styles.row} style={{ "--progress-color": color } as CSSProperties} title={label} role="img" aria-label={label}>
+    <div className={styles.row} style={{ "--progress-color": color } as CSSProperties} data-hint={label} role="img" aria-label={label}>
       <div className={styles.track}>
         {total === null ? (
           <div className={styles.bar} />

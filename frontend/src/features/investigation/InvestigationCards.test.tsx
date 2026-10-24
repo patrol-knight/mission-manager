@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ToastProvider } from "../../components/Toast";
 import { AnomalyCard } from "../anomalies/AnomalyCard";
@@ -96,7 +96,17 @@ describe("AnomalyCard", () => {
     useDeviceStore.setState({ devices: { "robot-1": { ...robot, connected: false } } });
     renderWithToasts(<AnomalyCard />);
     expect(screen.getByRole("button", { name: "Investigate" })).toBeDisabled();
-    expect(screen.getByTitle("The robot is offline")).toBeInTheDocument();
+    expect(document.querySelector('[data-hint="The robot is offline"]')).toBeInTheDocument();
+  });
+
+  it("stays open once the anomaly expires, offering only Dismiss", async () => {
+    renderWithToasts(<AnomalyCard />);
+    act(() => useDeviceStore.setState({ anomalies: {} }));
+    expect(screen.getByText("Expired")).toBeInTheDocument();
+    expect(screen.getByText("No longer detected")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Investigate" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    expect(useInvestigationStore.getState().selectedAnomalyId).toBeNull();
   });
 
   it("starts the investigation and hands over to the Investigate card", async () => {
@@ -137,7 +147,7 @@ describe("InvestigateCard", () => {
     renderWithToasts(<InvestigateCard />);
     expect(screen.getByRole("button", { name: "Verify" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Submit" })).toBeDisabled();
-    expect(screen.getByTitle("Choose a verdict in Verify first")).toBeInTheDocument();
+    expect(document.querySelector('[data-hint="Choose a verdict in Verify first"]')).toBeInTheDocument();
   });
 
   it("submits at once and toasts the recorded verdict", async () => {

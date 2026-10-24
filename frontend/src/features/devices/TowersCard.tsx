@@ -1,45 +1,36 @@
-import { useContext, useEffect, useRef, useState } from "react";
+import { useContext, useEffect } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useDeviceStore, selectDeviceList, selectAlertCounts } from "../../stores/deviceStore";
-import { useApiConnection } from "../../hooks/useApiConnection";
 import { MapContext } from "../map/MapContext";
 import { Card } from "../../components/ui/Card";
 import { Button } from "../../components/ui/Button";
 import { Note } from "../../components/ui/Note";
-import { Pill, type PillTone } from "../../components/ui/Pill";
-import { StatusDot } from "../../components/ui/StatusDot";
+import { PillButton } from "../../components/ui/Pill";
 import { cx } from "../../components/ui/cx";
-import { deviceConnectivity, type DeviceConnectivity } from "./connectivity";
+import { useDeviceInspector } from "./useDeviceInspector";
 import { sortTowers, visibleTiles } from "./towers";
+import { deviceConnectivity, type DeviceConnectivity } from "./connectivity";
+import { useApiConnection } from "../../hooks/useApiConnection";
+import { StatusDot } from "../../components/ui/StatusDot";
+import { useMapHighlightStore } from "../../stores/mapHighlightStore";
 import type { Device } from "../../types/domain";
 import styles from "./TowersCard.module.css";
 
 /** Close enough that anomalies a meter apart separate on screen (~17 px/m). */
 const TOWER_ZOOM = 21;
-const TILE_HEIGHT = 34;
-const TILE_GAP = 6;
-const COLUMNS = 2;
-/** Room kept under the grid inside the card (its bottom padding). */
-const CARD_PADDING_BOTTOM = 16;
+/** Tiles in the card, the "+N more" one included: two columns, three rows. */
+const TILE_LIMIT = 6;
 
-const CONNECTIVITY_TONE: Record<DeviceConnectivity["status"], PillTone> = {
-  online: "success",
-  offline: "danger",
-  unknown: "muted",
-};
-
-const CONNECTIVITY_TEXT: Record<DeviceConnectivity["status"], string> = {
-  online: "Online",
-  offline: "Offline",
-  unknown: "Unknown",
-};
-
-/** Towers in priority order, and how to show one on the map. */
+/** Towers in priority order, and what a row can do with one. */
 function useTowers() {
   const towers = useDeviceStore(useShallow((s) => selectDeviceList(s).filter((d) => d.type === "iot")));
   const alertCounts = useDeviceStore(useShallow(selectAlertCounts));
-  const { status } = useApiConnection();
   const { map } = useContext(MapContext);
+  const { openInspector } = useDeviceInspector();
+  const { status } = useApiConnection();
+  // A row unmounted under the pointer (panel switched) never sees mouseleave.
+  const setHoveredTower = useMapHighlightStore((s) => s.setHoveredTower);
+  useEffect(() => () => setHoveredTower(null), [setHoveredTower]);
 
   const flyTo = (tower: Device) => {
     if (!map || tower.pose.lat == null || tower.pose.lon == null) return;
@@ -48,86 +39,91 @@ function useTowers() {
 
   return {
     towers: sortTowers(towers, alertCounts),
-    alertCounts,
     connectivityOf: (tower: Device) => deviceConnectivity(tower, status === "connected"),
     flyTo,
+    openInspector,
   };
 }
 
+/** One tower: a connection dot and its name (greyed when disconnected),
+ * and "i", which opens its device window (camera,
+ * open alerts, position). The row itself flies the map to the tower. */
+function TowerRow({
+  tower,
+  connectivity,
+  tile,
+  onFlyTo,
+  onInfo,
+}: {
+  tower: Device;
+  connectivity: DeviceConnectivity;
+  /** A tile in the card's grid rather than a row of the full list. */
+  tile?: boolean;
+  onFlyTo: () => void;
+  onInfo: () => void;
+}) {
+  const name = tower.name ?? tower.deviceId;
+  const online = connectivity.status === "online";
+  const setHoveredTower = useMapHighlightStore((s) => s.setHoveredTower);
+  return (
+    <li
+      className={cx(tile ? styles.tile : styles.item, !online && styles.offline)}
+      // Rings the tower's marker on the map while the pointer is on its row.
+      onMouseEnter={() => setHoveredTower(tower.deviceId)}
+      onMouseLeave={() => setHoveredTower(null)}
+    >
+      <button
+        type="button"
+        className={styles.row}
+        onClick={onFlyTo}
+        data-hint="Show on map"
+        aria-label={`${name}: ${connectivity.label}. Show on map`}
+      >
+        <StatusDot status={connectivity.status} />
+        <span className={styles.name}>{name}</span>
+      </button>
+      <PillButton tone="subtle" className={styles.info} onClick={onInfo} hint="Open camera" aria-label={`Open ${name} camera`}>
+        {/* Optically centred like the map markers' glyphs (index.css). */}
+        <span className="marker-glyph">i</span>
+      </PillButton>
+    </li>
+  );
+}
+
 /**
- * Every IoT tower as a compact tile -- open alerts first, then offline ones
- * -- in as many rows as fit above the panel's bottom edge, so the panel
- * never scrolls. When they don't all fit, the last tile becomes "+N more"
- * and opens the full list (`onShowAll`). A tile flies the map to its tower,
- * zoomed in far enough for its anomalies to stand apart; the tower's marker
- * on the map opens its camera.
+ * The towers as small tiles, two per row -- those with open alerts first,
+ * offline ones last. Up to TILE_LIMIT fit; past that the last tile becomes
+ * "+N more" and opens the full list (`onShowAll`).
  */
 export function TowersCard({ onShowAll }: { onShowAll: () => void }) {
-  const { towers, alertCounts, connectivityOf, flyTo } = useTowers();
-  const gridRef = useRef<HTMLDivElement>(null);
-  const [capacity, setCapacity] = useState(Infinity);
+  const { towers, connectivityOf, flyTo, openInspector } = useTowers();
   const hasTowers = towers.length > 0;
-
-  // Rows that fit between the grid's top and the bottom of the scrolling
-  // panel section it sits in -- measured against the section, not the grid's
-  // own (content-sized) height, so it grows back when the window does.
-  useEffect(() => {
-    const grid = gridRef.current;
-    const section = grid?.closest<HTMLElement>("[data-fit-container]");
-    if (!grid || !section) return;
-    const measure = () => {
-      const sectionBottom = section.getBoundingClientRect().bottom - parseFloat(getComputedStyle(section).paddingBottom);
-      const room = sectionBottom - grid.getBoundingClientRect().top - CARD_PADDING_BOTTOM;
-      const rows = Math.max(1, Math.floor((room + TILE_GAP) / (TILE_HEIGHT + TILE_GAP)));
-      setCapacity(rows * COLUMNS);
-    };
-    const observer = new ResizeObserver(measure);
-    observer.observe(section);
-    return () => observer.disconnect();
-  }, [hasTowers]);
-
-  const online = towers.filter((t) => connectivityOf(t).status === "online").length;
-  const { shown, hidden } = visibleTiles(towers.length, capacity);
+  const { shown, hidden } = visibleTiles(towers.length, TILE_LIMIT);
 
   return (
-    <Card
-      title="IoT Towers"
-      aside={
-        towers.length > 0 ? (
-          <Pill tone={online === towers.length ? "success" : "neutral"}>
-            {online}/{towers.length} online
-          </Pill>
-        ) : undefined
-      }
-    >
-      {towers.length === 0 ? (
+    <Card title="IoT Towers">
+      {!hasTowers ? (
         <Note>No towers connected</Note>
       ) : (
-        <div ref={gridRef} className={styles.grid}>
-          {towers.slice(0, shown).map((tower) => {
-            const connectivity = connectivityOf(tower);
-            const alerts = alertCounts[tower.deviceId] ?? 0;
-            const name = tower.name ?? tower.deviceId;
-            return (
-              <button
-                key={tower.deviceId}
-                type="button"
-                className={cx(styles.tile, alerts > 0 && styles.alerting, connectivity.status !== "online" && styles.offline)}
-                onClick={() => flyTo(tower)}
-                title={`${name}: ${connectivity.label}${alerts > 0 ? `, ${alerts} open ${alerts === 1 ? "alert" : "alerts"}` : ""}. Show on the map`}
-              >
-                <StatusDot status={connectivity.status} role="status" aria-label={connectivity.label} />
-                <span className={styles.name}>{name}</span>
-                {alerts > 0 && <span className={styles.count}>{alerts}</span>}
-              </button>
-            );
-          })}
+        <ul className={styles.grid}>
+          {towers.slice(0, shown).map((tower) => (
+            <TowerRow
+              key={tower.deviceId}
+              tower={tower}
+              connectivity={connectivityOf(tower)}
+              tile
+              onFlyTo={() => flyTo(tower)}
+              onInfo={() => openInspector(tower.deviceId)}
+            />
+          ))}
           {hidden > 0 && (
-            <button type="button" className={cx(styles.tile, styles.more)} onClick={onShowAll}>
-              +{hidden} more
-            </button>
+            <li className={cx(styles.tile, styles.moreTile)}>
+              <button type="button" className={cx(styles.row, styles.more)} onClick={onShowAll}>
+                +{hidden} more
+              </button>
+            </li>
           )}
-        </div>
+        </ul>
       )}
     </Card>
   );
@@ -135,7 +131,7 @@ export function TowersCard({ onShowAll }: { onShowAll: () => void }) {
 
 /** The full tower list, for when the card can't show them all. */
 export function TowersPanel({ onBack }: { onBack: () => void }) {
-  const { towers, alertCounts, connectivityOf, flyTo } = useTowers();
+  const { towers, connectivityOf, flyTo, openInspector } = useTowers();
 
   return (
     <>
@@ -150,23 +146,15 @@ export function TowersPanel({ onBack }: { onBack: () => void }) {
         <Note>No towers connected</Note>
       ) : (
         <ul className={styles.list}>
-          {towers.map((tower) => {
-            const connectivity = connectivityOf(tower);
-            const alerts = alertCounts[tower.deviceId] ?? 0;
-            return (
-              <li key={tower.deviceId}>
-                <button type="button" className={styles.row} onClick={() => flyTo(tower)}>
-                  <span className={styles.name}>{tower.name ?? tower.deviceId}</span>
-                  {alerts > 0 && (
-                    <Pill tone="danger" dot>
-                      {alerts} {alerts === 1 ? "alert" : "alerts"}
-                    </Pill>
-                  )}
-                  <Pill tone={CONNECTIVITY_TONE[connectivity.status]}>{CONNECTIVITY_TEXT[connectivity.status]}</Pill>
-                </button>
-              </li>
-            );
-          })}
+          {towers.map((tower) => (
+            <TowerRow
+              key={tower.deviceId}
+              tower={tower}
+              connectivity={connectivityOf(tower)}
+              onFlyTo={() => flyTo(tower)}
+              onInfo={() => openInspector(tower.deviceId)}
+            />
+          ))}
         </ul>
       )}
     </>

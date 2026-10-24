@@ -60,7 +60,6 @@ function InvestigateCardBody({ investigation }: { investigation: Investigation }
   return (
     <Card
       enter
-      accent
       title={anomalyTitle(investigation.anomalyId)}
       aside={verdict ? <Pill tone={VERDICT_TONES[verdict]}>{VERDICT_LABELS[verdict]}</Pill> : undefined}
       aria-label="Investigation"
@@ -74,7 +73,7 @@ function InvestigateCardBody({ investigation }: { investigation: Investigation }
             </Button>
             <span
               style={{ display: "flex" }}
-              title={verdict ? `Then: ${fallback.nextLabel}` : "Choose a verdict in Verify first"}
+              data-hint={verdict ? `Then: ${fallback.nextLabel}` : "Choose a verdict in Verify first"}
             >
               <Button block onClick={() => void end()} disabled={pending || verdict === null}>
                 Submit

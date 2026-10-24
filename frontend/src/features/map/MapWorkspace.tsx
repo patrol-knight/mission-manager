@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, type ReactNode, type RefObject } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import type maplibregl from "maplibre-gl";
 import { getMapBounds } from "../../api/mapApi";
 import { useDeviceStore } from "../../stores/deviceStore";
 import { overviewBounds, type LngLatBoundsLike } from "./overviewBounds";
+import styles from "./MapWorkspace.module.css";
 
 /** Fit the whole map plus a margin around every device (see overviewBounds),
  * so a tower at the map's edge, and the anomalies in front of it, are never
@@ -44,8 +45,34 @@ export function MapWorkspace({ containerRef, map, ready, children }: MapWorkspac
   // overview fit, redone once when the first devices arrive (they usually
   // come a moment after the map loads) -- never again after that, so it
   // doesn't fight the operator's own panning.
+  // Set while an overview fit is moving the map, so its moveend reads as
+  // "back at the overview" rather than "moved away".
+  const fittingRef = useRef(false);
   const fitToMap = useCallback(async () => {
-    if (map) await fitOverview(map, 600);
+    if (!map) return;
+    fittingRef.current = true;
+    await fitOverview(map, 600);
+  }, [map]);
+
+  // The Overview button only shows once the view has left the overview
+  // (a pan, a zoom, a fly to a tower) -- like a map app's re-centre button --
+  // so it costs no room the rest of the time.
+  const [awayFromOverview, setAwayFromOverview] = useState(false);
+  useEffect(() => {
+    if (!map) return;
+    const onMoveStart = (e: { originalEvent?: unknown }) => {
+      if (e.originalEvent) fittingRef.current = false; // the operator took over
+    };
+    const onMoveEnd = () => {
+      setAwayFromOverview(!fittingRef.current);
+      fittingRef.current = false;
+    };
+    map.on("movestart", onMoveStart);
+    map.on("moveend", onMoveEnd);
+    return () => {
+      map.off("movestart", onMoveStart);
+      map.off("moveend", onMoveEnd);
+    };
   }, [map]);
 
   const fittedMapRef = useRef<maplibregl.Map | null>(null);
@@ -58,6 +85,7 @@ export function MapWorkspace({ containerRef, map, ready, children }: MapWorkspac
     let cancelled = false;
     // Marked done only once the fit actually ran, so a StrictMode remount
     // that cancels the first attempt still gets its fit.
+    fittingRef.current = true;
     void fitOverview(map, 0, () => cancelled).then(() => {
       if (cancelled) return;
       fittedMapRef.current = map;
@@ -99,6 +127,18 @@ export function MapWorkspace({ containerRef, map, ready, children }: MapWorkspac
         </div>
       )}
       {ready && children}
+      {ready && (
+        <button
+          type="button"
+          className={styles.overview}
+          data-visible={awayFromOverview}
+          tabIndex={awayFromOverview ? 0 : -1}
+          onClick={() => void fitToMap()}
+          data-hint="Show the whole site (F)"
+        >
+          Overview
+        </button>
+      )}
     </div>
   );
 }

@@ -88,7 +88,7 @@ export function MissionEditorPanel({ onCancel, onSaved }: MissionEditorPanelProp
           size="sm"
           disabled={state.history.length === 0}
           onClick={() => dispatch({ type: "UNDO" })}
-          title="Undo (Ctrl+Z)"
+          data-hint="Undo (Ctrl+Z)"
         >
           Undo
         </Button>
@@ -97,7 +97,7 @@ export function MissionEditorPanel({ onCancel, onSaved }: MissionEditorPanelProp
           size="sm"
           disabled={state.future.length === 0}
           onClick={() => dispatch({ type: "REDO" })}
-          title="Redo (Ctrl+Shift+Z)"
+          data-hint="Redo (Ctrl+Shift+Z)"
         >
           Redo
         </Button>

@@ -1,24 +1,30 @@
-/* Two columns of compact tiles, so a dozen towers fit without scrolling. */
+/* Connection dots in the verify window's TRUE / FALSE red and green. */
+.grid,
+.list {
+  --color-status-online: #3ccf91;
+  --color-status-offline: #ef6a7e;
+}
+
+/* The card: towers as separate tiles, two per row. Each tile's button flies
+   the map to the tower, the "i" inside it opens the device window. */
 .grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
 .tile {
-  height: 34px;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 0 10px;
+  height: 34px;
+  box-sizing: border-box;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
-  background: var(--color-surface-raised);
-  color: var(--color-text);
-  font: inherit;
-  font-size: var(--text-md);
-  text-align: left;
-  cursor: pointer;
+  background: var(--color-surface);
+  overflow: hidden;
   transition:
     background var(--duration-fast),
     border-color var(--duration-fast);
@@ -29,15 +35,67 @@
   border-color: var(--color-border-strong);
 }
 
-.tile:focus-visible {
-  outline: 2px solid var(--color-primary);
-  outline-offset: 1px;
+.tile .row {
+  align-self: stretch;
+  gap: 8px;
+  padding: 0 4px 0 10px;
 }
 
-/* A tower with open alerts: tinted red, so it stands out in the grid. */
-.alerting {
-  border-color: color-mix(in srgb, var(--color-danger) 35%, var(--color-border));
-  background: color-mix(in srgb, var(--color-danger) 5%, var(--color-surface));
+.tile .info {
+  margin-right: 6px;
+}
+
+.moreTile {
+  border-style: dashed;
+  background: transparent;
+}
+
+/* The full list (towers view): one tower per row. */
+.list {
+  /* Inset from the card's sides, so the list reads lighter than a full-width
+     table. */
+  margin: 0 10px;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  overflow: hidden;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+}
+
+.item + .item {
+  border-top: 1px solid var(--color-border);
+}
+
+.row {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 8px 11px 14px;
+  border: none;
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  font-size: var(--text-md);
+  text-align: left;
+  cursor: pointer;
+}
+
+/* The whole row (including its pills) highlights together. */
+.item:hover {
+  background: var(--color-surface-hover);
+}
+
+.row:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
 }
 
 .offline .name {
@@ -52,60 +110,33 @@
   white-space: nowrap;
 }
 
-.count {
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
-  border-radius: 9px;
-  background: var(--color-danger);
-  color: #fff;
-  font-size: var(--text-xs);
+/* A round pill: the same tint and border as its neighbours. */
+.info {
+  box-sizing: border-box;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  margin: 0 12px 0 0;
+  justify-content: center;
+  font-size: 11px;
   font-weight: 700;
-  line-height: 18px;
-  text-align: center;
-  flex-shrink: 0;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .more {
   justify-content: center;
-  border-style: dashed;
-  background: transparent;
+  padding-right: 14px;
   color: var(--color-text-muted);
   font-weight: 500;
 }
 
-/* The full list (towers view). */
-.list {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  background: var(--color-surface);
-  overflow: hidden;
-}
-
-.row {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 11px 14px;
-  border: none;
-  background: transparent;
+.more:hover {
   color: var(--color-text);
-  font: inherit;
-  font-size: var(--text-md);
-  text-align: left;
-  cursor: pointer;
 }
 
-.row:hover {
-  background: var(--color-surface-hover);
-}
-
-li + li .row {
-  border-top: 1px solid var(--color-border);
+.tile .more {
+  padding: 0 10px;
 }
 
 .header {

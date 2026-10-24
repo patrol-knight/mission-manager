@@ -145,7 +145,7 @@ function MissionActions({ execution, onEdit }: { execution: MissionExecutionStat
       // the backend resets to "ready"), or no execution data yet.
       return (
         <ButtonRow>
-          <span style={{ display: "flex", flex: 1 }} title={robot ? undefined : "The robot is offline"}>
+          <span style={{ display: "flex", flex: 1 }} data-hint={robot ? undefined : "The robot is offline"}>
             <Button
               variant="primary"
               block

@@ -11,8 +11,6 @@ interface CardProps extends Omit<HTMLAttributes<HTMLElement>, "title"> {
   compact?: boolean;
   /** Highlighted border, e.g. the selected mission in the library. */
   selected?: boolean;
-  /** Border in the current mode's color (see .mode-* in tokens.css). */
-  accent?: boolean;
   /** Slide in from below on mount (see .card-enter in index.css). */
   enter?: boolean;
   /** Makes the whole card a button. */
@@ -25,7 +23,6 @@ export function Card({
   aside,
   compact,
   selected,
-  accent,
   enter,
   onClick,
   className,
@@ -36,7 +33,6 @@ export function Card({
     styles.card,
     compact && styles.compact,
     selected && styles.selected,
-    accent && styles.accent,
     onClick && styles.interactive,
     enter && "card-enter",
     className,

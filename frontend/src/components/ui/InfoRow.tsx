@@ -16,7 +16,7 @@ export function InfoRow({ label, value, title, dense }: InfoRowProps) {
   return (
     <div className={cx(styles.row, dense && styles.dense)}>
       <span className={styles.label}>{label}</span>
-      <span className={styles.value} title={title}>
+      <span className={styles.value} data-hint={title}>
         {value}
       </span>
     </div>

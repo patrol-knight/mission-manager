@@ -19,10 +19,6 @@
 
 /* Marks the card as belonging to the current mode (the investigation card
    inside .mode-investigate): a border in the mode's color, no fill. */
-.accent {
-  border-color: color-mix(in srgb, var(--color-primary) 70%, var(--color-border));
-}
-
 /* The whole card is the button (robot card). */
 .interactive {
   display: block;

@@ -1,47 +1,58 @@
-import type { Device } from "../../types/domain";
+import type { ReactNode } from "react";
+import type { CameraInfo, Device } from "../../types/domain";
 import { InfoList, InfoRow } from "../../components/ui/InfoRow";
-import { deviceConnectivity } from "./connectivity";
+import layout from "../cameras/CameraWindow.module.css";
+
+const CAMERA_TEXT: Record<CameraInfo["status"], string> = {
+  idle: "Idle",
+  connecting: "Connecting…",
+  live: "Live",
+  no_signal: "No signal",
+  offline: "Offline",
+  error: "Error",
+};
 
 interface DeviceStatusPanelProps {
   device: Device;
-  /** Whether the backend/websocket connection itself is up -- when it
-   * isn't, device.connected is stale, so connectivity reads "unknown". */
-  backendConnected: boolean;
+  camera: CameraInfo | null;
+  /** Open anomalies this device reported (towers). */
+  alerts: number;
 }
 
-export function DeviceStatusPanel({ device, backendConnected }: DeviceStatusPanelProps) {
-  const statusEntries = Object.entries(device.status);
+function Section({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className={layout.section}>
+      <h3 className={layout.sectionTitle}>{title}</h3>
+      <InfoList gap={8}>{children}</InfoList>
+    </section>
+  );
+}
+
+/**
+ * The device window's sidebar, laid out like the verify window's: Status
+ * (battery and speed, or a tower's open alerts, and the camera) and
+ * Position. Type, connection and what the robot is doing are pills in the
+ * window header.
+ */
+export function DeviceStatusPanel({ device, camera, alerts }: DeviceStatusPanelProps) {
+  const headingDeg = ((((device.pose.yaw * 180) / Math.PI) % 360) + 360) % 360;
 
   return (
-    <InfoList gap={8}>
-      <InfoRow label="Position X" value={device.pose.x.toFixed(2)} />
-      <InfoRow label="Position Y" value={device.pose.y.toFixed(2)} />
-
-      {device.type === "robot" && (
-        <>
+    <>
+      <Section title="Status">
+        {device.battery !== null && <InfoRow label="Battery" value={`${Math.round(device.battery)}%`} />}
+        {device.type === "robot" && (
           <InfoRow label="Speed" value={device.speed !== null ? `${device.speed.toFixed(2)} m/s` : "—"} />
-          <InfoRow label="Heading" value={`${(device.pose.yaw * (180 / Math.PI)).toFixed(0)}°`} />
-        </>
-      )}
+        )}
+        {device.type === "iot" && <InfoRow label="Open alerts" value={alerts} />}
+        <InfoRow label="Camera" value={camera ? CAMERA_TEXT[camera.status] : "—"} />
+      </Section>
 
-      {device.type === "iot" && (
-        <InfoRow label="Connectivity" value={deviceConnectivity(device, backendConnected).title} />
-      )}
-
-      {device.battery !== null && <InfoRow label="Battery" value={`${device.battery.toFixed(0)}%`} />}
-
-      {statusEntries.length > 0 && (
-        <div style={{ marginTop: 4 }}>
-          <div style={{ color: "var(--color-text-muted)", fontSize: "var(--text-md)", marginBottom: 4 }}>
-            Sensor values
-          </div>
-          <InfoList>
-            {statusEntries.map(([key, value]) => (
-              <InfoRow key={key} label={key} value={String(value)} />
-            ))}
-          </InfoList>
-        </div>
-      )}
-    </InfoList>
+      <Section title="Position">
+        <InfoRow label="X" value={`${device.pose.x.toFixed(2)} m`} />
+        <InfoRow label="Y" value={`${device.pose.y.toFixed(2)} m`} />
+        <InfoRow label="Heading" value={`${headingDeg.toFixed(0)}°`} />
+      </Section>
+    </>
   );
 }

@@ -6,6 +6,7 @@ import { useInvestigationStore } from "../../stores/investigationStore";
 import { buildWaypointMarkerElement, setWaypointTarget } from "../missions/waypointMarker";
 import { targetWaypointIndex } from "../missions/missionStatus";
 import type { Waypoint } from "../missions/missionTypes";
+import { setMarkerGlyph } from "./markerGlyph";
 
 const NO_WAYPOINTS: Waypoint[] = [];
 
@@ -34,7 +35,7 @@ export function MissionWaypointMarkersLayer() {
       buildElement: () => buildWaypointMarkerElement(true),
       updateElement: (el, wp) => {
         const index = waypoints.findIndex((w) => w.waypointId === wp.waypointId);
-        el.textContent = String(index + 1);
+        setMarkerGlyph(el, String(index + 1));
         setWaypointTarget(el, index === target);
       },
     }),

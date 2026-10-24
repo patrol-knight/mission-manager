@@ -88,7 +88,7 @@ export function RightPanel({
           <TowersPanel onBack={onCloseTowers} />
         </div>
       ) : (
-        // Mission library and editor: the violet editing mode.
+        // Mission library and editor: the mauve editing mode.
         <div className={`${styles.full} mode-edit`}>
           {view === "library" ? (
             <MissionLibraryPanel onBack={onCloseLibrary} onEnterEditor={() => onEnterEditor("library")} />

@@ -14,7 +14,10 @@ export type PillTone =
   | "missionSoft"
   | "investigate"
   | "edit"
-  | "activate";
+  | "activate"
+  // The verify window's UNCLEAR grey, translucent -- for neutral counts and
+  // small buttons that shouldn't read as a status.
+  | "subtle";
 
 interface PillProps {
   children: ReactNode;
@@ -22,13 +25,37 @@ interface PillProps {
   /** A leading dot, for live states (online, running, ...). */
   dot?: boolean;
   title?: string;
+  className?: string;
 }
 
 /** Small uppercase status label: mission state, robot activity, device
  * connectivity, alert counts, verdicts. */
-export function Pill({ children, tone = "neutral", dot, title }: PillProps) {
+/** A pill that does something (e.g. "View" on a tower row): the same shape
+ * and type as the status pills beside it, so a row reads as one set. */
+export function PillButton({
+  children,
+  tone = "neutral",
+  hint,
+  className,
+  ...rest
+}: {
+  children: ReactNode;
+  tone?: PillTone;
+  hint?: string;
+  className?: string;
+  onClick: () => void;
+  "aria-label"?: string;
+}) {
   return (
-    <span className={cx(styles.pill, styles[tone])} title={title}>
+    <button type="button" className={cx(styles.pill, styles[tone], styles.button, className)} data-hint={hint} {...rest}>
+      {children}
+    </button>
+  );
+}
+
+export function Pill({ children, tone = "neutral", dot, title, className }: PillProps) {
+  return (
+    <span className={cx(styles.pill, styles[tone], className)} data-hint={title}>
       {dot && <span className={styles.dot} />}
       {children}
     </span>

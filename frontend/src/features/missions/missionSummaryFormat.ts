@@ -25,10 +25,10 @@ export function formatDuration(seconds: number | null): string {
   if (seconds === null) return "—";
   const totalMinutes = Math.round(seconds / 60);
   if (totalMinutes < 1) return "<1 min";
-  if (totalMinutes < 60) return `~${totalMinutes} min`;
+  if (totalMinutes < 60) return `${totalMinutes} min`;
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
-  return minutes === 0 ? `~${hours}h` : `~${hours}h ${minutes}m`;
+  return minutes === 0 ? `${hours}h` : `${hours}h ${minutes}m`;
 }
 
 /** "3", or "inf" for a mission that loops until stopped. */

@@ -35,8 +35,8 @@
   --color-warning-hover: #fbbf24;
   /* Amber text needs to be darker than amber fills to read on white. */
   --color-warning-text: #b45309;
-  --color-danger: #dc2626;
-  --color-danger-border: rgba(220, 38, 38, 0.3);
+  --color-danger: #c51e3a;
+  --color-danger-border: rgba(197, 30, 58, 0.3);
   --color-success: #16a34a;
   --color-caution: #ea580c;
   --color-disabled-fill: #e5e7eb;
@@ -44,7 +44,7 @@
 
   /* Modes. Each kind of work has its own color family, on the map and in
      the panel alike: orange = running a mission, yellow = investigating an
-     anomaly, violet = editing missions. `-text` is the darker shade for text
+     anomaly, mauve (a muted violet) = editing missions. `-text` is the darker shade for text
      on white; `-on` the text color on a filled button. */
   --mode-mission: #ea580c;
   --mode-mission-hover: #c2410c;
@@ -54,11 +54,12 @@
   --mode-investigate-hover: #eab308;
   --mode-investigate-text: #a16207;
   --mode-investigate-on: #3f2d00;
-  --mode-edit: #b347d9;
-  --mode-edit-hover: #9d36c2;
-  --mode-edit-text: #8e2fae;
-  /* Activating a mission from the (violet) library: an orange-family
-     terracotta that sits better next to the violet than the run orange. */
+  /* Same as mapPalette.edit, so buttons, waypoint numbers and routes match. */
+  --mode-edit: #a97a9f;
+  --mode-edit-hover: #94678b;
+  --mode-edit-text: #7d5373;
+  /* Activating a mission from the (mauve) library: an orange-family
+     terracotta that sits better next to the mauve than the run orange. */
   --mode-activate: #d4735e;
   --mode-activate-hover: #bf5f4b;
   --mode-activate-text: #a8503e;
@@ -66,11 +67,11 @@
   /* Connection / device status */
   --color-status-online: #16a34a;
   --color-status-connecting: #d97706;
-  --color-status-offline: #dc2626;
+  --color-status-offline: #c51e3a;
   --color-status-unknown: #9ca3af;
 
   /* Investigation verdicts (VerifyModal buttons, investigation card pill) */
-  --color-verdict-true: #dc2626;
+  --color-verdict-true: #c51e3a;
   --color-verdict-false: #16a34a;
   --color-verdict-unclear: #6b7280;
 
@@ -130,7 +131,7 @@
 .mode-edit {
   --color-primary: var(--mode-edit);
   --color-primary-hover: var(--mode-edit-hover);
-  --color-surface-selected: rgba(179, 71, 217, 0.07);
+  --color-surface-selected: rgba(169, 122, 159, 0.1);
 }
 
 .mode-activate {
@@ -152,8 +153,11 @@
   --color-text-secondary: #b6b9c1;
   --color-text-muted: #8b8f98;
   --color-text-faint: #8b8f98;
-  --color-danger: #f2555a;
+  --color-danger: #ef6a7e;
   --color-status-online: #3ccf91;
-  --color-status-offline: #f2555a;
+  --color-status-offline: #ef6a7e;
   --color-status-unknown: #6c707a;
+  --color-verdict-true: #ef6a7e;
+  --color-verdict-false: #3ccf91;
+  --color-verdict-unclear: #9ca3af;
 }

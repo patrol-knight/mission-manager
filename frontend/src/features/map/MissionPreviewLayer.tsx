@@ -10,6 +10,7 @@ import { buildWaypointMarkerElement } from "../missions/waypointMarker";
 import { getMission } from "../../api/missionApi";
 import { mapPalette, routeLineWidth } from "./mapPalette";
 import type { Waypoint } from "../missions/missionTypes";
+import { setMarkerGlyph } from "./markerGlyph";
 
 const ACTIVE_PAINT: maplibregl.LineLayerSpecification["paint"] = {
   "line-color": mapPalette.route,
@@ -29,7 +30,7 @@ const NO_WAYPOINTS: Waypoint[] = [];
 /** Library view only: the mission selected in the list -- its route and
  * numbered waypoints, framed on screen -- so the operator sees where a
  * mission goes before activating or editing it. Only that one mission is
- * drawn: solid orange (the run mode) if it is the active mission, violet
+ * drawn: solid orange (the run mode) if it is the active mission, mauve
  * dashed (the editing mode) otherwise -- so activating it visibly hands it
  * over to the robot. */
 export function MissionPreviewLayer() {
@@ -65,7 +66,7 @@ export function MissionPreviewLayer() {
       buildElement: () => buildWaypointMarkerElement(true),
       updateElement: (el, wp) => {
         el.style.background = isActive ? mapPalette.waypoint : mapPalette.edit;
-        el.textContent = String(waypoints.findIndex((w) => w.waypointId === wp.waypointId) + 1);
+        setMarkerGlyph(el, String(waypoints.findIndex((w) => w.waypointId === wp.waypointId) + 1));
       },
     }),
     [waypoints, isActive],
