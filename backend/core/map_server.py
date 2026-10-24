@@ -1,5 +1,6 @@
 import logging
 import math
+from functools import lru_cache
 from pathlib import Path
 
 import yaml
@@ -34,6 +35,7 @@ class MapServer:
         self._origin_lon     = None
         self._projector      = None
         self._map_bounds     = None
+        self._geojson        = None
 
     def is_available(self) -> bool:
         return self._available
@@ -72,6 +74,8 @@ class MapServer:
             )
             self._routing_graph = RoutingGraph(self._lanelet_map, tr)
             self._map_bounds = self._compute_bounds()
+            self._geojson = None
+            self._route.cache_clear()
             self._map_name = Path(osm_path).stem
             self._available = True
             logger.info(
@@ -129,6 +133,11 @@ class MapServer:
 
     def get_geojson(self) -> dict:
         self._ensure_available()
+        if self._geojson is None:
+            self._geojson = self._build_geojson()
+        return self._geojson
+
+    def _build_geojson(self) -> dict:
         features = []
         for ll in self._lanelet_layer:
             left   = [self._to_latlon(p.x, p.y) for p in ll.leftBound]
@@ -333,8 +342,14 @@ class MapServer:
         return result
 
     def get_route(self, waypoints: list[dict]) -> dict | None:
+        """Cached (the same loop is requested from several views); treat as read-only."""
         if len(waypoints) < 2:
             return None
+        return self._route(tuple((wp["x"], wp["y"]) for wp in waypoints))
+
+    @lru_cache(maxsize=256)
+    def _route(self, points: tuple[tuple[float, float], ...]) -> dict | None:
+        waypoints = [{"x": x, "y": y} for x, y in points]
 
         full_coords = []
         total_length = 0.0

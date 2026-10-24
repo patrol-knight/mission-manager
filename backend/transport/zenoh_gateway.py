@@ -67,6 +67,8 @@ class ZenohGateway:
         self._anomaly_subscriber = None
         self._camera_state_subscriber = None
         self._camera_signal_subscriber = None
+        # device_id -> ((x, y, frame_id), (lat, lon)): towers never move.
+        self._last_projection: dict[str, tuple[tuple[float, float, str], tuple[float, float] | None]] = {}
 
     def bind_coordinators(
         self,
@@ -195,7 +197,14 @@ class ZenohGateway:
         # truth for this projection -- so every later consumer (REST reads
         # via DeviceRegistry, and the broadcast below) gets it for free,
         # with no separate xy-to-lnglat round trip needed.
-        latlon = self._project_latlon(state.pose.x, state.pose.y, state.pose.frame_id)
+        at = (state.pose.x, state.pose.y, state.pose.frame_id)
+        last = self._last_projection.get(state.device_id)
+        if last is not None and last[0] == at:
+            latlon = last[1]
+        else:
+            latlon = self._project_latlon(*at)
+            if latlon is not None:
+                self._last_projection[state.device_id] = (at, latlon)
         if latlon is not None:
             lat, lon = latlon
             state = state.model_copy(update={"pose": state.pose.model_copy(update={"lat": lat, "lon": lon})})

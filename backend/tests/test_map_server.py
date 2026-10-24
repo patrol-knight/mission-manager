@@ -55,3 +55,8 @@ def test_place_waypoint_snaps_onto_the_road_and_rejects_off_road(map_server: Map
 
     far = map_server.xy_to_latlon(wp.x + 5000, wp.y + 5000)
     assert map_server.place_waypoint(far.lat, far.lon) is None
+
+
+def test_routes_are_cached(map_server: MapServer, waypoints):
+    points = [{"x": wp.x, "y": wp.y} for wp in waypoints[:2]]
+    assert map_server.get_route(points) is map_server.get_route(list(points))
