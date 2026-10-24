@@ -45,8 +45,8 @@ export type MissionEditorAction =
   | { type: "SET_NAME"; name: string }
   | { type: "SET_LOOP_COUNT_INPUT"; value: string }
   | { type: "SET_INFINITE_LOOP"; value: boolean }
-  | { type: "ADD_WAYPOINT"; x: number; y: number }
-  | { type: "MOVE_WAYPOINT"; id: string; x: number; y: number }
+  | { type: "ADD_WAYPOINT"; x: number; y: number; lat?: number | null; lon?: number | null }
+  | { type: "MOVE_WAYPOINT"; id: string; x: number; y: number; lat?: number | null; lon?: number | null }
   | { type: "SELECT_WAYPOINT"; id: string | null }
   | { type: "DELETE_WAYPOINT"; id: string }
   | { type: "UNDO" }
@@ -106,6 +106,8 @@ export function missionEditorReducer(
         yaw: null,
         label: null,
         type: "patrol",
+        lat: action.lat,
+        lon: action.lon,
       };
       return {
         ...withWaypoints(state, [...state.waypoints, waypoint], [...state.history, state.waypoints], []),
@@ -115,7 +117,7 @@ export function missionEditorReducer(
 
     case "MOVE_WAYPOINT": {
       const waypoints = state.waypoints.map((wp) =>
-        wp.waypointId === action.id ? { ...wp, x: action.x, y: action.y } : wp,
+        wp.waypointId === action.id ? { ...wp, x: action.x, y: action.y, lat: action.lat, lon: action.lon } : wp,
       );
       return withWaypoints(state, waypoints, [...state.history, state.waypoints], []);
     }

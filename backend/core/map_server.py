@@ -158,6 +158,13 @@ class MapServer:
         lon, lat = self._to_latlon(sx, sy)
         return MapPoint(x=sx, y=sy, frame_id=frame_id, lanelet_id=ll.id, lat=lat, lon=lon)
 
+    def place_waypoint(self, lat: float, lon: float) -> MapPoint | None:
+        """A clicked point snapped onto its lanelet, or None if it's off the road."""
+        xy = self.latlon_to_xy(lat, lon)
+        if not self.is_in_lanelet(xy.x, xy.y):
+            return None
+        return self.snap_to_lanelet(xy.x, xy.y)
+
     def project_reachable_goal(
         self, x: float, y: float, frame_id: str = "map"
     ) -> ReachableGoal:

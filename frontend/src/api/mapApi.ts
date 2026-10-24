@@ -1,18 +1,10 @@
 import { http } from "./httpClient";
 
-export interface MapInfo {
-  mapName: string;
-  frameId: string;
-  originLat: number;
-  originLon: number;
-  laneletCount: number;
-}
-
-export interface MapPoint {
+export interface PlacedPoint {
   x: number;
   y: number;
-  frameId: string;
-  laneletId: number | null;
+  lat: number | null;
+  lon: number | null;
 }
 
 export interface RouteWaypoint {
@@ -27,23 +19,9 @@ export interface LatLon {
   lon: number;
 }
 
-export interface XY {
-  x: number;
-  y: number;
-  frameId: string;
-}
-
 export interface RoutePreviewResult {
   ok: boolean;
   route: GeoJSON.Feature<GeoJSON.LineString> | null;
-}
-
-interface RawMapInfo {
-  map_name: string;
-  frame_id: string;
-  origin_lat: number;
-  origin_lon: number;
-  lanelet_count: number;
 }
 
 interface RawMapPoint {
@@ -51,24 +29,10 @@ interface RawMapPoint {
   y: number;
   frame_id: string;
   lanelet_id: number | null;
+  lat: number | null;
+  lon: number | null;
 }
 
-interface RawXY {
-  x: number;
-  y: number;
-  frame_id: string;
-}
-
-export async function getMapInfo(): Promise<MapInfo> {
-  const raw = await http.get<RawMapInfo>("/api/map/info");
-  return {
-    mapName: raw.map_name,
-    frameId: raw.frame_id,
-    originLat: raw.origin_lat,
-    originLon: raw.origin_lon,
-    laneletCount: raw.lanelet_count,
-  };
-}
 
 export function getLaneletGeojson(): Promise<GeoJSON.FeatureCollection> {
   return http.get<GeoJSON.FeatureCollection>("/api/map/geojson");
@@ -90,18 +54,10 @@ export async function getMapBounds(): Promise<MapBounds> {
   return { south, west, north, east };
 }
 
-export async function isInLanelet(x: number, y: number, frameId = "map"): Promise<boolean> {
-  const raw = await http.post<{ in_lanelet: boolean }>("/api/map/is-in-lanelet", {
-    x,
-    y,
-    frame_id: frameId,
-  });
-  return raw.in_lanelet;
-}
-
-export async function snapWaypoint(x: number, y: number, frameId = "map"): Promise<MapPoint> {
-  const raw = await http.post<RawMapPoint>("/api/map/snap-waypoint", { x, y, frame_id: frameId });
-  return { x: raw.x, y: raw.y, frameId: raw.frame_id, laneletId: raw.lanelet_id };
+/** A clicked point snapped onto its lanelet; null when it's off the road. */
+export async function placeWaypoint(lat: number, lon: number, frameId = "map"): Promise<PlacedPoint | null> {
+  const raw = await http.post<RawMapPoint | null>("/api/map/place-waypoint", { lat, lon, frame_id: frameId });
+  return raw && { x: raw.x, y: raw.y, lat: raw.lat, lon: raw.lon };
 }
 
 export function routePreview(waypoints: RouteWaypoint[]): Promise<RoutePreviewResult> {
@@ -117,9 +73,4 @@ export function routePreview(waypoints: RouteWaypoint[]): Promise<RoutePreviewRe
 
 export async function xyToLngLat(x: number, y: number, frameId = "map"): Promise<LatLon> {
   return http.post<LatLon>("/api/map/xy-to-lnglat", { x, y, frame_id: frameId });
-}
-
-export async function lngLatToXy(lat: number, lon: number, frameId = "map"): Promise<XY> {
-  const raw = await http.post<RawXY>("/api/map/lnglat-to-xy", { lat, lon, frame_id: frameId });
-  return { x: raw.x, y: raw.y, frameId: raw.frame_id };
 }

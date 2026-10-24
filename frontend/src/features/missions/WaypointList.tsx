@@ -18,10 +18,10 @@ export function WaypointList() {
     const wp = state.waypoints.find((w) => w.waypointId === id);
     if (!wp || !map) return;
     try {
-      const { lat, lon } = await xyToLngLat(wp.x, wp.y);
+      const { lat, lon } = wp.lat != null && wp.lon != null ? { lat: wp.lat, lon: wp.lon } : await xyToLngLat(wp.x, wp.y);
       map.easeTo({ center: [lon, lat], duration: 400 });
     } catch {
-      // Map projection unavailable — selection still updates, just no camera move.
+      // Map projection unavailable: selection still updates, no camera move.
     }
   };
 

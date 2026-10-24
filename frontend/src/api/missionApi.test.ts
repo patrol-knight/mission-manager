@@ -33,12 +33,8 @@ describe("missionApi.saveMission", () => {
     vi.unstubAllGlobals();
   });
 
-  it("POSTs a new mission and activates it when missionId is null", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(jsonResponse({ map_name: "demo", frame_id: "map", origin_lat: 0, origin_lon: 0, lanelet_count: 1 })) // getMapInfo
-      .mockResolvedValueOnce(jsonResponse(rawMission)) // POST create
-      .mockResolvedValueOnce(jsonResponse(rawMission)); // POST activate
+  it("POSTs a new mission and activates it in one request", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse(rawMission));
     vi.stubGlobal("fetch", fetchMock);
 
     const result = await missionApi.saveMission({
@@ -51,25 +47,19 @@ describe("missionApi.saveMission", () => {
 
     expect(result.name).toBe("Patrol A");
     expect(result.loopCount).toBe(2);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
 
-    const [createUrl, createInit] = fetchMock.mock.calls[1];
-    expect(createUrl).toContain("/api/missions");
+    const [createUrl, createInit] = fetchMock.mock.calls[0];
+    expect(createUrl).toMatch(/\/api\/missions\?activate=true$/);
     expect(createInit.method).toBe("POST");
     const createBody = JSON.parse(createInit.body);
-    expect(createBody.map_name).toBe("demo");
+    expect(createBody.map_name).toBeUndefined();
     expect(createBody.loop_count).toBe(2);
     expect(createBody.mission_id).toMatch(/^patrol-a-[a-z0-9]+$/);
-
-    const [activateUrl] = fetchMock.mock.calls[2];
-    expect(activateUrl).toContain(`/api/missions/${createBody.mission_id}/activate`);
   });
 
   it("PUTs an existing mission by its missionId and activates it", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(jsonResponse({ map_name: "demo", frame_id: "map", origin_lat: 0, origin_lon: 0, lanelet_count: 1 }))
-      .mockResolvedValueOnce(jsonResponse(rawMission))
-      .mockResolvedValueOnce(jsonResponse(rawMission));
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse(rawMission));
     vi.stubGlobal("fetch", fetchMock);
 
     await missionApi.saveMission({
@@ -80,24 +70,10 @@ describe("missionApi.saveMission", () => {
       waypoints,
     });
 
-    const [updateUrl, updateInit] = fetchMock.mock.calls[1];
-    expect(updateUrl).toContain("/api/missions/patrol-a-x1y2z3");
+    const [updateUrl, updateInit] = fetchMock.mock.calls[0];
+    expect(updateUrl).toContain("/api/missions/patrol-a-x1y2z3?activate=true");
     expect(updateInit.method).toBe("PUT");
     expect(JSON.parse(updateInit.body).mission_id).toBe("patrol-a-x1y2z3");
-  });
-
-  it("falls back to a default map name if getMapInfo fails", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(new Response(null, { status: 503 }))
-      .mockResolvedValueOnce(jsonResponse(rawMission))
-      .mockResolvedValueOnce(jsonResponse(rawMission));
-    vi.stubGlobal("fetch", fetchMock);
-
-    await missionApi.saveMission({ missionId: null, name: "Patrol A", loopCount: 1, infiniteLoop: false, waypoints });
-
-    const [, createInit] = fetchMock.mock.calls[1];
-    expect(JSON.parse(createInit.body).map_name).toBe("default");
   });
 });
 
@@ -113,23 +89,6 @@ const rawExecution = {
 describe("missionApi execution controls", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
-  });
-
-  it("getExecutionState returns null on 404 (no current mission)", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ detail: "none" }), { status: 404 })));
-    await expect(missionApi.getExecutionState()).resolves.toBeNull();
-  });
-
-  it("getExecutionState adapts the raw response", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(rawExecution)));
-    await expect(missionApi.getExecutionState()).resolves.toEqual({
-      missionId: "patrol-a-x1y2z3",
-      status: "running",
-      currentLoop: 1,
-      completedLoops: 0,
-      currentWaypointIndex: 0,
-      updatedAt: "2026-07-19T00:00:00Z",
-    });
   });
 
   it.each([

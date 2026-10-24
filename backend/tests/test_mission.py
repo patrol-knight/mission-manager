@@ -28,6 +28,16 @@ def test_mission_crud(client: TestClient):
     assert client.delete("/api/missions/test-m").status_code == 404
 
 
+def test_save_can_activate_and_fills_in_the_map_name(client: TestClient):
+    unnamed = {k: v for k, v in NEW_MISSION.items() if k != "map_name"}
+    saved = client.post("/api/missions?activate=true", json=unnamed).json()
+    assert saved["map_name"] and client.get("/api/missions/current").json()["mission_id"] == "test-m"
+
+    client.post("/api/missions/mission-2-tdpjxe/activate")
+    client.put("/api/missions/test-m?activate=true", json={**unnamed, "name": "Renamed"})
+    assert client.get("/api/missions/current").json()["name"] == "Renamed"
+
+
 def test_execution_lifecycle(sim: Sim):
     client = sim.client
     assert client.post("/api/missions/current/start").status_code == 409  # no robot yet

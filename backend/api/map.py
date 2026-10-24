@@ -43,6 +43,11 @@ def snap_waypoint(query: PointQuery, services: Services = Depends(get_services))
     return services.map_server.snap_to_lanelet(query.x, query.y, query.frame_id)
 
 
+@router.post("/place-waypoint", response_model=MapPoint | None)
+def place_waypoint(query: LatLonQuery, services: Services = Depends(get_services)) -> MapPoint | None:
+    return services.map_server.place_waypoint(query.lat, query.lon)
+
+
 @router.post("/project-reachable-goal", response_model=ReachableGoal)
 def project_reachable_goal(
     req: ProjectReachableGoalRequest, services: Services = Depends(get_services)

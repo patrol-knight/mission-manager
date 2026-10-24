@@ -4,31 +4,28 @@ import { MapContext } from "./MapContext";
 import { useMarkerList, type UseMarkerListOptions, type LngLat } from "./mapMarkers";
 import { useMissionEditor } from "../missions/useMissionEditor";
 import { useToast } from "../../components/useToast";
-import { xyToLngLat, lngLatToXy, isInLanelet, snapWaypoint } from "../../api/mapApi";
+import { placeWaypoint, xyToLngLat, type PlacedPoint } from "../../api/mapApi";
 import { buildWaypointMarkerElement } from "../missions/waypointMarker";
 import { mapPalette } from "./mapPalette";
 import type { Waypoint } from "../missions/missionTypes";
 import { setMarkerGlyph } from "./markerGlyph";
 
-/**
- * Where a click or drop on the map puts a waypoint: its local x/y snapped
- * onto the nearest lanelet centerline, or null when the point is off the
- * drivable area (or the map service can't tell). A snap failure keeps the
- * point as clicked rather than rejecting it.
- */
-async function placeOnLanelet(lngLat: LngLat): Promise<{ x: number; y: number } | null> {
-  let x: number, y: number;
+async function placeOnLanelet(lngLat: LngLat): Promise<PlacedPoint | null> {
   try {
-    ({ x, y } = await lngLatToXy(lngLat.lat, lngLat.lng));
-    if (!(await isInLanelet(x, y))) return null;
+    return await placeWaypoint(lngLat.lat, lngLat.lng);
   } catch {
     return null;
   }
+}
+
+/** Where a waypoint is drawn: its own lat/lon, projected only if it has none. */
+async function waypointLngLat(wp: Waypoint): Promise<LngLat | null> {
+  if (wp.lat != null && wp.lon != null) return { lng: wp.lon, lat: wp.lat };
   try {
-    const snapped = await snapWaypoint(x, y);
-    return { x: snapped.x, y: snapped.y };
+    const { lat, lon } = await xyToLngLat(wp.x, wp.y);
+    return { lng: lon, lat };
   } catch {
-    return { x, y };
+    return null;
   }
 }
 
@@ -45,14 +42,7 @@ export function WaypointEditorLayer() {
     () => ({
       keyOf: (wp) => wp.waypointId,
       dependsOn: (wp) => [wp.x, wp.y],
-      project: async (wp) => {
-        try {
-          const { lat, lon } = await xyToLngLat(wp.x, wp.y);
-          return { lng: lon, lat };
-        } catch {
-          return null;
-        }
-      },
+      project: waypointLngLat,
       buildElement: () => buildWaypointMarkerElement(false, mapPalette.edit),
       updateElement: (el, wp) => {
         const index = state.waypoints.findIndex((w) => w.waypointId === wp.waypointId);
@@ -70,16 +60,12 @@ export function WaypointEditorLayer() {
       onDragEnd: async (wp, lngLat, marker) => {
         const placed = await placeOnLanelet(lngLat);
         if (!placed) {
-          try {
-            const orig = await xyToLngLat(wp.x, wp.y);
-            marker.setLngLat([orig.lon, orig.lat]);
-          } catch {
-            // can't re-project the original position either -- leave as dropped.
-          }
+          const orig = await waypointLngLat(wp);
+          if (orig) marker.setLngLat([orig.lng, orig.lat]);
           show("warning", "Outside lanelet", "Waypoint snapped back — outside drivable area");
           return;
         }
-        dispatch({ type: "MOVE_WAYPOINT", id: wp.waypointId, x: placed.x, y: placed.y });
+        dispatch({ type: "MOVE_WAYPOINT", id: wp.waypointId, ...placed });
       },
       onClick: (wp) => dispatch({ type: "SELECT_WAYPOINT", id: wp.waypointId }),
     }),
@@ -98,7 +84,7 @@ export function WaypointEditorLayer() {
         show("warning", "Outside lanelet", "Waypoint not placed — outside drivable area");
         return;
       }
-      dispatch({ type: "ADD_WAYPOINT", x: placed.x, y: placed.y });
+      dispatch({ type: "ADD_WAYPOINT", ...placed });
     };
 
     map.on("click", handleClick);
