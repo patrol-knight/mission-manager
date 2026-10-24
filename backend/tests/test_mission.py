@@ -131,3 +131,25 @@ def test_the_default_mission_is_gone(client: TestClient):
     assert client.get("/api/missions/default").status_code == 404  # "default" is just an unknown id now
     summary = client.get("/api/missions").json()[0]
     assert "is_default" not in summary and "time_slot" not in summary
+
+
+def test_mission_list_routes_each_version_once(client: TestClient, services, fake_map, monkeypatch):
+    """Listing missions routes a mission's loop only when it changed."""
+    calls = []
+    route = services.map_server.get_route
+    monkeypatch.setattr(services.map_server, "get_route", lambda wps: calls.append(1) or route(wps))
+    client.post("/api/missions", json=NEW_MISSION)
+
+    def list_missions():
+        assert client.get("/api/missions").status_code == 200
+
+    list_missions()
+    routed = len(calls)
+    assert routed > 0
+    list_missions()
+    assert len(calls) == routed  # unchanged: cached
+
+    moved = {**NEW_MISSION, "waypoints": [{"waypoint_id": "a", "x": 0, "y": 0}, {"waypoint_id": "b", "x": 7, "y": 0}]}
+    client.put("/api/missions/test-m", json=moved)
+    list_missions()
+    assert len(calls) == routed + 1  # edited: routed again
