@@ -234,19 +234,19 @@ export async function startWebrtcSession(
 
   // Everything this session listens to is in place before Start goes out.
   unsubscribers.push(
-    client.onCameraSignal((signal) => {
+    client.on("camera.signal", (signal) => {
       if (closed || signal.session_id !== sessionId) return;
       chain = chain
         .then(() => (closed ? undefined : applySignal(signal)))
         .catch((err: unknown) => console.warn(`[webrtc] Failed to apply ${signal.type}:`, err));
     }),
-    client.onCameraSessionUpdate((state) => {
+    client.on("camera.session.updated", (state) => {
       if (!closed && state.sessionId === sessionId) callbacks.onSessionState?.(state);
     }),
-    client.onCameraSessionEnded((ended: CameraSessionEnded) => {
+    client.on("camera.session.ended", (ended: CameraSessionEnded) => {
       if (ended.session_id === sessionId) end(ended.failure_code ?? ended.reason);
     }),
-    client.onCameraSessionReply((kind, reply) => {
+    client.on("camera.session.reply", ({ kind, reply }) => {
       if (closed || reply.session_id !== sessionId) return;
       if (kind === "resumed") {
         ownerConnectionId = client.getConnectionId() ?? ownerConnectionId;
@@ -257,7 +257,7 @@ export async function startWebrtcSession(
         console.warn("[webrtc] Signal rejected:", reply.code);
       }
     }),
-    client.onConnectionReady((connectionId) => {
+    client.on("connection.ready", (connectionId) => {
       if (closed || connectionId === ownerConnectionId) return;
       // A new WebSocket: claim this session's signaling on it.
       client.send({

@@ -1,0 +1,105 @@
+.pill {
+  --pill-color: var(--color-text-secondary);
+  /* Text color, when the tint itself is too light to read as text. */
+  --pill-text: var(--pill-color);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border-radius: var(--radius-pill);
+  border: 1px solid color-mix(in srgb, var(--pill-color) 30%, transparent);
+  background: color-mix(in srgb, var(--pill-color) 14%, transparent);
+  color: var(--pill-text);
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  line-height: 1.4;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.neutral {
+  --pill-color: var(--color-text-secondary);
+}
+
+.muted {
+  --pill-color: var(--color-text-faint);
+}
+
+.accent {
+  --pill-color: var(--color-primary);
+}
+
+.success {
+  --pill-color: var(--color-success);
+}
+
+.warning {
+  --pill-color: var(--color-warning);
+  --pill-text: var(--color-warning-text);
+}
+
+.danger {
+  --pill-color: var(--color-danger);
+}
+
+.mission {
+  --pill-color: var(--mode-mission);
+  --pill-text: var(--mode-mission-text);
+}
+
+/* A quieter orange, for mission states that aren't moving. */
+.missionSoft {
+  --pill-color: var(--mode-mission-soft);
+  --pill-text: var(--mode-mission-text);
+}
+
+.investigate {
+  --pill-color: var(--mode-investigate);
+  --pill-text: var(--mode-investigate-text);
+}
+
+.edit {
+  --pill-color: var(--mode-edit);
+  --pill-text: var(--mode-edit-text);
+}
+
+.activate {
+  --pill-color: var(--mode-activate);
+  --pill-text: var(--mode-activate-text);
+}
+
+/* PillButton: a firmer tint on hover, like a button. */
+.button {
+  font-family: inherit;
+  cursor: pointer;
+  transition:
+    background var(--duration-fast),
+    border-color var(--duration-fast);
+}
+
+.button:hover {
+  background: color-mix(in srgb, var(--pill-color) 26%, transparent);
+  border-color: color-mix(in srgb, var(--pill-color) 50%, transparent);
+}
+
+.button:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+
+/* Subtle: the UNCLEAR verdict's grey, a little more see-through than the
+   other tones. */
+.subtle {
+  --pill-color: var(--color-verdict-unclear);
+  background: color-mix(in srgb, var(--pill-color) 10%, transparent);
+  border-color: color-mix(in srgb, var(--pill-color) 25%, transparent);
+}

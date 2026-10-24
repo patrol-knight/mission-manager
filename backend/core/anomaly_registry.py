@@ -5,6 +5,9 @@ from core.anomaly_repository import AnomalyRepository
 from core.errors import AnomalyNotFoundError, InvalidAnomalyTransitionError
 from models.anomaly import FINAL_VERDICTS, Anomaly, AnomalyStateMessage, AnomalyVerdict
 
+# How long a removed closed anomaly's id is remembered, to ignore late refreshes.
+CLOSED_ID_RETENTION = timedelta(hours=1)
+
 
 class AnomalyRegistry:
     """In-memory, thread-safe store of live anomalies — same shape/precedent
@@ -33,7 +36,7 @@ class AnomalyRegistry:
         # delivery is best-effort, so Anomaly Detection may keep refreshing a
         # closed id; without this, a late refresh after removal would
         # recreate it as a brand-new anomaly.
-        self._closed_ids: set[str] = set()
+        self._closed_ids: dict[str, datetime] = {}
         self._repository = repository
 
     def ingest(
@@ -165,7 +168,12 @@ class AnomalyRegistry:
             for anomaly in expired:
                 del self._anomalies[anomaly.anomaly_id]
                 if anomaly.is_closed:
-                    self._closed_ids.add(anomaly.anomaly_id)
+                    self._closed_ids[anomaly.anomaly_id] = now
+            self._closed_ids = {
+                anomaly_id: removed_at
+                for anomaly_id, removed_at in self._closed_ids.items()
+                if now - removed_at < CLOSED_ID_RETENTION
+            }
         if self._repository is not None:
             for anomaly in expired:
                 if not anomaly.is_closed:

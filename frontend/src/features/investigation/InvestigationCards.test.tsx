@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ToastProvider } from "../../components/Toast";
 import { AnomalyCard } from "../anomalies/AnomalyCard";
@@ -80,16 +80,33 @@ describe("AnomalyCard", () => {
 
   it("shows what the operator needs to decide", () => {
     renderWithToasts(<AnomalyCard />);
+    expect(screen.getByText("Anomaly-6f1c2a8e")).toBeInTheDocument();
     expect(screen.getByText("Lying down")).toBeInTheDocument();
     expect(screen.getByText("92%")).toBeInTheDocument();
-    expect(screen.getByText("6f1c2a8e")).toBeInTheDocument();
+  });
+
+  it("Cancel deselects without investigating", async () => {
+    renderWithToasts(<AnomalyCard />);
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(useInvestigationStore.getState().selectedAnomalyId).toBeNull();
+    expect(investigationApi.startInvestigation).not.toHaveBeenCalled();
   });
 
   it("can't investigate while the robot is offline", () => {
     useDeviceStore.setState({ devices: { "robot-1": { ...robot, connected: false } } });
     renderWithToasts(<AnomalyCard />);
     expect(screen.getByRole("button", { name: "Investigate" })).toBeDisabled();
-    expect(screen.getByTitle("The robot is offline")).toBeInTheDocument();
+    expect(document.querySelector('[data-hint="The robot is offline"]')).toBeInTheDocument();
+  });
+
+  it("stays open once the anomaly expires, offering only Dismiss", async () => {
+    renderWithToasts(<AnomalyCard />);
+    act(() => useDeviceStore.setState({ anomalies: {} }));
+    expect(screen.getByText("Expired")).toBeInTheDocument();
+    expect(screen.getByText("No longer detected")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Investigate" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    expect(useInvestigationStore.getState().selectedAnomalyId).toBeNull();
   });
 
   it("starts the investigation and hands over to the Investigate card", async () => {
@@ -116,7 +133,7 @@ describe("InvestigateCard", () => {
   it("stops at once while en route and says where the robot goes", async () => {
     vi.mocked(investigationApi.stopInvestigation).mockResolvedValue(undefined);
     renderWithToasts(<InvestigateCard />);
-    expect(screen.getByText("10 m")).toBeInTheDocument();
+    expect(screen.getByText("Anomaly-6f1c2a8e")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Stop" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(investigationApi.stopInvestigation).toHaveBeenCalled();
@@ -125,19 +142,20 @@ describe("InvestigateCard", () => {
     expect(screen.getByText("Returning to start (WP 1)")).toBeInTheDocument();
   });
 
-  it("requires a verdict before Finish on site", () => {
+  it("requires a verdict before Submit on site", () => {
     useInvestigationStore.setState({ investigation: { ...investigation, phase: "on_site" } });
     renderWithToasts(<InvestigateCard />);
     expect(screen.getByRole("button", { name: "Verify" })).toBeEnabled();
-    expect(screen.getByRole("button", { name: "Finish" })).toBeDisabled();
-    expect(screen.getByText("NOT VERIFIED")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Submit" })).toBeDisabled();
+    expect(document.querySelector('[data-hint="Choose a verdict in Verify first"]')).toBeInTheDocument();
   });
 
-  it("finishes at once and toasts the recorded verdict", async () => {
+  it("submits at once and toasts the recorded verdict", async () => {
     vi.mocked(investigationApi.stopInvestigation).mockResolvedValue(undefined);
     useInvestigationStore.setState({ investigation: { ...investigation, phase: "on_site", draftVerdict: "false_positive" } });
     renderWithToasts(<InvestigateCard />);
-    await userEvent.click(screen.getByRole("button", { name: "Finish" }));
+    expect(screen.getByText("FALSE")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Submit" }));
     expect(investigationApi.stopInvestigation).toHaveBeenCalled();
     expect(await screen.findByText("Recorded as FALSE")).toBeInTheDocument();
   });

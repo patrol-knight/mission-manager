@@ -14,8 +14,10 @@ def list_missions(services: Services = Depends(get_services)) -> list[MissionSum
 
 
 @router.post("", response_model=MissionGeo)
-def create_mission(mission: Mission, services: Services = Depends(get_services)) -> MissionGeo:
-    return services.mission_service.create_mission(mission)
+def create_mission(
+    mission: Mission, activate: bool = False, services: Services = Depends(get_services)
+) -> MissionGeo:
+    return services.mission_service.create_mission(mission, activate)
 
 
 # Literal path before "/{mission_id}" so it isn't captured as an id.
@@ -55,8 +57,10 @@ def get_mission(mission_id: str, services: Services = Depends(get_services)) -> 
 
 
 @router.put("/{mission_id}", response_model=MissionGeo)
-def update_mission(mission_id: str, mission: Mission, services: Services = Depends(get_services)) -> MissionGeo:
-    return services.mission_service.update_mission(mission_id, mission)
+def update_mission(
+    mission_id: str, mission: Mission, activate: bool = False, services: Services = Depends(get_services)
+) -> MissionGeo:
+    return services.mission_service.update_mission(mission_id, mission, activate)
 
 
 @router.delete("/{mission_id}", status_code=status.HTTP_204_NO_CONTENT)

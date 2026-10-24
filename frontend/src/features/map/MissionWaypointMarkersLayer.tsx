@@ -3,20 +3,27 @@ import { MapContext } from "./MapContext";
 import { useMarkerList, type UseMarkerListOptions } from "./mapMarkers";
 import { useMissionStore } from "../../stores/missionStore";
 import { useInvestigationStore } from "../../stores/investigationStore";
-import { waypointMarkerColor, buildWaypointMarkerElement } from "../missions/waypointMarker";
+import { buildWaypointMarkerElement, setWaypointTarget } from "../missions/waypointMarker";
+import { targetWaypointIndex } from "../missions/missionStatus";
 import type { Waypoint } from "../missions/missionTypes";
+import { setMarkerGlyph } from "./markerGlyph";
 
-/** Monitor-view counterpart to the Editor's (interactive) WaypointEditorLayer —
- * read-only numbered markers for the persisted mission's waypoints. Shares
- * marker styling via features/missions/waypointMarker.ts so both look identical.
- * Grays out while the robot is investigating, same as CurrentMissionRouteLayer's
- * route line -- the investigation's yellow route/target stays the visual
- * focus, while the mission's waypoints remain visible for context. */
+const NO_WAYPOINTS: Waypoint[] = [];
+
+/** Monitor view: read-only numbered markers for the active mission, the one
+ * the robot is heading to pulsing. Hidden while the robot investigates --
+ * the mission is frozen then, and the yellow investigation route is the
+ * only path that matters. */
 export function MissionWaypointMarkersLayer() {
   const { map } = useContext(MapContext);
   const definition = useMissionStore((s) => s.definition);
+  const execution = useMissionStore((s) => s.execution);
   const investigating = useInvestigationStore((s) => s.investigation !== null);
-  const waypoints = useMemo(() => definition?.waypoints ?? [], [definition]);
+  const waypoints = useMemo(
+    () => (investigating ? NO_WAYPOINTS : (definition?.waypoints ?? NO_WAYPOINTS)),
+    [definition, investigating],
+  );
+  const target = targetWaypointIndex(execution, waypoints.length);
 
   const options = useMemo<UseMarkerListOptions<Waypoint>>(
     () => ({
@@ -25,16 +32,16 @@ export function MissionWaypointMarkersLayer() {
       // Computed once, server-side, by GET/save mission responses (see
       // backend/api/mission.py's WaypointGeo) -- no xy-to-lnglat call.
       project: async (wp) => (wp.lat != null && wp.lon != null ? { lng: wp.lon, lat: wp.lat } : null),
-      buildElement: buildWaypointMarkerElement,
+      buildElement: () => buildWaypointMarkerElement(true),
       updateElement: (el, wp) => {
         const index = waypoints.findIndex((w) => w.waypointId === wp.waypointId);
-        el.style.background = waypointMarkerColor(investigating);
-        el.textContent = String(index + 1);
+        setMarkerGlyph(el, String(index + 1));
+        setWaypointTarget(el, index === target);
       },
     }),
-    [waypoints, investigating],
+    [waypoints, target],
   );
 
-  useMarkerList(map, waypoints, options, [investigating]);
+  useMarkerList(map, waypoints, options, [target]);
   return null;
 }

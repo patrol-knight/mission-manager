@@ -33,13 +33,6 @@ class MapPoint(BaseModel):
     lon: float | None = None
 
 
-class ReachableGoal(BaseModel):
-    x: float
-    y: float
-    frame_id: str = "map"
-    reachable: bool
-
-
 class PointQuery(BaseModel):
     x: float
     y: float
@@ -49,12 +42,6 @@ class PointQuery(BaseModel):
 class LatLonQuery(BaseModel):
     lat: float
     lon: float
-    frame_id: str = "map"
-
-
-class ProjectReachableGoalRequest(BaseModel):
-    x: float
-    y: float
     frame_id: str = "map"
 
 

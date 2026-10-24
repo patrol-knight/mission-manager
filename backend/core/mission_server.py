@@ -33,6 +33,8 @@ class MissionServer:
         self._lock = threading.RLock()
         self._missions: dict[str, Mission] = {}
         self._current_id: str | None = None
+        # mission_id -> (updated_at, loop distance)
+        self._distance_cache: dict[str, tuple[datetime | None, float | None]] = {}
 
     def load(self) -> None:
         with self._lock:
@@ -102,30 +104,44 @@ class MissionServer:
             return None
         return route["properties"]["length_m"]
 
+    def _cached_loop_distance_m(self, mission: Mission, map_server: MapServer | None) -> float | None:
+        if map_server is None or not map_server.is_available():
+            return None
+        cached = self._distance_cache.get(mission.mission_id)
+        if cached is not None and cached[0] == mission.updated_at:
+            return cached[1]
+        distance_m = self._loop_distance_m(mission, map_server)
+        self._distance_cache[mission.mission_id] = (mission.updated_at, distance_m)
+        return distance_m
+
     def list_missions(self, map_server: MapServer | None = None) -> list[MissionSummary]:
+        # Route outside the lock; a cold cache routes every mission.
         with self._lock:
-            summaries = []
-            for m in self._missions.values():
-                home_x = m.waypoints[0].x if m.waypoints else None
-                home_y = m.waypoints[0].y if m.waypoints else None
-                distance_m = self._loop_distance_m(m, map_server) if map_server is not None else None
-                summaries.append(
-                    MissionSummary(
-                        mission_id=m.mission_id,
-                        name=m.name,
-                        map_name=m.map_name,
-                        frame_id=m.frame_id,
-                        waypoint_count=len(m.waypoints),
-                        loop_count=m.loop_count,
-                        infinite_loop=m.infinite_loop,
-                        home_x=home_x,
-                        home_y=home_y,
-                        distance_m=distance_m,
-                        is_current=(m.mission_id == self._current_id),
-                        updated_at=m.updated_at,
-                    )
+            missions = list(self._missions.values())
+            current_id = self._current_id
+
+        summaries = []
+        for m in missions:
+            home_x = m.waypoints[0].x if m.waypoints else None
+            home_y = m.waypoints[0].y if m.waypoints else None
+            distance_m = self._cached_loop_distance_m(m, map_server)
+            summaries.append(
+                MissionSummary(
+                    mission_id=m.mission_id,
+                    name=m.name,
+                    map_name=m.map_name,
+                    frame_id=m.frame_id,
+                    waypoint_count=len(m.waypoints),
+                    loop_count=m.loop_count,
+                    infinite_loop=m.infinite_loop,
+                    home_x=home_x,
+                    home_y=home_y,
+                    distance_m=distance_m,
+                    is_current=(m.mission_id == current_id),
+                    updated_at=m.updated_at,
                 )
-            return sorted(summaries, key=lambda s: s.mission_id)
+            )
+        return sorted(summaries, key=lambda s: s.mission_id)
 
     def get_mission(self, mission_id: str) -> Mission | None:
         with self._lock:
@@ -172,6 +188,7 @@ class MissionServer:
             if mission_id not in self._missions:
                 raise MissionNotFoundError(f"Mission not found: {mission_id}")
             del self._missions[mission_id]
+            self._distance_cache.pop(mission_id, None)
             path = self._mission_path(mission_id)
             if path.exists():
                 path.unlink()

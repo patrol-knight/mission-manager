@@ -76,12 +76,16 @@ class WebSocketManager:
         except Exception:
             logger.warning("Failed to send WebSocket message; dropping connection")
             await self.disconnect(websocket)
+            # So the client notices and reconnects.
+            try:
+                await websocket.close()
+            except Exception:
+                pass
 
     async def broadcast(self, message: dict) -> None:
         async with self._lock:
             connections = list(self._connections)
-        for websocket in connections:
-            await self.send_json(websocket, message)
+        await asyncio.gather(*(self.send_json(websocket, message) for websocket in connections))
 
     def broadcast_threadsafe(self, message: dict) -> None:
         if self._loop is None:

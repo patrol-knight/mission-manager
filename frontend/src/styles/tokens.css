@@ -1,0 +1,163 @@
+/* Design tokens -- the one place UI colors, radii, shadows and type sizes are
+   defined. Components reference these through var(--...) (CSS modules or
+   inline styles), never raw hex values, so a theme is a matter of redefining
+   this block. Map-canvas colors (MapLibre paint, marker elements) live in
+   features/map/mapPalette.ts instead, since GL paint can't read CSS vars. */
+
+:root {
+  color-scheme: light;
+
+  /* Surfaces */
+  --color-bg: #f3f4f6;
+  --color-surface: #ffffff;
+  --color-surface-raised: #f9fafb;
+  --color-surface-hover: #f3f4f6;
+  --color-surface-selected: rgba(37, 99, 235, 0.07);
+  /* Behind a camera feed -- dark in every theme. */
+  --color-surface-media: #0b0c0e;
+  --color-border: #e5e7eb;
+  --color-border-strong: #d1d5db;
+  --color-backdrop: rgba(15, 23, 42, 0.45);
+
+  /* Text */
+  --color-text: #111827;
+  --color-text-secondary: #374151;
+  --color-text-muted: #6b7280;
+  --color-text-faint: #9ca3af;
+  --color-text-disabled: #c4c8cf;
+  --color-text-on-accent: #fff;
+
+  /* Accents. The accent is cool on purpose: the map already speaks in
+     orange (route), red (anomalies) and yellow (investigation). */
+  --color-primary: #2563eb;
+  --color-primary-hover: #1d4ed8;
+  --color-warning: #f59e0b;
+  --color-warning-hover: #fbbf24;
+  /* Amber text needs to be darker than amber fills to read on white. */
+  --color-warning-text: #b45309;
+  --color-danger: #c51e3a;
+  --color-danger-border: rgba(197, 30, 58, 0.3);
+  --color-success: #16a34a;
+  --color-caution: #ea580c;
+  --color-disabled-fill: #e5e7eb;
+  --color-disabled-text: #9ca3af;
+
+  /* Modes. Each kind of work has its own color family, on the map and in
+     the panel alike: orange = running a mission, yellow = investigating an
+     anomaly, mauve (a muted violet) = editing missions. `-text` is the darker shade for text
+     on white; `-on` the text color on a filled button. */
+  --mode-mission: #ea580c;
+  --mode-mission-hover: #c2410c;
+  --mode-mission-text: #c2410c;
+  --mode-mission-soft: #f4a26b;
+  --mode-investigate: #facc15;
+  --mode-investigate-hover: #eab308;
+  --mode-investigate-text: #a16207;
+  --mode-investigate-on: #3f2d00;
+  /* Same as mapPalette.edit, so buttons, waypoint numbers and routes match. */
+  --mode-edit: #a97a9f;
+  --mode-edit-hover: #94678b;
+  --mode-edit-text: #7d5373;
+  /* Activating a mission from the (mauve) library: an orange-family
+     terracotta that sits better next to the mauve than the run orange. */
+  --mode-activate: #d4735e;
+  --mode-activate-hover: #bf5f4b;
+  --mode-activate-text: #a8503e;
+
+  /* Connection / device status */
+  --color-status-online: #16a34a;
+  --color-status-connecting: #d97706;
+  --color-status-offline: #c51e3a;
+  --color-status-unknown: #9ca3af;
+
+  /* Investigation verdicts (VerifyModal buttons, investigation card pill) */
+  --color-verdict-true: #c51e3a;
+  --color-verdict-false: #16a34a;
+  --color-verdict-unclear: #6b7280;
+
+  /* Radii */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 18px;
+  --radius-pill: 999px;
+
+  /* Shadows */
+  --shadow-card: 0 1px 2px rgba(16, 24, 40, 0.05), 0 1px 3px rgba(16, 24, 40, 0.06);
+  --shadow-panel: -1px 0 0 rgba(16, 24, 40, 0.04);
+  --shadow-floating: 0 8px 24px rgba(16, 24, 40, 0.14);
+  --shadow-dialog: 0 16px 48px rgba(16, 24, 40, 0.22);
+  --shadow-modal: 0 24px 80px rgba(0, 0, 0, 0.55);
+
+  /* Type scale. System fonts only: the deployment LAN has no internet. */
+  --font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --text-2xs: 10px;
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-md: 13px;
+  --text-base: 14px;
+  --text-lg: 15px;
+  --text-xl: 18px;
+  --text-2xl: 20px;
+
+  /* Motion */
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --duration-fast: 150ms;
+  --duration-slow: 320ms;
+
+  /* Stacking */
+  --z-map-overlay: 10;
+  --z-dialog: 10000;
+  --z-modal: 20000;
+  --z-toast: 99999;
+}
+
+/* Mode scopes: inside one, "primary" (filled buttons, selection, focus) is
+   that mode's color. */
+.mode-mission {
+  --color-primary: var(--mode-mission);
+  --color-primary-hover: var(--mode-mission-hover);
+  --color-surface-selected: rgba(234, 88, 12, 0.07);
+}
+
+.mode-investigate {
+  --color-primary: var(--mode-investigate);
+  --color-primary-hover: var(--mode-investigate-hover);
+  --color-text-on-accent: var(--mode-investigate-on);
+  --color-surface-selected: rgba(250, 204, 21, 0.12);
+}
+
+.mode-edit {
+  --color-primary: var(--mode-edit);
+  --color-primary-hover: var(--mode-edit-hover);
+  --color-surface-selected: rgba(169, 122, 159, 0.1);
+}
+
+.mode-activate {
+  --color-primary: var(--mode-activate);
+  --color-primary-hover: var(--mode-activate-hover);
+}
+
+/* The full-screen camera windows stay dark: video reads best on a dark
+   frame. Shared components inside them pick these values up. */
+.theme-dark {
+  color-scheme: dark;
+  --color-surface: #16171a;
+  --color-surface-raised: #1e1f23;
+  --color-surface-hover: #222328;
+  --color-border: #2a2c31;
+  --color-border-strong: #34373e;
+  --color-backdrop: rgba(0, 0, 0, 0.6);
+  --color-text: #ecedf0;
+  --color-text-secondary: #b6b9c1;
+  --color-text-muted: #8b8f98;
+  --color-text-faint: #8b8f98;
+  --color-danger: #ef6a7e;
+  --color-status-online: #3ccf91;
+  --color-status-offline: #ef6a7e;
+  --color-status-unknown: #6c707a;
+  --color-verdict-true: #ef6a7e;
+  --color-verdict-false: #3ccf91;
+  --color-verdict-unclear: #9ca3af;
+}

@@ -2,16 +2,27 @@ import { describe, it, expect } from "vitest";
 import {
   missionEditorReducer,
   BLANK_STATE,
-  isHomeWaypoint,
   parseLoopCount,
   isNameValid,
   canSave,
   type MissionEditorState,
 } from "./missionEditorReducer";
-import type { MissionDefinition } from "./missionTypes";
+import type { MissionDefinition, RouteValidationResult } from "./missionTypes";
+
+const VALID_ROUTE_RESULT: RouteValidationResult = { valid: true, route: null, errors: [] };
+const INVALID_ROUTE_RESULT: RouteValidationResult = {
+  valid: false,
+  route: null,
+  errors: [{ code: "unreachable", message: "no route" }],
+};
 
 function addWaypoint(state: MissionEditorState, x: number, y: number): MissionEditorState {
   return missionEditorReducer(state, { type: "ADD_WAYPOINT", x, y });
+}
+
+/** The route check for the current draft came back with `result`. */
+function validated(state: MissionEditorState, result = VALID_ROUTE_RESULT): MissionEditorState {
+  return missionEditorReducer(state, { type: "SET_VALIDATION_RESULT", result, revision: state.revision });
 }
 
 describe("missionEditorReducer", () => {
@@ -44,21 +55,20 @@ describe("missionEditorReducer", () => {
     expect(state.dirty).toBe(false);
   });
 
-  it("first added waypoint becomes WP1/Home", () => {
+  it("selects a waypoint as it is added", () => {
     const state = addWaypoint(BLANK_STATE, 5, 5);
-    expect(isHomeWaypoint(state.waypoints, state.waypoints[0].waypointId)).toBe(true);
+    expect(state.selectedWaypointId).toBe(state.waypoints[0].waypointId);
   });
 
-  it("WP1 cannot be deleted", () => {
+  it("any waypoint can be deleted, including the first", () => {
     let state = addWaypoint(BLANK_STATE, 0, 0);
     state = addWaypoint(state, 1, 1);
-    const home = state.waypoints[0];
-    state = missionEditorReducer(state, { type: "DELETE_WAYPOINT", id: home.waypointId });
-    expect(state.waypoints).toHaveLength(2);
-    expect(state.waypoints[0].waypointId).toBe(home.waypointId);
+    const first = state.waypoints[0];
+    state = missionEditorReducer(state, { type: "DELETE_WAYPOINT", id: first.waypointId });
+    expect(state.waypoints.map((wp) => wp.x)).toEqual([1]);
   });
 
-  it("a non-home waypoint can be deleted directly by id", () => {
+  it("a waypoint can be deleted directly by id, clearing its selection", () => {
     let state = addWaypoint(BLANK_STATE, 0, 0);
     state = addWaypoint(state, 1, 1);
     const second = state.waypoints[1];
@@ -72,11 +82,11 @@ describe("missionEditorReducer", () => {
     let state = addWaypoint(BLANK_STATE, 0, 0);
     state = addWaypoint(state, 1, 1);
     state = addWaypoint(state, 2, 2);
-    const home = state.waypoints[0];
+    const first = state.waypoints[0];
     const third = state.waypoints[2];
-    state = missionEditorReducer(state, { type: "SELECT_WAYPOINT", id: home.waypointId });
+    state = missionEditorReducer(state, { type: "SELECT_WAYPOINT", id: first.waypointId });
     state = missionEditorReducer(state, { type: "DELETE_WAYPOINT", id: third.waypointId });
-    expect(state.selectedWaypointId).toBe(home.waypointId);
+    expect(state.selectedWaypointId).toBe(first.waypointId);
   });
 
   it("MOVE_WAYPOINT updates coordinates without changing order or ids", () => {
@@ -87,22 +97,35 @@ describe("missionEditorReducer", () => {
     expect(state.waypoints[0]).toMatchObject({ waypointId: id, x: 9, y: 9 });
   });
 
-  it("SNAP_WAYPOINTS replaces all waypoint coordinates as one undoable step", () => {
+  it("drops a route check that ran against an older draft", () => {
     let state = addWaypoint(BLANK_STATE, 0, 0);
     state = addWaypoint(state, 1, 1);
-    const historyLengthBefore = state.history.length;
-    const snapped = state.waypoints.map((wp) => ({ ...wp, x: wp.x + 100, y: wp.y + 100 }));
-
-    state = missionEditorReducer(state, { type: "SNAP_WAYPOINTS", waypoints: snapped });
-
-    expect(state.waypoints).toEqual(snapped);
-    expect(state.dirty).toBe(true);
+    const checkedRevision = state.revision;
+    state = addWaypoint(state, 2, 2); // edited while the check was in flight
+    state = missionEditorReducer(state, {
+      type: "SET_VALIDATION_RESULT",
+      result: VALID_ROUTE_RESULT,
+      revision: checkedRevision,
+    });
     expect(state.validationStale).toBe(true);
-    expect(state.history.length).toBe(historyLengthBefore + 1);
+    expect(state.validationResult).toBeNull();
+  });
 
-    const undone = missionEditorReducer(state, { type: "UNDO" });
-    expect(undone.waypoints[0]).toMatchObject({ x: 0, y: 0 });
-    expect(undone.waypoints[1]).toMatchObject({ x: 1, y: 1 });
+  it("undo and redo are waypoint edits too: the route needs checking again", () => {
+    let state = addWaypoint(BLANK_STATE, 0, 0);
+    state = addWaypoint(state, 1, 1);
+    state = validated(state);
+    state = missionEditorReducer(state, { type: "UNDO" });
+    expect(state.validationStale).toBe(true);
+  });
+
+  it("changing the loops doesn't invalidate the route", () => {
+    let state = addWaypoint(BLANK_STATE, 0, 0);
+    state = addWaypoint(state, 1, 1);
+    state = validated(state);
+    state = missionEditorReducer(state, { type: "SET_LOOP_COUNT_INPUT", value: "3" });
+    state = missionEditorReducer(state, { type: "SET_INFINITE_LOOP", value: true });
+    expect(state.validationStale).toBe(false);
   });
 
   it("undo reverts the last waypoint mutation and redo replays it", () => {
@@ -162,8 +185,6 @@ describe("isNameValid", () => {
   });
 });
 
-const VALID_ROUTE_RESULT = { valid: true, route: null, errors: [] };
-const INVALID_ROUTE_RESULT = { valid: false, route: null, errors: [{ code: "unreachable", message: "no route" }] };
 
 describe("canSave", () => {
   it("requires a valid name, loop count, at least two waypoints, and a fresh successful validation", () => {
@@ -177,7 +198,7 @@ describe("canSave", () => {
     state = addWaypoint(state, 1, 1);
     expect(canSave(state)).toBe(false); // waypoints exist but never validated
 
-    state = missionEditorReducer(state, { type: "SET_VALIDATION_RESULT", result: VALID_ROUTE_RESULT });
+    state = validated(state);
     expect(canSave(state)).toBe(true);
 
     state = missionEditorReducer(state, { type: "SET_LOOP_COUNT_INPUT", value: "0" });
@@ -189,7 +210,7 @@ describe("canSave", () => {
     state = addWaypoint(state, 0, 0);
     state = addWaypoint(state, 1, 1);
     state = missionEditorReducer(state, { type: "SET_LOOP_COUNT_INPUT", value: "" });
-    state = missionEditorReducer(state, { type: "SET_VALIDATION_RESULT", result: VALID_ROUTE_RESULT });
+    state = validated(state);
     expect(canSave(state)).toBe(false);
 
     state = missionEditorReducer(state, { type: "SET_INFINITE_LOOP", value: true });
@@ -202,7 +223,7 @@ describe("canSave", () => {
     let state = missionEditorReducer(BLANK_STATE, { type: "SET_NAME", name: "Patrol A" });
     state = addWaypoint(state, 0, 0);
     state = addWaypoint(state, 1, 1);
-    state = missionEditorReducer(state, { type: "SET_VALIDATION_RESULT", result: INVALID_ROUTE_RESULT });
+    state = validated(state, INVALID_ROUTE_RESULT);
     expect(canSave(state)).toBe(false);
   });
 
@@ -210,7 +231,7 @@ describe("canSave", () => {
     let state = missionEditorReducer(BLANK_STATE, { type: "SET_NAME", name: "Patrol A" });
     state = addWaypoint(state, 0, 0);
     state = addWaypoint(state, 1, 1);
-    state = missionEditorReducer(state, { type: "SET_VALIDATION_RESULT", result: VALID_ROUTE_RESULT });
+    state = validated(state);
     expect(canSave(state)).toBe(true);
 
     state = addWaypoint(state, 2, 2);

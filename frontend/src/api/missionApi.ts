@@ -1,5 +1,5 @@
-import { http, ApiError } from "./httpClient";
-import { getMapInfo, routePreview } from "./mapApi";
+import { http } from "./httpClient";
+import { routePreview } from "./mapApi";
 import {
   missionDefinitionFromRaw,
   missionDraftToRawPayload,
@@ -49,40 +49,14 @@ function generateMissionId(name: string): string {
   return `${slugify(name)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-async function resolveMapName(): Promise<string> {
-  try {
-    return (await getMapInfo()).mapName;
-  } catch {
-    return "default";
-  }
-}
-
-/**
- * Creates or updates the mission depending on whether `draft.missionId` is set,
- * then activates it so the Monitor view immediately reflects what was just saved
- * (this app only ever has one mission "loaded" at a time).
- */
+/** Creates or updates the mission and makes it the current one, in one request. */
 export async function saveMission(draft: MissionDraftInput): Promise<MissionDefinition> {
-  const mapName = await resolveMapName();
   const missionId = draft.missionId ?? generateMissionId(draft.name);
-  const payload = missionDraftToRawPayload({ ...draft, missionId, mapName, frameId: "map" });
-
+  const payload = missionDraftToRawPayload({ ...draft, missionId, frameId: "map" });
   const raw = draft.missionId
-    ? await http.put<RawMission>(`/api/missions/${encodeURIComponent(missionId)}`, payload)
-    : await http.post<RawMission>("/api/missions", payload);
-
-  await activateMission(missionId);
+    ? await http.put<RawMission>(`/api/missions/${encodeURIComponent(missionId)}?activate=true`, payload)
+    : await http.post<RawMission>("/api/missions?activate=true", payload);
   return missionDefinitionFromRaw(raw);
-}
-
-export async function getExecutionState(): Promise<MissionExecutionState | null> {
-  try {
-    const raw = await http.get<RawMissionExecutionState>("/api/missions/current/execution");
-    return missionExecutionStateFromRaw(raw);
-  } catch (err) {
-    if (err instanceof ApiError && err.status === 404) return null;
-    throw err;
-  }
 }
 
 export async function startMission(): Promise<MissionExecutionState> {

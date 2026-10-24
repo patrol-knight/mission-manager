@@ -48,27 +48,27 @@ class DeviceRegistry:
         return sorted(views, key=lambda v: v.device_id)
 
     def get_robot(self) -> DeviceView | None:
-        """The robot, connected or not -- first by device_id if there were
-        ever more than one (single-robot deployment)."""
-        return next((d for d in self.list_devices() if d.type == DeviceType.ROBOT), None)
+        """The robot, connected or not -- lowest device_id if there are ever
+        several (single-robot deployment)."""
+        return self._first_robot(connected_only=False)
 
     def get_connected_robot(self) -> DeviceView | None:
-        """First connected robot device, by device_id -- deterministic
-        tie-break if more than one is ever connected at once. Used to gate
-        mission start and investigations, and to route from the robot's
-        current pose."""
-        return next(
-            (d for d in self.list_devices() if d.type == DeviceType.ROBOT and d.connected), None
-        )
+        return self._first_robot(connected_only=True)
 
-    def mark_offline_devices(
-        self, timeout_sec: float, now: float | None = None
-    ) -> bool:
-        now = time.time() if now is None else now
-        changed = False
+    def _first_robot(self, connected_only: bool) -> DeviceView | None:
         with self._lock:
-            for device in self._devices.values():
-                if device.connected and (now - device.last_seen) > timeout_sec:
-                    if device.mark_offline():
-                        changed = True
-        return changed
+            robots = [
+                d for d in self._devices.values()
+                if d.state.type == DeviceType.ROBOT and (d.connected or not connected_only)
+            ]
+            return min(robots, key=lambda d: d.state.device_id).to_view() if robots else None
+
+    def mark_offline_devices(self, timeout_sec: float, now: float | None = None) -> list[DeviceView]:
+        """Marks silent devices offline; returns the ones that just went offline."""
+        now = time.time() if now is None else now
+        with self._lock:
+            return [
+                device.to_view()
+                for device in self._devices.values()
+                if (now - device.last_seen) > timeout_sec and device.mark_offline()
+            ]

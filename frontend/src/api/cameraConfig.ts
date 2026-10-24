@@ -1,11 +1,6 @@
-/**
- * Explicit camera/WebRTC adapter selection.
- *
- * cameraApi.ts picks its implementation once at module load based on this value —
- * never by speculatively calling the real endpoint and treating a 501 as "use the mock."
- * The real backend camera endpoint (POST /api/cameras/{id}/session) is a stub today
- * (see backend/api/camera.py), so "mock" is the default everywhere.
- */
+/** Camera/WebRTC adapter, picked once at module load by cameraApi.ts: "real"
+ * streams through POST /api/cameras/{device}/{camera}/stream, "mock" (the
+ * default) fakes it. */
 export type CameraMode = "mock" | "real";
 
 function normalize(value: string | undefined): CameraMode | null {

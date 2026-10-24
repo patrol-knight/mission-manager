@@ -7,11 +7,7 @@ export interface Waypoint {
   yaw: number | null;
   label: string | null;
   type: WaypointType;
-  /** Computed once server-side (backend/api/mission.py's WaypointGeo) --
-   * response-only (never part of what gets saved back), and null only when
-   * the map service was unavailable. Undefined for a waypoint that only
-   * exists in the editor's local draft and hasn't round-tripped through the
-   * backend yet (see missionEditorReducer's ADD_WAYPOINT/MOVE_WAYPOINT). */
+  /** From the backend (never saved back); null when the map was unavailable. */
   lat?: number | null;
   lon?: number | null;
 }
@@ -193,15 +189,14 @@ export interface MissionDraftInput {
 
 interface ResolvedMissionDraft extends Omit<MissionDraftInput, "missionId"> {
   missionId: string;
-  mapName: string;
   frameId: string;
 }
 
-export function missionDraftToRawPayload(draft: ResolvedMissionDraft): RawMission {
+/** The backend fills in map_name from the loaded map. */
+export function missionDraftToRawPayload(draft: ResolvedMissionDraft): Omit<RawMission, "map_name"> {
   return {
     mission_id: draft.missionId,
     name: draft.name.trim(),
-    map_name: draft.mapName,
     frame_id: draft.frameId,
     description: null,
     waypoints: draft.waypoints.map((wp) => ({

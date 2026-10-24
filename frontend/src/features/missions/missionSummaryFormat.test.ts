@@ -39,14 +39,14 @@ describe("formatDuration", () => {
   });
 
   it("formats minutes under an hour", () => {
-    expect(formatDuration(125)).toBe("~2 min");
+    expect(formatDuration(125)).toBe("2 min");
   });
 
   it("formats hours and minutes", () => {
-    expect(formatDuration(3900)).toBe("~1h 5m");
+    expect(formatDuration(3900)).toBe("1h 5m");
   });
 
   it("omits minutes when exactly on the hour", () => {
-    expect(formatDuration(7200)).toBe("~2h");
+    expect(formatDuration(7200)).toBe("2h");
   });
 });

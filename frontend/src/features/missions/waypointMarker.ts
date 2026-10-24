@@ -1,28 +1,30 @@
-const ACTIVE_WAYPOINT_COLOR = "#f08c00";
-// Matches CurrentMissionRouteLayer's INVESTIGATING_COLOR, so the route and
-// its waypoints gray out together while the robot is investigating.
-const INVESTIGATING_WAYPOINT_COLOR = "#868e96";
+import { mapPalette } from "../map/mapPalette";
 
-/** Shared marker color between the interactive editor layer
- * (features/map/WaypointEditorLayer.tsx) and the read-only monitor layer
- * (features/map/MissionWaypointMarkersLayer.tsx) so both render identically
- * — every waypoint the same orange as the mission route, regardless of
- * home/selected status. Grays out when `muted` (the robot is investigating). */
-export function waypointMarkerColor(muted = false): string {
-  return muted ? INVESTIGATING_WAYPOINT_COLOR : ACTIVE_WAYPOINT_COLOR;
-}
-
-export function buildWaypointMarkerElement(): HTMLElement {
+/** Numbered waypoint disc in `color` (the mission's mode color) with a
+ * white ring and white digits. `passive` (monitor and library) makes it smaller and click-through:
+ * there it is context only, and it would otherwise sit on top of the robot
+ * parked at waypoint 1. */
+export function buildWaypointMarkerElement(passive = false, color: string = mapPalette.waypoint): HTMLElement {
+  const size = passive ? 22 : 26;
   const el = document.createElement("div");
   el.className = "wp-marker";
   el.style.cssText = `
-    width:26px;height:26px;border-radius:50%;
+    width:${size}px;height:${size}px;border-radius:50%;box-sizing:border-box;
     display:flex;align-items:center;justify-content:center;
-    color:white;font-weight:bold;font-size:12px;font-family:monospace;
-    border:2px solid white;
-    box-shadow:0 1px 5px rgba(0,0,0,0.5);
-    cursor:pointer;
+    background:${color};
+    color:${mapPalette.waypointText};font:700 ${passive ? 11 : 12}px system-ui,sans-serif;
+    border:2px solid ${mapPalette.markerBorder};
+    box-shadow:${mapPalette.markerShadow};
+    cursor:${passive ? "default" : "pointer"};
+    pointer-events:${passive ? "none" : "auto"};
     z-index:1;
   `;
   return el;
+}
+
+/** Marks the waypoint the robot is heading to with a pulsing ring (see
+ * @keyframes waypoint-target-pulse), or clears it. */
+export function setWaypointTarget(el: HTMLElement, isTarget: boolean): void {
+  el.style.animation = isTarget ? "waypoint-target-pulse 1.6s ease-out infinite" : "";
+  el.style.zIndex = isTarget ? "2" : "1";
 }

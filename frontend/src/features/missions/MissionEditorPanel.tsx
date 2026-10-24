@@ -1,64 +1,22 @@
-import { useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 import { useMissionEditor } from "./useMissionEditor";
-import { parseLoopCount, isNameValid, canSave } from "./missionEditorReducer";
+import { parseLoopCount, isNameValid, canSave, type MissionEditorState } from "./missionEditorReducer";
 import { WaypointList } from "./WaypointList";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
+import { Card } from "../../components/ui/Card";
+import { Button } from "../../components/ui/Button";
+import { ButtonRow } from "../../components/ui/ButtonRow";
+import { Note } from "../../components/ui/Note";
+import { SectionLabel } from "../../components/ui/SectionLabel";
 import { useToast } from "../../components/useToast";
 import { useMissionStore } from "../../stores/missionStore";
 import { validateRoute, saveMission } from "../../api/missionApi";
-import { snapWaypoint } from "../../api/mapApi";
+import { formatDistance } from "./missionSummaryFormat";
+import styles from "./MissionEditorPanel.module.css";
 
-const cardStyle: CSSProperties = {
-  background: "#fff",
-  borderRadius: 12,
-  padding: 16,
-  boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
-};
-
-const labelStyle: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: 6,
-  fontSize: 13,
-  fontWeight: 600,
-  color: "#495057",
-};
-
-const inputStyle: CSSProperties = {
-  padding: "8px 10px",
-  borderRadius: 8,
-  border: "1px solid #dee2e6",
-  fontSize: 14,
-};
-
-const primaryButtonStyle: CSSProperties = {
-  flex: 1,
-  padding: "10px 14px",
-  borderRadius: 8,
-  border: "none",
-  background: "#1c7ed6",
-  color: "#fff",
-  fontWeight: 600,
-  cursor: "pointer",
-};
-
-const secondaryButtonStyle: CSSProperties = {
-  flex: 1,
-  padding: "10px 14px",
-  borderRadius: 8,
-  border: "1px solid #dee2e6",
-  background: "#fff",
-  color: "#212529",
-  cursor: "pointer",
-};
-
-function FieldError({ children }: { children: ReactNode }) {
-  return <p style={{ margin: "4px 0 0 0", fontSize: 12, color: "#dc3545" }}>{children}</p>;
-}
-
-function disabledStyle(base: CSSProperties, enabled: boolean): CSSProperties {
-  return { ...base, opacity: enabled ? 1 : 0.5, cursor: enabled ? "pointer" : "not-allowed" };
-}
+/** Wait this long after the last waypoint edit before checking the route,
+ * so a burst of edits costs one request. */
+const ROUTE_CHECK_DELAY_MS = 400;
 
 interface MissionEditorPanelProps {
   onCancel: () => void;
@@ -70,20 +28,19 @@ export function MissionEditorPanel({ onCancel, onSaved }: MissionEditorPanelProp
   const setDefinition = useMissionStore((s) => s.setDefinition);
   const { show } = useToast();
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
-  const [validating, setValidating] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [nameTouched, setNameTouched] = useState(false);
 
-  const nameError = !isNameValid(state.name) ? "Mission name is required" : null;
+  useAutoRouteCheck(state, dispatch);
+  useEditorShortcuts(state, dispatch);
+
   const loopCount = parseLoopCount(state.loopCountInput);
+  const nameError = nameTouched && !isNameValid(state.name) ? "Give the mission a name" : null;
   const loopCountError =
-    !state.infiniteLoop && loopCount === null ? "Loop count must be a whole number, 1 or greater" : null;
-  const waypointCountError = state.waypoints.length < 2 ? "At least two waypoints are required" : null;
+    !state.infiniteLoop && loopCount === null ? "Loops must be a whole number, 1 or more" : null;
 
   // Explicitly reset the shared editor context on cancel rather than leaving
-  // the draft dangling until the next OPEN dispatch overwrites it -- that
-  // "cleared implicitly next time" gap is exactly the kind of thing that
-  // could look like "cancel didn't really discard" if anything ever reads
-  // editor state before the next entry point dispatches OPEN.
+  // the draft dangling until the next OPEN dispatch overwrites it.
   const discard = () => {
     dispatch({ type: "OPEN", mission: null });
     onCancel();
@@ -92,34 +49,6 @@ export function MissionEditorPanel({ onCancel, onSaved }: MissionEditorPanelProp
   const handleCancelClick = () => {
     if (state.dirty) setShowDiscardConfirm(true);
     else discard();
-  };
-
-  const handleValidate = async () => {
-    setValidating(true);
-    try {
-      // Snap each waypoint onto its nearest lanelet centerline first, so saved
-      // waypoints line up cleanly on the road instead of sitting slightly off
-      // to one side of it. A per-waypoint snap failure keeps that waypoint's
-      // original click rather than aborting the whole validate action.
-      const snapped = await Promise.all(
-        state.waypoints.map(async (wp) => {
-          try {
-            const point = await snapWaypoint(wp.x, wp.y);
-            return { ...wp, x: point.x, y: point.y };
-          } catch {
-            return wp;
-          }
-        }),
-      );
-      dispatch({ type: "SNAP_WAYPOINTS", waypoints: snapped });
-
-      const result = await validateRoute(snapped);
-      dispatch({ type: "SET_VALIDATION_RESULT", result });
-      if (result.valid) show("success", "Route valid", "The waypoints form a reachable route.");
-      else show("warning", "Route invalid", result.errors[0]?.message);
-    } finally {
-      setValidating(false);
-    }
   };
 
   const handleSave = async () => {
@@ -145,85 +74,110 @@ export function MissionEditorPanel({ onCancel, onSaved }: MissionEditorPanelProp
     }
   };
 
-  const saveEnabled = canSave(state) && !saving;
-  const validateEnabled = !validating && state.waypoints.length >= 2;
+  const stepLoops = (delta: number) =>
+    dispatch({ type: "SET_LOOP_COUNT_INPUT", value: String(Math.max(1, (loopCount ?? 1) + delta)) });
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <div style={cardStyle}>
-        <label style={labelStyle}>
-          Mission name
-          <input
-            value={state.name}
-            onChange={(e) => dispatch({ type: "SET_NAME", name: e.target.value })}
-            style={inputStyle}
-          />
-        </label>
+    <>
+      <div className={styles.header}>
+        <span className={styles.headerLabel}>
+          <SectionLabel>{state.missionId ? "Edit mission" : "New mission"}</SectionLabel>
+        </span>
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={state.history.length === 0}
+          onClick={() => dispatch({ type: "UNDO" })}
+          data-hint="Undo (Ctrl+Z)"
+        >
+          Undo
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={state.future.length === 0}
+          onClick={() => dispatch({ type: "REDO" })}
+          data-hint="Redo (Ctrl+Shift+Z)"
+        >
+          Redo
+        </Button>
+      </div>
+
+      <div>
+        <input
+          className={styles.nameInput}
+          aria-label="Mission name"
+          placeholder="Mission name"
+          value={state.name}
+          onChange={(e) => dispatch({ type: "SET_NAME", name: e.target.value })}
+          onBlur={() => setNameTouched(true)}
+        />
         {nameError && <FieldError>{nameError}</FieldError>}
       </div>
 
-      <div style={cardStyle}>
-        <div style={labelStyle}>
-          Loop count
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <input
-              aria-label="Loop count"
-              type="number"
-              min={1}
-              step={1}
-              value={state.loopCountInput}
-              disabled={state.infiniteLoop}
-              onChange={(e) => dispatch({ type: "SET_LOOP_COUNT_INPUT", value: e.target.value })}
-              style={{ ...inputStyle, flex: 1, opacity: state.infiniteLoop ? 0.5 : 1 }}
-            />
-            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, whiteSpace: "nowrap" }}>
+      <Card>
+        <div className={styles.fieldRow}>
+          <span className={styles.fieldLabel}>Loops</span>
+          <div className={styles.loopControls}>
+            <div className={styles.stepper}>
+              <button
+                type="button"
+                className={styles.stepButton}
+                aria-label="Fewer loops"
+                disabled={state.infiniteLoop || (loopCount ?? 1) <= 1}
+                onClick={() => stepLoops(-1)}
+              >
+                −
+              </button>
               <input
-                type="checkbox"
-                checked={state.infiniteLoop}
-                onChange={(e) => dispatch({ type: "SET_INFINITE_LOOP", value: e.target.checked })}
+                className={styles.stepInput}
+                aria-label="Loop count"
+                type="number"
+                min={1}
+                step={1}
+                value={state.loopCountInput}
+                disabled={state.infiniteLoop}
+                onChange={(e) => dispatch({ type: "SET_LOOP_COUNT_INPUT", value: e.target.value })}
               />
+              <button
+                type="button"
+                className={styles.stepButton}
+                aria-label="More loops"
+                disabled={state.infiniteLoop}
+                onClick={() => stepLoops(1)}
+              >
+                +
+              </button>
+            </div>
+            <button
+              type="button"
+              className={styles.toggle}
+              aria-pressed={state.infiniteLoop}
+              onClick={() => dispatch({ type: "SET_INFINITE_LOOP", value: !state.infiniteLoop })}
+            >
               Infinite
-            </label>
+            </button>
           </div>
         </div>
         {loopCountError && <FieldError>{loopCountError}</FieldError>}
-      </div>
+      </Card>
 
-      <div style={cardStyle}>
+      <Card>
         <WaypointList />
-        {waypointCountError && <FieldError>{waypointCountError}</FieldError>}
-      </div>
+        <div style={{ marginTop: 12 }}>
+          <RouteStatus state={state} />
+        </div>
+      </Card>
 
-      <div style={cardStyle}>
-        {state.validationResult === null ? (
-          <p style={{ margin: 0, fontSize: 12, color: "#6c757d" }}>Route not yet validated.</p>
-        ) : state.validationStale ? (
-          <p style={{ margin: 0, fontSize: 12, color: "#e8590c" }}>
-            Waypoints changed since the last validation — validate again before saving.
-          </p>
-        ) : state.validationResult.valid ? (
-          <p style={{ margin: 0, fontSize: 12, color: "#2f9e44" }}>Route is valid.</p>
-        ) : (
-          <p style={{ margin: 0, fontSize: 12, color: "#dc3545" }}>
-            {state.validationResult.errors[0]?.message ?? "Route is invalid."}
-          </p>
-        )}
-      </div>
-
-      <div style={{ display: "flex", gap: 8 }}>
-        <button onClick={handleCancelClick} style={secondaryButtonStyle}>
-          Cancel
-        </button>
-        <button
-          disabled={!validateEnabled}
-          onClick={handleValidate}
-          style={disabledStyle(secondaryButtonStyle, validateEnabled)}
-        >
-          {validating ? "Validating…" : "Validate Route"}
-        </button>
-        <button disabled={!saveEnabled} onClick={handleSave} style={disabledStyle(primaryButtonStyle, saveEnabled)}>
-          {saving ? "Saving…" : "Save"}
-        </button>
+      <div className={styles.footer}>
+        <ButtonRow marginTop={0}>
+          <Button block onClick={handleCancelClick}>
+            Cancel
+          </Button>
+          <Button variant="primary" block disabled={!canSave(state) || saving} onClick={() => void handleSave()}>
+            {saving ? "Saving…" : "Save"}
+          </Button>
+        </ButtonRow>
       </div>
 
       {showDiscardConfirm && (
@@ -238,6 +192,87 @@ export function MissionEditorPanel({ onCancel, onSaved }: MissionEditorPanelProp
           onCancel={() => setShowDiscardConfirm(false)}
         />
       )}
-    </div>
+    </>
   );
+}
+
+function FieldError({ children }: { children: string }) {
+  return (
+    <Note tone="danger" size="sm" className={styles.fieldError}>
+      {children}
+    </Note>
+  );
+}
+
+/** One line on whether the waypoints make a drivable loop. */
+function RouteStatus({ state }: { state: MissionEditorState }) {
+  if (state.waypoints.length < 2) {
+    return (
+      <Note size="sm">
+        {state.waypoints.length === 0 ? "Click the map to add waypoints." : "Add at least one more waypoint."}
+      </Note>
+    );
+  }
+  if (state.validationStale || !state.validationResult) {
+    return <Note size="sm">Checking route…</Note>;
+  }
+  if (!state.validationResult.valid) {
+    return (
+      <Note tone="danger" size="sm">
+        {state.validationResult.errors[0]?.message ?? "No drivable route through these waypoints."}
+      </Note>
+    );
+  }
+  const length = state.validationResult.route?.properties?.length_m;
+  return (
+    <Note tone="success" size="sm">
+      Route OK{typeof length === "number" ? ` · ${formatDistance(length)} per loop` : ""}
+    </Note>
+  );
+}
+
+type Dispatch = ReturnType<typeof useMissionEditor>["dispatch"];
+
+/** Checks the route a moment after each waypoint edit -- never mid-drag,
+ * since a drag only becomes an edit on drop. Results for an older draft are
+ * dropped by the reducer (revision). */
+function useAutoRouteCheck(state: MissionEditorState, dispatch: Dispatch) {
+  const { waypoints, revision, validationStale } = state;
+  useEffect(() => {
+    if (!validationStale || waypoints.length < 2) return;
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      void validateRoute(waypoints).then((result) => {
+        if (!cancelled) dispatch({ type: "SET_VALIDATION_RESULT", result, revision });
+      });
+    }, ROUTE_CHECK_DELAY_MS);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [waypoints, revision, validationStale, dispatch]);
+}
+
+/** Delete/Backspace removes the selected waypoint; Ctrl/Cmd+Z undoes,
+ * Ctrl/Cmd+Shift+Z or Ctrl+Y redoes. Ignored while typing in a field. */
+function useEditorShortcuts(state: MissionEditorState, dispatch: Dispatch) {
+  const selected = state.selectedWaypointId;
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.target instanceof Element && e.target.closest("input, textarea, select, [contenteditable]")) return;
+      const mod = e.ctrlKey || e.metaKey;
+      if ((e.key === "Delete" || e.key === "Backspace") && selected) {
+        e.preventDefault();
+        dispatch({ type: "DELETE_WAYPOINT", id: selected });
+      } else if (mod && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        dispatch({ type: e.shiftKey ? "REDO" : "UNDO" });
+      } else if (mod && e.key.toLowerCase() === "y") {
+        e.preventDefault();
+        dispatch({ type: "REDO" });
+      }
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [selected, dispatch]);
 }

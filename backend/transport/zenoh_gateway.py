@@ -64,11 +64,9 @@ class ZenohGateway:
         self._investigation: "InvestigationCoordinator | None" = None
         self._mission_drive_coordinator: "MissionDriveCoordinator | None" = None
         self._session = None
-        self._device_subscriber = None
-        self._anomaly_subscriber = None
-        self._camera_state_subscriber = None
-        self._camera_signal_subscriber = None
-        self._events_subscriber = None
+        self._subscribers: list = []
+        # device_id -> ((x, y, frame_id), (lat, lon)): towers never move.
+        self._last_projection: dict[str, tuple[tuple[float, float, str], tuple[float, float] | None]] = {}
         self._camera_sessions: "CameraStreamService | None" = None
 
     def bind_camera_sessions(self, camera_sessions: "CameraStreamService") -> None:
@@ -94,66 +92,34 @@ class ZenohGateway:
 
         import zenoh  # isolated import: only required in enabled mode
 
+        subscriptions = [
+            (self._settings.zenoh_device_state_keyexpr, self._on_zenoh_device_sample),
+            (self._settings.zenoh_anomaly_keyexpr, self._on_zenoh_anomaly_sample),
+            (self._settings.zenoh_camera_state_keyexpr, self._on_zenoh_camera_state_sample),
+            (self._settings.zenoh_camera_webrtc_to_backend_keyexpr, self._on_zenoh_camera_signal_sample),
+            (self._settings.zenoh_device_events_keyexpr, self._on_zenoh_event_sample),
+        ]
         try:
             config = zenoh.Config()
             config.insert_json5("mode", json.dumps("client"))
             config.insert_json5("connect/endpoints", json.dumps([self._settings.zenoh_router]))
             self._session = zenoh.open(config)
-            self._device_subscriber = self._session.declare_subscriber(
-                self._settings.zenoh_device_state_keyexpr,
-                self._on_zenoh_device_sample,
-            )
-            self._anomaly_subscriber = self._session.declare_subscriber(
-                self._settings.zenoh_anomaly_keyexpr,
-                self._on_zenoh_anomaly_sample,
-            )
-            self._camera_state_subscriber = self._session.declare_subscriber(
-                self._settings.zenoh_camera_state_keyexpr,
-                self._on_zenoh_camera_state_sample,
-            )
-            self._camera_signal_subscriber = self._session.declare_subscriber(
-                self._settings.zenoh_camera_webrtc_to_backend_keyexpr,
-                self._on_zenoh_camera_signal_sample,
-            )
-            self._events_subscriber = self._session.declare_subscriber(
-                self._settings.zenoh_device_events_keyexpr,
-                self._on_zenoh_event_sample,
-            )
+            self._subscribers = [self._session.declare_subscriber(key, handler) for key, handler in subscriptions]
             logger.info(
-                "Zenoh session opened on %s; subscribed to %s, %s, %s, %s, and %s",
+                "Zenoh session opened on %s; subscribed to %s",
                 self._settings.zenoh_router,
-                self._settings.zenoh_device_state_keyexpr,
-                self._settings.zenoh_anomaly_keyexpr,
-                self._settings.zenoh_camera_state_keyexpr,
-                self._settings.zenoh_camera_webrtc_to_backend_keyexpr,
-                self._settings.zenoh_device_events_keyexpr,
+                ", ".join(key for key, _ in subscriptions),
             )
         except Exception:
             self._session = None
-            self._device_subscriber = None
-            self._anomaly_subscriber = None
-            self._camera_state_subscriber = None
-            self._camera_signal_subscriber = None
-            self._events_subscriber = None
+            self._subscribers = []
             logger.error("Failed to start Zenoh gateway", exc_info=True)
             raise
 
     def stop(self) -> None:
-        if self._device_subscriber is not None:
-            self._device_subscriber.undeclare()
-            self._device_subscriber = None
-        if self._anomaly_subscriber is not None:
-            self._anomaly_subscriber.undeclare()
-            self._anomaly_subscriber = None
-        if self._camera_state_subscriber is not None:
-            self._camera_state_subscriber.undeclare()
-            self._camera_state_subscriber = None
-        if self._camera_signal_subscriber is not None:
-            self._camera_signal_subscriber.undeclare()
-            self._camera_signal_subscriber = None
-        if self._events_subscriber is not None:
-            self._events_subscriber.undeclare()
-            self._events_subscriber = None
+        for subscriber in self._subscribers:
+            subscriber.undeclare()
+        self._subscribers = []
         if self._session is not None:
             self._session.close()
             self._session = None
@@ -216,7 +182,14 @@ class ZenohGateway:
         # truth for this projection -- so every later consumer (REST reads
         # via DeviceRegistry, and the broadcast below) gets it for free,
         # with no separate xy-to-lnglat round trip needed.
-        latlon = self._project_latlon(state.pose.x, state.pose.y, state.pose.frame_id)
+        at = (state.pose.x, state.pose.y, state.pose.frame_id)
+        last = self._last_projection.get(state.device_id)
+        if last is not None and last[0] == at:
+            latlon = last[1]
+        else:
+            latlon = self._project_latlon(*at)
+            if latlon is not None:
+                self._last_projection[state.device_id] = (at, latlon)
         if latlon is not None:
             lat, lon = latlon
             state = state.model_copy(update={"pose": state.pose.model_copy(update={"lat": lat, "lon": lon})})
@@ -273,11 +246,11 @@ class ZenohGateway:
         if result is None:
             logger.debug("Ignoring refresh of resolved anomaly %s", message.anomaly_id)
             return False
-        stored, is_new = result
+        stored, _ = result
 
         self._websocket_manager.broadcast_threadsafe(
             {
-                "type": "anomaly.created" if is_new else "anomaly.updated",
+                "type": "anomaly.updated",
                 "data": stored.model_dump(mode="json"),
             }
         )
@@ -314,11 +287,11 @@ class ZenohGateway:
         return True
 
     def ingest_camera_signal_payload(self, payload: bytes | str | dict, key_expr: str) -> bool:
-        """WebRtcSignalPayload (offer/ice-candidate) relayed from
-        zenoh_bridge's WebRtcSignalingBridge -- forwarded over the WebSocket
-        to the connection that owns the session. device_id/camera_id come
-        from the key expression, not the payload body (see
-        _CAMERA_SIGNAL_KEY_RE)."""
+        """WebRtcSignalPayload (offer/answer/ice-candidate) relayed from
+        zenoh_bridge's WebRtcSignalingBridge -- forwarded to the browser
+        over the existing WebSocket rather than a new REST endpoint, per
+        the design doc. device_id/camera_id come from the key expression,
+        not the payload body (see _CAMERA_SIGNAL_KEY_RE)."""
         match = _CAMERA_SIGNAL_KEY_RE.match(key_expr)
         if match is None:
             logger.warning("Discarding camera signal on unrecognized key: %s", key_expr)
@@ -336,68 +309,37 @@ class ZenohGateway:
         self._camera_sessions.route_outbound_signal(match.group("device_id"), match.group("camera_id"), signal)
         return True
 
-    def publish_camera_signal(self, device_id: str, camera_id: str, signal: dict) -> bool:
-        """Outbound counterpart to ingest_camera_signal_payload: relays the
-        browser's answer/ICE (received over the WebSocket) to the device's
-        gateway. Same never-raises, log-and-return-False contract as
-        publish_command -- the frontend's own negotiation timeout is what
-        handles a signal that never arrives."""
+    def _put(self, key: str, payload: bytes, what: str) -> bool:
+        """Never raises: callers log-and-continue, their own timeouts cover a
+        message that never arrives."""
         if self._session is None:
-            logger.warning(
-                "Cannot publish camera signal to %s/%s: Zenoh session not open", device_id, camera_id
-            )
+            logger.warning("Cannot publish %s: Zenoh session not open", what)
             return False
-
-        key = self._settings.zenoh_camera_webrtc_to_device_keyexpr.format(
-            device_id=device_id, camera_id=camera_id
-        )
         try:
-            self._session.put(key, json.dumps(signal).encode("utf-8"))
+            self._session.put(key, payload)
         except Exception:
-            logger.error("Failed to publish camera signal to %s/%s", device_id, camera_id, exc_info=True)
+            logger.error("Failed to publish %s", what, exc_info=True)
             return False
         return True
 
-    def publish_anomaly_feedback(self, anomaly_id: str, resolution: str, resolved_at: datetime) -> bool:
-        """Tells Anomaly Detection the operator's verdict on anomalies/{id}/
-        feedback (section 2.2 of the same doc), after which it stops
-        publishing that id. Same never-raises, log-and-return-False contract
-        as publish_command -- the verdict is already recorded locally, and
-        ingest ignores any refreshes that keep arriving."""
-        if self._session is None:
-            logger.warning("Cannot publish feedback for anomaly %s: Zenoh session not open", anomaly_id)
-            return False
+    def publish_camera_signal(self, device_id: str, camera_id: str, signal: dict) -> bool:
+        """Relays the browser's answer/ICE (from the WebSocket) to the device's gateway."""
+        key = self._settings.zenoh_camera_webrtc_to_device_keyexpr.format(device_id=device_id, camera_id=camera_id)
+        return self._put(key, json.dumps(signal).encode("utf-8"), f"camera signal to {device_id}/{camera_id}")
 
+    def publish_anomaly_feedback(self, anomaly_id: str, resolution: str, resolved_at: datetime) -> bool:
+        """Tells Anomaly Detection the operator's final verdict, after which it
+        stops publishing that id."""
         message = AnomalyFeedbackMessage(
             anomaly_id=anomaly_id, resolution=resolution, resolved_at=resolved_at.timestamp()
         )
         key = self._settings.zenoh_anomaly_feedback_keyexpr.format(anomaly_id=anomaly_id)
-        try:
-            self._session.put(key, message.model_dump_json().encode("utf-8"))
-        except Exception:
-            logger.error("Failed to publish feedback for anomaly %s", anomaly_id, exc_info=True)
-            return False
-        return True
+        return self._put(key, message.model_dump_json().encode("utf-8"), f"feedback for anomaly {anomaly_id}")
 
     def publish_command(
         self, device_id: str, command: str, request_id: str, fields: dict | None = None
     ) -> bool:
-        """Outbound counterpart to ingest_*: sends a GatewayCommand-shaped
-        payload (see device_gateway's mission_manager_contract) to the
-        named device's commands key. Returns False (never raises) when
-        Zenoh isn't connected or the publish fails -- callers (the
-        anomaly/mission-drive coordinators) must not block on this, only
-        log and let their own timeout paths handle a command that never
-        arrives."""
-        if self._session is None:
-            logger.warning("Cannot publish command %r to %s: Zenoh session not open", command, device_id)
-            return False
-
+        """Sends a GatewayCommand-shaped payload to the device's commands key."""
         payload = {"command": command, "request_id": request_id, **(fields or {})}
         key = self._settings.zenoh_device_commands_keyexpr.format(device_id=device_id)
-        try:
-            self._session.put(key, json.dumps(payload).encode("utf-8"))
-        except Exception:
-            logger.error("Failed to publish command %r to %s", command, device_id, exc_info=True)
-            return False
-        return True
+        return self._put(key, json.dumps(payload).encode("utf-8"), f"command {command!r} to {device_id}")

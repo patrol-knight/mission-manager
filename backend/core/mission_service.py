@@ -78,14 +78,19 @@ class MissionService:
         current = self._missions.get_current()
         return self._with_geo(current) if current is not None else None
 
-    def create_mission(self, mission: Mission) -> MissionGeo:
-        return self._with_geo(self._missions.create_mission(mission))
+    def create_mission(self, mission: Mission, activate: bool = False) -> MissionGeo:
+        created = self._missions.create_mission(self._with_map_name(mission))
+        if activate:
+            return self.activate(created.mission_id)
+        return self._with_geo(created)
 
-    def update_mission(self, mission_id: str, mission: Mission) -> MissionGeo:
+    def update_mission(self, mission_id: str, mission: Mission, activate: bool = False) -> MissionGeo:
         self._assert_current_unlocked(mission_id)
         self._execution.assert_editable(mission_id)
-        updated = self._missions.update_mission(mission_id, mission)
+        updated = self._missions.update_mission(mission_id, self._with_map_name(mission))
         self._execution.on_edited(mission_id)
+        if activate:
+            return self.activate(mission_id)
         self._broadcast_current()
         return self._with_geo(updated)
 
@@ -198,6 +203,12 @@ class MissionService:
         current = self._missions.get_current()
         if current is not None and current.mission_id == mission_id:
             self._assert_not_investigating()
+
+    def _with_map_name(self, mission: Mission) -> Mission:
+        if mission.map_name:
+            return mission
+        map_name = self._map.get_info().map_name if self._map.is_available() else "default"
+        return mission.model_copy(update={"map_name": map_name})
 
     def _with_geo(self, mission: Mission) -> MissionGeo:
         waypoints = []

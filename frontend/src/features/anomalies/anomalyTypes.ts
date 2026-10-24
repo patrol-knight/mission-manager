@@ -102,6 +102,11 @@ export function shortAnomalyId(anomalyId: string): string {
   return anomalyId.slice(0, 8);
 }
 
+/** "Anomaly-1a2b3c4d" -- how an anomaly is named on its card. */
+export function anomalyTitle(anomalyId: string): string {
+  return `Anomaly-${shortAnomalyId(anomalyId)}`;
+}
+
 export const VERDICT_LABELS: Record<AnomalyVerdict, string> = {
   true_positive: "TRUE",
   false_positive: "FALSE",
@@ -109,7 +114,7 @@ export const VERDICT_LABELS: Record<AnomalyVerdict, string> = {
 };
 
 export const VERDICT_COLORS: Record<AnomalyVerdict, string> = {
-  true_positive: "#e03131",
-  false_positive: "#2f9e44",
-  unclear: "#868e96",
+  true_positive: "var(--color-verdict-true)",
+  false_positive: "var(--color-verdict-false)",
+  unclear: "var(--color-verdict-unclear)",
 };

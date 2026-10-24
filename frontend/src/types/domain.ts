@@ -1,5 +1,4 @@
 export type DeviceType = "robot" | "iot";
-export type ConnectivityStatus = "connected" | "disconnected";
 
 export interface Pose2D {
   frameId: string;
@@ -64,10 +63,6 @@ export function deviceFromRaw(raw: RawDevice): Device {
     connected: raw.connected,
     lastSeen: raw.last_seen,
   };
-}
-
-export function connectivityStatus(device: Pick<Device, "connected">): ConnectivityStatus {
-  return device.connected ? "connected" : "disconnected";
 }
 
 export type CameraStreamStatus = "idle" | "connecting" | "live" | "no_signal" | "offline" | "error";

@@ -12,7 +12,8 @@ class Mission(BaseModel):
 
     mission_id: str
     name: str
-    map_name: str
+    # Filled in from the loaded map when left empty (MissionService).
+    map_name: str = ""
     frame_id: str = "map"
 
     description: str | None = None

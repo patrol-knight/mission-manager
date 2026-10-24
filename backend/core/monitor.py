@@ -20,13 +20,8 @@ async def run_monitor(
     robot has been lost for longer than its grace period, and expires
     anomalies whose grace period ran out."""
     while True:
-        if device_registry.mark_offline_devices(offline_timeout_sec):
-            await websocket_manager.broadcast(
-                {
-                    "type": "devices.snapshot",
-                    "data": [d.model_dump(mode="json") for d in device_registry.list_devices()],
-                }
-            )
+        for device in device_registry.mark_offline_devices(offline_timeout_sec):
+            await websocket_manager.broadcast({"type": "device.updated", "data": device.model_dump(mode="json")})
         mission_service.abort_if_robot_lost(robot_lost_grace_sec)
         # Off the event loop: expire() writes expired anomalies to Postgres,
         # which can block on an unreachable database.

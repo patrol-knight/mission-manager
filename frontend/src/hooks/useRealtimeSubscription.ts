@@ -3,14 +3,6 @@ import { getRealtimeClient } from "../api/realtimeClient";
 import { useDeviceStore } from "../stores/deviceStore";
 import { useMissionStore } from "../stores/missionStore";
 import { useInvestigationStore } from "../stores/investigationStore";
-import {
-  missionDefinitionFromRaw,
-  missionExecutionStateFromRaw,
-  type RawMission,
-  type RawMissionExecutionState,
-} from "../features/missions/missionTypes";
-import { anomalyFromRaw, type RawAnomaly, type RawAnomalyExpired } from "../features/anomalies/anomalyTypes";
-import { investigationFromRaw, type RawInvestigation } from "../features/investigation/investigationTypes";
 
 /**
  * Mounted once (in AppShell). Bridges the singleton realtime connection into
@@ -21,55 +13,31 @@ import { investigationFromRaw, type RawInvestigation } from "../features/investi
  * (a separate, always-mounted component) reacts to the resulting state.
  */
 export function useRealtimeSubscription(): void {
-  const setDevices = useDeviceStore((s) => s.setDevices);
-  const upsertDevice = useDeviceStore((s) => s.upsertDevice);
-  const setAnomalies = useDeviceStore((s) => s.setAnomalies);
-  const upsertAnomaly = useDeviceStore((s) => s.upsertAnomaly);
-  const removeAnomaly = useDeviceStore((s) => s.removeAnomaly);
-  const upsertCamera = useDeviceStore((s) => s.upsertCamera);
-  const setDefinition = useMissionStore((s) => s.setDefinition);
-  const setExecution = useMissionStore((s) => s.setExecution);
-  const setInvestigation = useInvestigationStore((s) => s.setInvestigation);
-
   useEffect(() => {
     const client = getRealtimeClient();
     client.connect();
 
+    // Store actions are stable for the store's lifetime, so reading them
+    // once here is equivalent to selecting them as hook dependencies.
+    const devices = useDeviceStore.getState();
+    const missions = useMissionStore.getState();
+    const investigations = useInvestigationStore.getState();
+
     const unsubscribers = [
-      client.onDevicesSnapshot(setDevices),
-      client.onDeviceUpdate(upsertDevice),
-      client.onMissionUpdate((raw) => {
-        setDefinition(raw ? missionDefinitionFromRaw(raw as RawMission) : null);
-      }),
-      client.onMissionExecutionUpdate((raw) => {
-        setExecution(raw ? missionExecutionStateFromRaw(raw as RawMissionExecutionState) : null);
-      }),
-      client.onAnomalySnapshot((raw) => {
-        setAnomalies((raw as RawAnomaly[]).map(anomalyFromRaw));
-      }),
-      client.onAnomalyUpdate((raw) => {
-        upsertAnomaly(anomalyFromRaw(raw as RawAnomaly));
-      }),
-      client.onAnomalyExpired((raw) => removeAnomaly((raw as RawAnomalyExpired).anomaly_id)),
-      client.onInvestigationUpdate((raw) => {
-        setInvestigation(raw ? investigationFromRaw(raw as RawInvestigation) : null);
-      }),
-      client.onCamerasSnapshot((cameras) => cameras.forEach(upsertCamera)),
-      client.onCameraUpdate(upsertCamera),
+      client.on("devices.snapshot", devices.setDevices),
+      client.on("device.updated", devices.upsertDevice),
+      client.on("anomalies.snapshot", devices.setAnomalies),
+      client.on("anomaly.updated", devices.upsertAnomaly),
+      client.on("anomaly.expired", devices.removeAnomaly),
+      client.on("cameras.snapshot", (cameras) => cameras.forEach(devices.upsertCamera)),
+      client.on("camera.updated", devices.upsertCamera),
+      client.on("mission.current", missions.setDefinition),
+      client.on("mission.execution", missions.setExecution),
+      client.on("investigation.updated", investigations.setInvestigation),
     ];
 
     return () => {
       unsubscribers.forEach((unsub) => unsub());
     };
-  }, [
-    setDevices,
-    upsertDevice,
-    setAnomalies,
-    upsertAnomaly,
-    removeAnomaly,
-    upsertCamera,
-    setDefinition,
-    setExecution,
-    setInvestigation,
-  ]);
+  }, []);
 }

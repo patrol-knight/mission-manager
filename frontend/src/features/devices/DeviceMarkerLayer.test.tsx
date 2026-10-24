@@ -28,6 +28,9 @@ const { FakeMarker } = vi.hoisted(() => {
     setDraggable() {
       return this;
     }
+    setRotation() {
+      return this;
+    }
     getElement() {
       return this.element;
     }
@@ -108,7 +111,7 @@ describe("DeviceMarkerLayer", () => {
     render(<Harness />);
     await vi.waitFor(() => expect(FakeMarker.instances).toHaveLength(2));
 
-    const robotMarker = FakeMarker.instances.find((m) => m.element.title === "Robot 1");
+    const robotMarker = FakeMarker.instances.find((m) => m.element.dataset.hint === "Robot 1 · Click to view camera");
     robotMarker!.element.dispatchEvent(new MouseEvent("click", { bubbles: true }));
 
     await vi.waitFor(() => expect(document.body.textContent).toContain("inspector=sim-robot-01"));
@@ -119,8 +122,8 @@ describe("DeviceMarkerLayer", () => {
     render(<Harness />);
     await vi.waitFor(() => expect(FakeMarker.instances).toHaveLength(2));
 
-    const robotMarker = FakeMarker.instances.find((m) => m.element.title === "Robot 1");
-    const iotMarker = FakeMarker.instances.find((m) => m.element.title === "IoT 1 (disconnected)");
+    const robotMarker = FakeMarker.instances.find((m) => m.element.dataset.hint === "Robot 1 · Click to view camera");
+    const iotMarker = FakeMarker.instances.find((m) => m.element.dataset.hint === "IoT 1 · Disconnected");
 
     expect(iotMarker).toBeDefined();
     expect(iotMarker!.element.style.opacity).toBe("0.45");

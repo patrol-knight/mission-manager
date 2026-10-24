@@ -1,0 +1,51 @@
+.row {
+  --progress-color: #ff8a1f;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.track {
+  flex: 1;
+  display: flex;
+  gap: 4px;
+  min-width: 0;
+}
+
+.segment {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--color-border);
+  transition: background var(--duration-slow);
+}
+
+.done {
+  background: var(--progress-color);
+}
+
+/* Many steps, or an open-ended run: one bar, filled as far as done. */
+.bar {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--color-border);
+  overflow: hidden;
+}
+
+.fill {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--progress-color);
+  transition: width var(--duration-slow) var(--ease-out);
+}
+
+.fraction {
+  min-width: 34px;
+  text-align: right;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+

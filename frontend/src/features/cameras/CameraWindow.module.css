@@ -1,0 +1,103 @@
+/* The two camera windows (device window, verify window) share one layout:
+   the feed on the left, a sidebar of sections on the right. */
+.body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.stage {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+}
+
+.feed {
+  flex: 1;
+  min-height: 0;
+}
+
+.sidebar {
+  width: 300px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--color-border);
+  overflow-y: auto;
+}
+
+.section {
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.section + .section {
+  border-top: 1px solid var(--color-border);
+}
+
+/* Pinned to the bottom of the sidebar (the verdict). */
+.footer {
+  margin-top: auto;
+  border-top: 1px solid var(--color-border);
+}
+
+.sectionTitle {
+  margin: 0;
+  color: var(--color-text-faint);
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.headerPills {
+  display: flex;
+  gap: 6px;
+}
+
+/* Segmented control: which device's camera the stage shows. */
+.switcher {
+  align-self: flex-start;
+  display: inline-flex;
+  padding: 3px;
+  gap: 2px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-raised);
+}
+
+.switch {
+  padding: 5px 14px;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background var(--duration-fast),
+    color var(--duration-fast);
+}
+
+.switch:hover {
+  color: var(--color-text);
+}
+
+.switchOn {
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+  box-shadow: inset 0 0 0 1px var(--color-border-strong);
+}
+
+.switchRole {
+  margin-left: 6px;
+  color: var(--color-text-faint);
+  font-weight: 500;
+}

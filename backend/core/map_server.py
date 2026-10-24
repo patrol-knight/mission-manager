@@ -1,11 +1,12 @@
 import logging
 import math
+from functools import lru_cache
 from pathlib import Path
 
 import yaml
 
 from core.errors import MapUnavailableError
-from models.map import LatLon, MapInfo, MapPoint, ReachableGoal, RouteWaypoint, XY
+from models.map import LatLon, MapInfo, MapPoint, RouteWaypoint, XY
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +35,8 @@ class MapServer:
         self._origin_lon     = None
         self._projector      = None
         self._map_bounds     = None
+        self._geojson        = None
+        self._centerlines: dict[int, tuple[list, list[float]]] = {}
 
     def is_available(self) -> bool:
         return self._available
@@ -72,6 +75,9 @@ class MapServer:
             )
             self._routing_graph = RoutingGraph(self._lanelet_map, tr)
             self._map_bounds = self._compute_bounds()
+            self._geojson = None
+            self._centerlines = {}
+            self._route.cache_clear()
             self._map_name = Path(osm_path).stem
             self._available = True
             logger.info(
@@ -129,6 +135,11 @@ class MapServer:
 
     def get_geojson(self) -> dict:
         self._ensure_available()
+        if self._geojson is None:
+            self._geojson = self._build_geojson()
+        return self._geojson
+
+    def _build_geojson(self) -> dict:
         features = []
         for ll in self._lanelet_layer:
             left   = [self._to_latlon(p.x, p.y) for p in ll.leftBound]
@@ -158,16 +169,26 @@ class MapServer:
         lon, lat = self._to_latlon(sx, sy)
         return MapPoint(x=sx, y=sy, frame_id=frame_id, lanelet_id=ll.id, lat=lat, lon=lon)
 
-    def project_reachable_goal(
-        self, x: float, y: float, frame_id: str = "map"
-    ) -> ReachableGoal:
-        self._ensure_available()
-        return ReachableGoal(
-            x=x, y=y, frame_id=frame_id, reachable=self.is_in_lanelet(x, y, frame_id)
-        )
+    def place_waypoint(self, lat: float, lon: float) -> MapPoint | None:
+        """A clicked point snapped onto its lanelet, or None if it's off the road."""
+        xy = self.latlon_to_xy(lat, lon)
+        if not self.is_in_lanelet(xy.x, xy.y):
+            return None
+        return self.snap_to_lanelet(xy.x, xy.y)
+
+    def _centerline(self, ll) -> tuple[list, list[float]]:
+        """The lanelet's centerline points and the arc length at each, cached."""
+        cached = self._centerlines.get(ll.id)
+        if cached is None:
+            pts = list(ll.centerline)
+            arc = [0.0]
+            for a, b in zip(pts, pts[1:]):
+                arc.append(arc[-1] + math.sqrt((b.x - a.x) ** 2 + (b.y - a.y) ** 2))
+            cached = self._centerlines[ll.id] = (pts, arc)
+        return cached
 
     def _get_lanelet_yaw(self, ll, x: float, y: float) -> float:
-        pts = list(ll.centerline)
+        pts, _ = self._centerline(ll)
         if len(pts) < 2:
             return 0.0
         best_i = 0
@@ -208,17 +229,11 @@ class MapServer:
         return best_ll
 
     def _project_point_onto_centerline(self, ll, x: float, y: float) -> float:
-        pts = list(ll.centerline)
-        if len(pts) < 2:
+        """Where (x, y) projects onto the centerline, as a 0..1 share of its length."""
+        pts, arc = self._centerline(ll)
+        if len(pts) < 2 or arc[-1] == 0:
             return 0.0
-        arc = [0.0]
-        for i in range(1, len(pts)):
-            dx = pts[i].x - pts[i-1].x
-            dy = pts[i].y - pts[i-1].y
-            arc.append(arc[-1] + math.sqrt(dx*dx + dy*dy))
         total = arc[-1]
-        if total == 0:
-            return 0.0
         best_t = 0.0
         best_d = float("inf")
         for i in range(len(pts) - 1):
@@ -235,99 +250,49 @@ class MapServer:
                 best_t = (arc[i] + t_seg * (arc[i+1] - arc[i])) / total
         return best_t
 
-    def _interp_centerline_at(self, pts, arc, total, t: float):
-        s = t * total
+    @staticmethod
+    def _point_at(pts, arc: list[float], t: float) -> tuple[float, float]:
+        """The centerline point a share t (0..1) of the way along it."""
+        s = t * arc[-1]
         for i in range(len(pts) - 1):
             if arc[i] <= s <= arc[i+1]:
                 seg_len = arc[i+1] - arc[i]
                 alpha = (s - arc[i]) / seg_len if seg_len > 0 else 0.0
-                x = pts[i].x + alpha * (pts[i+1].x - pts[i].x)
-                y = pts[i].y + alpha * (pts[i+1].y - pts[i].y)
-                return self._to_latlon(x, y)
-        return self._to_latlon(pts[-1].x, pts[-1].y)
-
-    def _interp_centerline_xy_at(self, ll, t: float) -> tuple[float, float]:
-        pts = list(ll.centerline)
-        if len(pts) < 2:
-            p = pts[0]
-            return p.x, p.y
-        arc   = self._build_arc(pts)
-        total = arc[-1]
-        if total == 0:
-            return pts[0].x, pts[0].y
-        s = t * total
-        for i in range(len(pts) - 1):
-            if arc[i] <= s <= arc[i+1]:
-                seg_len = arc[i+1] - arc[i]
-                alpha = (s - arc[i]) / seg_len if seg_len > 0 else 0.0
-                x = pts[i].x + alpha * (pts[i+1].x - pts[i].x)
-                y = pts[i].y + alpha * (pts[i+1].y - pts[i].y)
-                return x, y
+                return pts[i].x + alpha * (pts[i+1].x - pts[i].x), pts[i].y + alpha * (pts[i+1].y - pts[i].y)
         return pts[-1].x, pts[-1].y
 
-    def _build_arc(self, pts):
-        arc = [0.0]
+    def _interp_centerline_xy_at(self, ll, t: float) -> tuple[float, float]:
+        pts, arc = self._centerline(ll)
+        if len(pts) < 2 or arc[-1] == 0:
+            return pts[0].x, pts[0].y
+        return self._point_at(pts, arc, t)
+
+    def _sample_centerline(self, ll, t_start: float, t_end: float, include_end: bool) -> list:
+        """[lon, lat] points along the centerline from t_start to t_end: the
+        two ends and the vertices between them."""
+        pts, arc = self._centerline(ll)
+        if len(pts) < 2:
+            return []
+        total = arc[-1]
+        if total == 0:
+            return [self._to_latlon(pts[0].x, pts[0].y)]
+        result = [self._to_latlon(*self._point_at(pts, arc, t_start))]
         for i in range(1, len(pts)):
-            dx = pts[i].x - pts[i-1].x
-            dy = pts[i].y - pts[i-1].y
-            arc.append(arc[-1] + math.sqrt(dx*dx + dy*dy))
-        return arc
-
-    def _centerline_arc_length_between(self, ll, t_start: float, t_end: float) -> float:
-        pts = list(ll.centerline)
-        if len(pts) < 2:
-            return 0.0
-        total = self._build_arc(pts)[-1]
-        return max(0.0, t_end - t_start) * total
-
-    def _sample_centerline_between(self, ll, t_start: float, t_end: float) -> list:
-        pts = list(ll.centerline)
-        if len(pts) < 2:
-            return []
-        arc   = self._build_arc(pts)
-        total = arc[-1]
-        if total == 0:
-            return [self._to_latlon(pts[0].x, pts[0].y)]
-        result = [self._interp_centerline_at(pts, arc, total, t_start)]
-        for i, a in enumerate(arc[1:], start=1):
-            t = a / total
-            if t_start + 1e-9 < t < t_end - 1e-9:
+            if t_start + 1e-9 < arc[i] / total < t_end - 1e-9:
                 result.append(self._to_latlon(pts[i].x, pts[i].y))
-        result.append(self._interp_centerline_at(pts, arc, total, t_end))
-        return result
-
-    def _sample_centerline_from(self, ll, t_start: float) -> list:
-        pts = list(ll.centerline)
-        if len(pts) < 2:
-            return []
-        arc   = self._build_arc(pts)
-        total = arc[-1]
-        if total == 0:
-            return [self._to_latlon(pts[0].x, pts[0].y)]
-        result = [self._interp_centerline_at(pts, arc, total, t_start)]
-        for i, a in enumerate(arc[1:], start=1):
-            if a / total > t_start + 1e-9:
-                result.append(self._to_latlon(pts[i].x, pts[i].y))
-        return result
-
-    def _sample_centerline_to(self, ll, t_end: float) -> list:
-        pts = list(ll.centerline)
-        if len(pts) < 2:
-            return []
-        arc   = self._build_arc(pts)
-        total = arc[-1]
-        if total == 0:
-            return [self._to_latlon(pts[0].x, pts[0].y)]
-        result = [self._to_latlon(pts[0].x, pts[0].y)]
-        for i, a in enumerate(arc[1:], start=1):
-            if a / total < t_end - 1e-9:
-                result.append(self._to_latlon(pts[i].x, pts[i].y))
-        result.append(self._interp_centerline_at(pts, arc, total, t_end))
+        if include_end:
+            result.append(self._to_latlon(*self._point_at(pts, arc, t_end)))
         return result
 
     def get_route(self, waypoints: list[dict]) -> dict | None:
+        """Cached (the same loop is requested from several views); treat as read-only."""
         if len(waypoints) < 2:
             return None
+        return self._route(tuple((wp["x"], wp["y"]) for wp in waypoints))
+
+    @lru_cache(maxsize=256)
+    def _route(self, points: tuple[tuple[float, float], ...]) -> dict | None:
+        waypoints = [{"x": x, "y": y} for x, y in points]
 
         full_coords = []
         total_length = 0.0
@@ -371,19 +336,12 @@ class MapServer:
 
             coords = []
             for i, ll in enumerate(ll_sequence):
-                if i == 0 and i == len(ll_sequence) - 1:
-                    coords.extend(self._sample_centerline_between(ll, t0, t1))
-                    total_length += self._centerline_arc_length_between(ll, t0, t1)
-                elif i == 0:
-                    coords.extend(self._sample_centerline_from(ll, t0)[:-1])
-                    total_length += self._centerline_arc_length_between(ll, t0, 1.0)
-                elif i == len(ll_sequence) - 1:
-                    coords.extend(self._sample_centerline_to(ll, t1))
-                    total_length += self._centerline_arc_length_between(ll, 0.0, t1)
-                else:
-                    pts = list(ll.centerline)
-                    coords.extend(self._to_latlon(p.x, p.y) for p in pts[:-1])
-                    total_length += self._centerline_arc_length_between(ll, 0.0, 1.0)
+                last = i == len(ll_sequence) - 1
+                t_start = t0 if i == 0 else 0.0
+                t_end = t1 if last else 1.0
+                # Each lanelet ends where the next begins: only the last keeps its end point.
+                coords.extend(self._sample_centerline(ll, t_start, t_end, include_end=last))
+                total_length += max(0.0, t_end - t_start) * self._centerline(ll)[1][-1]
 
             if full_coords and coords:
                 coords = coords[1:]
