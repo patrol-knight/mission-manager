@@ -55,6 +55,19 @@ class Settings(BaseSettings):
     zenoh_camera_webrtc_to_device_keyexpr: str = (
         "devices/{device_id}/cameras/{camera_id}/webrtc/to-device"
     )
+    # Every gateway CommandResult (accepted/running/succeeded/rejected/failed).
+    zenoh_device_events_keyexpr: str = "devices/*/events"
+
+    # Camera sessions (core/camera_stream.py). How long Start/Stop wait for
+    # the gateway's definitive CommandResult before answering 504/202.
+    camera_command_timeout_sec: float = 3.0
+    # How long a session survives its owner's WebSocket dropping before the
+    # backend stops it, so a reconnecting page can resume it.
+    camera_owner_grace_sec: float = 10.0
+    # A session the backend is cancelling (Start timed out) or stopping
+    # without a confirmation is forgotten after this long, if no camera state
+    # has settled it first.
+    camera_unconfirmed_expiry_sec: float = 30.0
 
     # MissionDriveCoordinator (core/mission_drive.py) -- kill switch for
     # autonomously driving the current mission's waypoints.

@@ -58,6 +58,16 @@ class CameraUnavailableError(Exception):
     pass
 
 
+class CameraSessionError(Exception):
+    """A camera session request that failed for a reason the client can act
+    on. `code` is machine-readable (camera_busy, session_stopping, ...)."""
+
+    def __init__(self, status_code: int, code: str, message: str) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+        self.code = code
+
+
 class DeviceUnreachableError(Exception):
     pass
 

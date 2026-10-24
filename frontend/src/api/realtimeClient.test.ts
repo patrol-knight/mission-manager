@@ -183,9 +183,9 @@ describe("realtimeClient", () => {
     const socket = FakeWebSocket.instances[0];
     socket.emitOpen();
     socket.emitMessage({ type: "connection.ready", data: { protocol_version: 1, connection_id: "c-1" } });
-    expect(client.connectionId).toBe("c-1");
+    expect(client.getConnectionId()).toBe("c-1");
     socket.close();
-    expect(client.connectionId).toBeNull();
+    expect(client.getConnectionId()).toBeNull();
   });
 
   it("ignores unknown/forward-compatible event types without throwing", async () => {

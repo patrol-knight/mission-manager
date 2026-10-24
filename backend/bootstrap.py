@@ -96,6 +96,9 @@ def build_services(settings: Settings) -> Services:
     mission_drive_coordinator.bind_investigation(investigation)
     zenoh_gateway.bind_coordinators(investigation, mission_drive_coordinator)
 
+    camera_stream = CameraStreamService(settings, device_registry, camera_registry, zenoh_gateway, websocket_manager)
+    zenoh_gateway.bind_camera_sessions(camera_stream)
+
     mission_service = MissionService(
         mission_server=mission_server,
         map_server=map_server,
@@ -118,7 +121,7 @@ def build_services(settings: Settings) -> Services:
         investigation=investigation,
         mission_drive_coordinator=mission_drive_coordinator,
         mission_service=mission_service,
-        camera_stream=CameraStreamService(device_registry, camera_registry, zenoh_gateway, websocket_manager),
+        camera_stream=camera_stream,
         websocket_manager=websocket_manager,
         zenoh_gateway=zenoh_gateway,
     )

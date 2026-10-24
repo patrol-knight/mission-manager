@@ -37,6 +37,31 @@ export interface RawCameraSignal {
   sdp_mline_index?: number | null;
 }
 
+/** `camera.session.ended` -- the backend forgot the session (stopped, ended
+ * by the gateway, or the gateway restarted). */
+export interface CameraSessionEnded {
+  device_id: string;
+  camera_id: string;
+  session_id: string;
+  reason: string;
+  failure_code: string | null;
+  failure_reason: string | null;
+}
+
+/** Replies about one camera session: `camera.signal.rejected`,
+ * `camera.session.resumed`, `camera.session.resume_failed`. */
+export interface CameraSessionReply {
+  session_id: string;
+  code?: string;
+}
+
+export type CameraSessionReplyKind = "signal_rejected" | "resumed" | "resume_failed";
+
+type OutboundMessage =
+  | { type: "ping" }
+  | { type: "camera.signal"; data: RawCameraSignal }
+  | { type: "camera.session.resume"; data: { session_id: string; previous_connection_id: string | null } };
+
 /** Every event the app can subscribe to, with its already-adapted payload. */
 export interface RealtimeEvents {
   "devices.snapshot": Device[];
@@ -57,8 +82,14 @@ export interface RealtimeEvents {
   "cameras.snapshot": CameraState[];
   /** A camera's stream_state changed (idle/connecting/live/no_signal/offline/error). */
   "camera.updated": CameraState;
-  /** WebRTC offer/ICE relayed from a device's gateway. */
+  /** WebRTC offer/ICE from the device's gateway, for a session this connection owns. */
   "camera.signal": RawCameraSignal;
+  /** The full camera state, sent only to the owner of the session it names. */
+  "camera.session.updated": CameraState;
+  "camera.session.ended": CameraSessionEnded;
+  "camera.session.reply": { kind: CameraSessionReplyKind; reply: CameraSessionReply };
+  /** Once per (re)connection, with the id the backend gave it. */
+  "connection.ready": string;
 }
 
 export type RealtimeEvent = keyof RealtimeEvents;
@@ -87,6 +118,7 @@ const ROUTES: Record<string, Route> = {
   "anomalies.snapshot": route("anomalies.snapshot", (d) => (d as RawAnomaly[]).map(anomalyFromRaw)),
   "anomaly.updated": route("anomaly.updated", (d) => anomalyFromRaw(d as RawAnomaly)),
   "anomaly.expired": route("anomaly.expired", (d) => (d as RawAnomalyExpired).anomaly_id),
+  "connection.ready": route("connection.ready", (d) => d as string),
   "investigation.updated": route("investigation.updated", (d) =>
     d ? investigationFromRaw(d as RawInvestigation) : null,
   ),
@@ -94,6 +126,14 @@ const ROUTES: Record<string, Route> = {
   "cameras.snapshot": route("cameras.snapshot", (d) => (d as RawCameraState[]).map(cameraStateFromRaw)),
   "camera.updated": route("camera.updated", (d) => cameraStateFromRaw(d as RawCameraState)),
   "camera.signal": route("camera.signal", (d) => d as RawCameraSignal),
+  "camera.session.updated": route("camera.session.updated", (d) => cameraStateFromRaw(d as RawCameraState)),
+  "camera.session.ended": route("camera.session.ended", (d) => d as CameraSessionEnded),
+  "camera.signal.rejected": route("camera.session.reply", (d) => ({ kind: "signal_rejected", reply: d as CameraSessionReply })),
+  "camera.session.resumed": route("camera.session.reply", (d) => ({ kind: "resumed", reply: d as CameraSessionReply })),
+  "camera.session.resume_failed": route("camera.session.reply", (d) => ({
+    kind: "resume_failed",
+    reply: d as CameraSessionReply,
+  })),
 };
 
 const BASE_DELAY = 2_000;
@@ -113,8 +153,8 @@ class RealtimeClient {
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private lastMessageAt = 0;
-  /** This connection's id from connection.ready; camera streams are tied to it. */
-  connectionId: string | null = null;
+  /** From the latest connection.ready; null while (re)connecting. */
+  private connectionId: string | null = null;
   private destroyed = false;
   private status: ConnectionStatus = "connecting";
 
@@ -151,10 +191,35 @@ class RealtimeClient {
     return () => set.delete(fn as Listener<unknown>);
   }
 
-  send(msg: { type: "ping" } | { type: "camera.signal"; data: RawCameraSignal }): void {
+  /** The current connection's id (it identifies a camera session's owner), or null while disconnected. */
+  getConnectionId(): string | null {
+    return this.connectionId;
+  }
+
+  /** Resolves with the connection id once connected; rejects after `timeoutMs`. */
+  waitForConnection(timeoutMs: number): Promise<string> {
+    if (this.connectionId) return Promise.resolve(this.connectionId);
+    this.connect();
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        unsubscribe();
+        reject(new Error("realtime connection not available"));
+      }, timeoutMs);
+      const unsubscribe = this.on("connection.ready", (id) => {
+        clearTimeout(timer);
+        unsubscribe();
+        resolve(id);
+      });
+    });
+  }
+
+  /** True if the message went out; false if the socket isn't open (nothing is queued here). */
+  send(msg: OutboundMessage): boolean {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(msg));
+      return true;
     }
+    return false;
   }
 
   private setStatus(s: ConnectionStatus): void {
@@ -228,8 +293,10 @@ class RealtimeClient {
 
   private dispatch(msg: WsEnvelope): void {
     if (msg.type === "connection.ready") {
-      this.connectionId = (msg.data as { connection_id?: string } | null)?.connection_id ?? null;
-      return;
+      const id = (msg.data as { connection_id?: unknown } | null)?.connection_id;
+      if (typeof id !== "string") return;
+      this.connectionId = id;
+      msg = { ...msg, data: id };
     }
     const target = ROUTES[msg.type];
     if (!target) return; // pong, or a type this app doesn't use

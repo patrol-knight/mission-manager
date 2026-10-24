@@ -96,7 +96,7 @@ export function CameraStreamView({ camera, stream }: CameraStreamViewProps) {
           fontSize: "var(--text-xs)",
         }}
       >
-        <span>{STATUS_LABEL[camera.status]}</span>
+        <span>{camera.status === "error" && camera.detail ? camera.detail : STATUS_LABEL[camera.status]}</span>
       </div>
     </div>
   );
