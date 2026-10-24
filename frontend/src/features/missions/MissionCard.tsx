@@ -49,10 +49,17 @@ export function MissionCard({ onEdit, onCreate }: MissionCardProps) {
     if (investigating) return <Card compact title="No mission" />;
     return (
       <Card title="No mission">
-        <Note>Create a mission to start patrolling.</Note>
-        <Button variant="primary" block onClick={onCreate} className="mode-edit" style={{ marginTop: 14 }}>
-          Create mission
-        </Button>
+        <Note>Choose a saved mission or create a new one.</Note>
+        <div className="mode-edit">
+          <ButtonRow>
+            <Button block onClick={onEdit}>
+              Choose mission
+            </Button>
+            <Button variant="primary" block onClick={onCreate}>
+              Create mission
+            </Button>
+          </ButtonRow>
+        </div>
       </Card>
     );
   }
