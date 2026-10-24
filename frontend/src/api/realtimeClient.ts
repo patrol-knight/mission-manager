@@ -76,8 +76,7 @@ function route<K extends RealtimeEvent>(event: K, parse: (data: unknown) => Real
 }
 
 /** Wire message type (backend/api/websocket.py) -> the event it feeds and the
- * adapter from its raw payload. Where the backend tells two cases apart that
- * the app treats alike (created/updated, snapshot/update), both feed one event. */
+ * adapter from its raw payload. */
 const ROUTES: Record<string, Route> = {
   "devices.snapshot": route("devices.snapshot", (d) => (d as RawDevice[]).map(deviceFromRaw)),
   "device.updated": route("device.updated", (d) => deviceFromRaw(d as RawDevice)),
@@ -85,11 +84,7 @@ const ROUTES: Record<string, Route> = {
   "mission.execution": route("mission.execution", (d) =>
     d ? missionExecutionStateFromRaw(d as RawMissionExecutionState) : null,
   ),
-  "mission.execution.updated": route("mission.execution", (d) =>
-    d ? missionExecutionStateFromRaw(d as RawMissionExecutionState) : null,
-  ),
   "anomalies.snapshot": route("anomalies.snapshot", (d) => (d as RawAnomaly[]).map(anomalyFromRaw)),
-  "anomaly.created": route("anomaly.updated", (d) => anomalyFromRaw(d as RawAnomaly)),
   "anomaly.updated": route("anomaly.updated", (d) => anomalyFromRaw(d as RawAnomaly)),
   "anomaly.expired": route("anomaly.expired", (d) => (d as RawAnomalyExpired).anomaly_id),
   "investigation.updated": route("investigation.updated", (d) =>
@@ -103,6 +98,9 @@ const ROUTES: Record<string, Route> = {
 
 const BASE_DELAY = 2_000;
 const MAX_DELAY = 30_000;
+/** Ping this often; a connection silent for HEARTBEAT_TIMEOUT is treated as dead. */
+const HEARTBEAT_INTERVAL = 15_000;
+const HEARTBEAT_TIMEOUT = 40_000;
 
 /**
  * Typed pub/sub wrapper around the backend's single /ws channel. Consumers
@@ -113,6 +111,10 @@ class RealtimeClient {
   private ws: WebSocket | null = null;
   private retryDelay = BASE_DELAY;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
+  private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  private lastMessageAt = 0;
+  /** This connection's id from connection.ready; camera streams are tied to it. */
+  connectionId: string | null = null;
   private destroyed = false;
   private status: ConnectionStatus = "connecting";
 
@@ -127,6 +129,7 @@ class RealtimeClient {
   disconnect(): void {
     this.destroyed = true;
     if (this.retryTimer) clearTimeout(this.retryTimer);
+    this.stopHeartbeat();
     this.ws?.close();
     this.ws = null;
   }
@@ -169,9 +172,11 @@ class RealtimeClient {
     ws.onopen = () => {
       this.retryDelay = BASE_DELAY;
       this.setStatus("connected");
+      this.startHeartbeat(ws);
     };
 
     ws.onmessage = (ev) => {
+      this.lastMessageAt = Date.now();
       let msg: WsEnvelope;
       try {
         msg = JSON.parse(ev.data as string) as WsEnvelope;
@@ -187,15 +192,47 @@ class RealtimeClient {
     };
 
     ws.onclose = () => {
+      this.stopHeartbeat();
+      this.connectionId = null;
       if (this.destroyed) return;
       this.setStatus("disconnected");
       this.scheduleReconnect();
     };
   }
 
+  /** A half-open connection (e.g. the network dropped) never fires onclose
+   * by itself; closing it on silence lets the reconnect loop take over. */
+  private startHeartbeat(ws: WebSocket): void {
+    this.stopHeartbeat();
+    this.lastMessageAt = Date.now();
+    this.heartbeatTimer = setInterval(() => {
+      if (Date.now() - this.lastMessageAt > HEARTBEAT_TIMEOUT) {
+        // Don't wait for close() to complete on a dead link: reconnect now.
+        ws.onclose = null;
+        ws.close();
+        this.stopHeartbeat();
+        this.ws = null;
+        this.connectionId = null;
+        this.setStatus("disconnected");
+        this.scheduleReconnect();
+        return;
+      }
+      this.send({ type: "ping" });
+    }, HEARTBEAT_INTERVAL);
+  }
+
+  private stopHeartbeat(): void {
+    if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
+    this.heartbeatTimer = null;
+  }
+
   private dispatch(msg: WsEnvelope): void {
+    if (msg.type === "connection.ready") {
+      this.connectionId = (msg.data as { connection_id?: string } | null)?.connection_id ?? null;
+      return;
+    }
     const target = ROUTES[msg.type];
-    if (!target) return; // connection.ready, pong, or a type this app doesn't use
+    if (!target) return; // pong, or a type this app doesn't use
     const listeners = this.listeners.get(target.event);
     if (!listeners || listeners.size === 0) return;
     const payload = target.parse(msg.data);

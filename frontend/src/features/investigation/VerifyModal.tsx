@@ -12,8 +12,8 @@ import { cx } from "../../components/ui/cx";
 import { useNow, formatAge } from "../../hooks/useNow";
 import layout from "../cameras/CameraWindow.module.css";
 import styles from "./VerifyModal.module.css";
-import { AnomalyTypeLines } from "../anomalies/AnomalyInfoRows";
 import {
+  formatAnomalyTypes,
   formatConfidence,
   VERDICT_COLORS,
   VERDICT_LABELS,
@@ -90,7 +90,7 @@ function VerifyDialog({ investigation }: { investigation: Investigation }) {
             <InfoList gap={8}>
               {anomaly && (
                 <>
-                  <InfoRow label="Type" value={<AnomalyTypeLines types={anomaly.types} />} />
+                  <InfoRow label="Type" value={formatAnomalyTypes(anomaly.types)} />
                   <InfoRow label="Confidence" value={formatConfidence(anomaly.confidence)} />
                   <InfoRow label="Detected" value={`${formatAge(anomaly.detectedAt, now)} ago`} />
                   <InfoRow label="Source" value={sourceName ?? anomaly.sourceDeviceId} />

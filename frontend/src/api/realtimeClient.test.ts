@@ -123,7 +123,7 @@ describe("realtimeClient", () => {
     expect(statuses).toEqual(["connecting", "connected", "disconnected"]);
   });
 
-  it("feeds mission.execution and mission.execution.updated to one event, adapted to camelCase", async () => {
+  it("adapts mission.execution to camelCase, null included", async () => {
     const { getRealtimeClient } = await import("./realtimeClient");
     const client = getRealtimeClient();
     client.connect();
@@ -141,7 +141,7 @@ describe("realtimeClient", () => {
       updated_at: null,
     };
     socket.emitMessage({ type: "mission.execution", data: raw });
-    socket.emitMessage({ type: "mission.execution.updated", data: null });
+    socket.emitMessage({ type: "mission.execution", data: null });
 
     expect(states).toEqual([
       {
@@ -154,6 +154,38 @@ describe("realtimeClient", () => {
       },
       null,
     ]);
+  });
+
+  it("pings while connected and reconnects when the connection goes silent", async () => {
+    vi.useFakeTimers();
+    try {
+      const { getRealtimeClient } = await import("./realtimeClient");
+      const client = getRealtimeClient();
+      client.connect();
+      const socket = FakeWebSocket.instances[0];
+      socket.emitOpen();
+
+      vi.advanceTimersByTime(15_000);
+      expect(socket.sent.map((m) => JSON.parse(m).type)).toEqual(["ping"]);
+
+      vi.advanceTimersByTime(30_000); // nothing came back for 45 s
+      vi.advanceTimersByTime(2_000); // first reconnect delay
+      expect(FakeWebSocket.instances).toHaveLength(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("remembers its connection id from connection.ready", async () => {
+    const { getRealtimeClient } = await import("./realtimeClient");
+    const client = getRealtimeClient();
+    client.connect();
+    const socket = FakeWebSocket.instances[0];
+    socket.emitOpen();
+    socket.emitMessage({ type: "connection.ready", data: { protocol_version: 1, connection_id: "c-1" } });
+    expect(client.connectionId).toBe("c-1");
+    socket.close();
+    expect(client.connectionId).toBeNull();
   });
 
   it("ignores unknown/forward-compatible event types without throwing", async () => {

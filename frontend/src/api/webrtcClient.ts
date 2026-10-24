@@ -46,12 +46,14 @@ export async function startWebrtcSession(
   cameraId: string,
   callbacks: WebrtcSessionCallbacks,
 ): Promise<WebrtcSession> {
+  const client = getRealtimeClient();
+  // So the backend sends this stream's signaling to this connection only.
+  const owner = client.connectionId ? `?connection_id=${encodeURIComponent(client.connectionId)}` : "";
   const { session_id: sessionId } = await http.post<StartCameraStreamResponse>(
-    `/api/cameras/${encodeURIComponent(deviceId)}/${encodeURIComponent(cameraId)}/stream`,
+    `/api/cameras/${encodeURIComponent(deviceId)}/${encodeURIComponent(cameraId)}/stream${owner}`,
   );
 
   const pc = new RTCPeerConnection({ iceServers: [] });
-  const client = getRealtimeClient();
 
   pc.ontrack = (event) => {
     if (event.streams[0]) callbacks.onTrack(event.streams[0]);

@@ -74,7 +74,7 @@ class MissionExecutionManager:
     def _broadcast(self, state: MissionExecutionState | None) -> None:
         self._websocket_manager.broadcast_threadsafe(
             {
-                "type": "mission.execution.updated",
+                "type": "mission.execution",
                 "data": state.model_dump(mode="json") if state else None,
             }
         )

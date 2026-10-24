@@ -29,8 +29,8 @@ function useTowers() {
   const { openInspector } = useDeviceInspector();
   const { status } = useApiConnection();
   // A row unmounted under the pointer (panel switched) never sees mouseleave.
-  const setHoveredTower = useMapHighlightStore((s) => s.setHoveredTower);
-  useEffect(() => () => setHoveredTower(null), [setHoveredTower]);
+  const setHoveredDevice = useMapHighlightStore((s) => s.setHoveredDevice);
+  useEffect(() => () => setHoveredDevice(null), [setHoveredDevice]);
 
   const flyTo = (tower: Device) => {
     if (!map || tower.pose.lat == null || tower.pose.lon == null) return;
@@ -64,13 +64,13 @@ function TowerRow({
 }) {
   const name = tower.name ?? tower.deviceId;
   const online = connectivity.status === "online";
-  const setHoveredTower = useMapHighlightStore((s) => s.setHoveredTower);
+  const setHoveredDevice = useMapHighlightStore((s) => s.setHoveredDevice);
   return (
     <li
       className={cx(tile ? styles.tile : styles.item, !online && styles.offline)}
       // Rings the tower's marker on the map while the pointer is on its row.
-      onMouseEnter={() => setHoveredTower(tower.deviceId)}
-      onMouseLeave={() => setHoveredTower(null)}
+      onMouseEnter={() => setHoveredDevice(tower.deviceId)}
+      onMouseLeave={() => setHoveredDevice(null)}
     >
       <button
         type="button"

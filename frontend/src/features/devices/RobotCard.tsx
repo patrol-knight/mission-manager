@@ -1,4 +1,6 @@
+import { useEffect } from "react";
 import { useDeviceStore, selectRobot } from "../../stores/deviceStore";
+import { useMapHighlightStore } from "../../stores/mapHighlightStore";
 import { useMissionStore } from "../../stores/missionStore";
 import { useInvestigationStore } from "../../stores/investigationStore";
 import { Card } from "../../components/ui/Card";
@@ -17,6 +19,8 @@ export function RobotCard() {
   const investigation = useInvestigationStore((s) => s.investigation);
   const execution = useMissionStore((s) => s.execution);
   const { openInspector } = useDeviceInspector();
+  const setHoveredDevice = useMapHighlightStore((s) => s.setHoveredDevice);
+  useEffect(() => () => setHoveredDevice(null), [setHoveredDevice]);
 
   if (!robot) {
     return (
@@ -37,6 +41,8 @@ export function RobotCard() {
         </Pill>
       }
       onClick={() => openInspector(robot.deviceId)}
+      onMouseEnter={() => setHoveredDevice(robot.deviceId)}
+      onMouseLeave={() => setHoveredDevice(null)}
       aria-label={`${name}: ${status.label}. Open camera and status`}
     >
       <div style={{ marginTop: -6, fontSize: "var(--text-sm)", color: "var(--color-text-muted)" }}>{name}</div>

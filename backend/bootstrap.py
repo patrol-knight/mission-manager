@@ -118,7 +118,7 @@ def build_services(settings: Settings) -> Services:
         investigation=investigation,
         mission_drive_coordinator=mission_drive_coordinator,
         mission_service=mission_service,
-        camera_stream=CameraStreamService(device_registry, camera_registry, zenoh_gateway),
+        camera_stream=CameraStreamService(device_registry, camera_registry, zenoh_gateway, websocket_manager),
         websocket_manager=websocket_manager,
         zenoh_gateway=zenoh_gateway,
     )

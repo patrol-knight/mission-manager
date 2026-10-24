@@ -10,14 +10,14 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-def _snapshot_events(services: Services) -> list[dict]:
+def _snapshot_events(services: Services, connection_id: str) -> list[dict]:
     """Everything a freshly-connected client needs to render the current
     state without waiting for the next change event."""
     current = services.mission_service.current_or_none()
     execution = services.mission_execution_manager.get_state()
     devices = [d.model_dump(mode="json") for d in services.device_registry.list_devices()]
     events = [
-        {"type": "connection.ready", "data": {"protocol_version": 1}},
+        {"type": "connection.ready", "data": {"protocol_version": 1, "connection_id": connection_id}},
         {"type": "devices.snapshot", "data": devices},
         {"type": "mission.current", "data": current.model_dump(mode="json") if current else None},
         {"type": "mission.execution", "data": execution.model_dump(mode="json") if execution else None},
@@ -36,9 +36,9 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     services = get_ws_services(websocket)
     manager = services.websocket_manager
 
-    await manager.connect(websocket)
+    connection_id = await manager.connect(websocket)
     try:
-        for event in _snapshot_events(services):
+        for event in _snapshot_events(services, connection_id):
             await manager.send_json(websocket, event)
 
         while True:

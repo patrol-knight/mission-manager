@@ -52,14 +52,25 @@ function applyConnectivityStyle(el: HTMLElement, device: Device, backendConnecte
 function buildRobotElement(): HTMLElement {
   const color = mapPalette.device.robot;
   const el = document.createElement("div");
-  el.style.cssText = `width:40px;height:40px;cursor:pointer;z-index:${DEVICE_Z_INDEX.robot};`;
+  el.style.cssText = `
+    width:40px;height:40px;cursor:pointer;z-index:${DEVICE_Z_INDEX.robot};
+    transition:width 150ms ease-out, height 150ms ease-out;
+  `;
   el.innerHTML = `
-    <svg width="40" height="40" viewBox="0 0 40 40" style="display:block;filter:drop-shadow(0 2px 5px rgba(0,0,0,0.35))">
+    <svg width="100%" height="100%" viewBox="0 0 40 40" style="display:block;filter:drop-shadow(0 2px 5px rgba(0,0,0,0.35))">
       <circle cx="20" cy="20" r="18" fill="${color}" fill-opacity="0.18" stroke="${color}" stroke-opacity="0.5" />
       <path d="M20 6.2 L30 31 L20 25.2 L10 31 Z" fill="${color}" stroke="${mapPalette.markerBorder}"
         stroke-width="2" stroke-linejoin="round" />
     </svg>`;
   return el;
+}
+
+/** The robot card is hovered: grow the marker and deepen its halo. */
+function applyRobotHighlight(el: HTMLElement, highlighted: boolean): void {
+  const size = highlighted ? 50 : 40;
+  el.style.width = `${size}px`;
+  el.style.height = `${size}px`;
+  el.querySelector("circle")?.setAttribute("fill-opacity", highlighted ? "0.32" : "0.18");
 }
 
 /** A plain rounded square: a fixed tower. Its alerts are
@@ -153,7 +164,7 @@ export function DeviceMarkerLayer() {
   const { openInspector } = useDeviceInspector();
   const { status: wsStatus } = useApiConnection();
   const backendConnected = wsStatus === "connected";
-  const hoveredTowerId = useMapHighlightStore((s) => s.hoveredTowerId);
+  const hoveredDeviceId = useMapHighlightStore((s) => s.hoveredDeviceId);
   const hiddenByTower = useMapHighlightStore((s) => s.hiddenByTower);
   const targetId = useInvestigationStore((s) => s.investigation?.anomalyId ?? null);
   const target = useDeviceStore((s) => (targetId ? s.anomalies[targetId] : undefined));
@@ -186,8 +197,11 @@ export function DeviceMarkerLayer() {
       buildElement: (d) => (d.type === "robot" ? buildRobotElement() : buildTowerElement()),
       updateElement: (el, d) => {
         applyConnectivityStyle(el, d, backendConnected);
-        if (d.type !== "iot") return;
-        applyTowerHighlight(el, d.deviceId === hoveredTowerId);
+        if (d.type === "robot") {
+          applyRobotHighlight(el, d.deviceId === hoveredDeviceId);
+          return;
+        }
+        applyTowerHighlight(el, d.deviceId === hoveredDeviceId);
         const hidden = hiddenByTower[d.deviceId] ?? [];
         applyHiddenBadge(el, hidden, cornerAwayFrom(d, target), zoomToHidden);
         // With a badge, the tower rises above nearby anomalies (still under
@@ -198,9 +212,9 @@ export function DeviceMarkerLayer() {
       rotationOf: (d) => (d.type === "robot" ? headingDegrees(d.pose.yaw) : 0),
       onClick: (d) => openInspector(d.deviceId),
     }),
-    [openInspector, backendConnected, hoveredTowerId, hiddenByTower, target, zoomToHidden],
+    [openInspector, backendConnected, hoveredDeviceId, hiddenByTower, target, zoomToHidden],
   );
 
-  useMarkerList(map, devices, options, [backendConnected, hoveredTowerId, hiddenByTower, target]);
+  useMarkerList(map, devices, options, [backendConnected, hoveredDeviceId, hiddenByTower, target]);
   return null;
 }

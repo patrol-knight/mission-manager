@@ -85,7 +85,7 @@ def test_first_message_creates_the_anomaly(gateway, registry, ws):
     assert anomaly.types == ["lying_down", "loitering"]
     assert anomaly.expires_at == at(30)
     assert anomaly.detected_at == datetime.fromtimestamp(MESSAGE["detected_at"], timezone.utc)
-    assert ws.events[-1]["type"] == "anomaly.created"
+    assert ws.events[-1]["type"] == "anomaly.updated"
 
 
 def test_refresh_only_ever_extends_the_lifetime_and_keeps_first_values(gateway, registry, ws):
@@ -145,7 +145,7 @@ def test_an_expired_open_anomaly_can_be_created_again(gateway, registry, ws):
     gateway.ingest_anomaly_payload(MESSAGE, received_at=T0)
     registry.expire(now=at(31))
     assert gateway.ingest_anomaly_payload(MESSAGE, received_at=T0 + 100)
-    assert ws.events[-1]["type"] == "anomaly.created"
+    assert ws.events[-1]["type"] == "anomaly.updated"
 
 
 def test_unclear_is_recorded_but_not_final(gateway, registry, repo):
@@ -170,6 +170,9 @@ def test_a_final_verdict_closes_the_anomaly_for_good(gateway, registry, repo):
     assert len(repo.rows) == 1  # no second write
     assert not gateway.ingest_anomaly_payload(MESSAGE, received_at=T0 + 5000)  # still ignored after removal
     assert registry.get(AID) is None
+
+    registry.expire(now=resolved.expires_at + timedelta(hours=2))  # forgotten after the retention
+    assert gateway.ingest_anomaly_payload(MESSAGE, received_at=T0 + 9000)
 
 
 def test_feedback_payload_matches_the_contract(gateway):

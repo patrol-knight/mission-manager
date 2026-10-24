@@ -8,13 +8,10 @@ from fastapi.testclient import TestClient
 @pytest.mark.parametrize(
     ("method", "path", "body"),
     [
-        ("GET", "/api/map/info", None),
         ("GET", "/api/map/geojson", None),
         ("GET", "/api/map/bounds", None),
-        ("POST", "/api/map/is-in-lanelet", {"x": 0, "y": 0}),
-        ("POST", "/api/map/snap-waypoint", {"x": 0, "y": 0}),
+        ("POST", "/api/map/place-waypoint", {"lat": 0, "lon": 0}),
         ("POST", "/api/map/xy-to-lnglat", {"x": 0, "y": 0}),
-        ("POST", "/api/map/lnglat-to-xy", {"lat": 0, "lon": 0}),
         ("POST", "/api/map/route-preview", {"waypoints": [{"x": 0, "y": 0}, {"x": 1, "y": 1}]}),
     ],
 )
