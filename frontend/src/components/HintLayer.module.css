@@ -1,0 +1,22 @@
+/* Small dark label, the same over the map and the panel. */
+.hint {
+  position: fixed;
+  /* Above the camera windows (--z-modal), below toasts. */
+  z-index: 30000;
+  max-width: 260px;
+  padding: 4px 8px;
+  border-radius: var(--radius-md);
+  background: rgba(24, 26, 31, 0.92);
+  color: #fff;
+  font: 500 12px/1.35 system-ui, sans-serif;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  pointer-events: none;
+  animation: hint-in 120ms ease-out;
+}
+
+@keyframes hint-in {
+  from {
+    opacity: 0;
+  }
+}

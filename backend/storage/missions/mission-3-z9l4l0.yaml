@@ -1,0 +1,28 @@
+mission_id: mission-3-z9l4l0
+name: Mission 3
+map_name: lanelet2_map
+frame_id: map
+description: null
+waypoints:
+- waypoint_id: 85530ac6-e6b1-4804-ae1a-c943f84644dd
+  x: -52.14678739705012
+  y: 75.09624986472872
+  yaw: null
+  label: null
+  type: patrol
+- waypoint_id: 2500cdc9-33af-4ce8-9ccd-d57ad4e4d635
+  x: -67.04517511212975
+  y: 34.31053909863774
+  yaw: null
+  label: null
+  type: patrol
+- waypoint_id: 5eb80d2f-cc09-4b8b-9f51-b26735856951
+  x: -55.18956351358256
+  y: 39.11528827340562
+  yaw: null
+  label: null
+  type: patrol
+loop_count: 1
+created_at: '2026-07-27T02:43:30.092570Z'
+updated_at: '2026-07-27T02:43:30.092570Z'
+metadata: {}

@@ -4,7 +4,7 @@ import time
 
 from core.device import BaseDevice
 from core.errors import DeviceTypeMismatchError
-from models.device import DeviceState, DeviceView
+from models.device import DeviceState, DeviceType, DeviceView
 
 logger = logging.getLogger(__name__)
 
@@ -47,18 +47,28 @@ class DeviceRegistry:
             views = [device.to_view() for device in self._devices.values()]
         return sorted(views, key=lambda v: v.device_id)
 
-    def mark_offline_devices(
-        self, timeout_sec: float, now: float | None = None
-    ) -> bool:
-        now = time.time() if now is None else now
-        changed = False
-        with self._lock:
-            for device in self._devices.values():
-                if device.connected and (now - device.last_seen) > timeout_sec:
-                    if device.mark_offline():
-                        changed = True
-        return changed
+    def get_robot(self) -> DeviceView | None:
+        """The robot, connected or not -- lowest device_id if there are ever
+        several (single-robot deployment)."""
+        return self._first_robot(connected_only=False)
 
-    def remove(self, device_id: str) -> bool:
+    def get_connected_robot(self) -> DeviceView | None:
+        return self._first_robot(connected_only=True)
+
+    def _first_robot(self, connected_only: bool) -> DeviceView | None:
         with self._lock:
-            return self._devices.pop(device_id, None) is not None
+            robots = [
+                d for d in self._devices.values()
+                if d.state.type == DeviceType.ROBOT and (d.connected or not connected_only)
+            ]
+            return min(robots, key=lambda d: d.state.device_id).to_view() if robots else None
+
+    def mark_offline_devices(self, timeout_sec: float, now: float | None = None) -> list[DeviceView]:
+        """Marks silent devices offline; returns the ones that just went offline."""
+        now = time.time() if now is None else now
+        with self._lock:
+            return [
+                device.to_view()
+                for device in self._devices.values()
+                if (now - device.last_seen) > timeout_sec and device.mark_offline()
+            ]

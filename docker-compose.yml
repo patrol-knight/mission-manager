@@ -1,11 +1,83 @@
 services:
+  zenohd:
+    image: eclipse/zenoh:latest
+    ports:
+      - "7447:7447"
+    restart: unless-stopped
+
+  postgres:
+    # Opt-in only -- anomaly-history persistence (backend/core/anomaly_repository.py)
+    # is a nice-to-have, not required for mission authoring/execution, and this
+    # keeps `docker compose up` from generating throwaway test data during
+    # everyday dev/testing. Enable it with both `COMPOSE_PROFILES=db` and
+    # `DATABASE_URL` in the root .env (see .env.example).
+    profiles: ["db"]
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-mission_manager}
+      - POSTGRES_USER=${POSTGRES_USER:-mission_manager}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-mission_manager}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mission_manager}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
   backend:
     build:
       context: ./backend
-    network_mode: host
+    # Connects explicitly to the zenohd service below (ZENOH_ROUTER) rather
+    # than relying on multicast peer discovery, so plain bridge networking
+    # works here -- no network_mode: host, portable to Docker Desktop too.
+    ports:
+      - "8000:8000"
+    depends_on:
+      zenohd:
+        condition: service_started
+      # required: false -- postgres is behind the "db" profile (opt-in, see
+      # above) and is allowed to simply not exist. When it IS enabled,
+      # condition: service_healthy still avoids a spurious "failed to
+      # connect" on first boot in the common case where both start together.
+      postgres:
+        condition: service_healthy
+        required: false
+    environment:
+      - BACKEND_HOST=0.0.0.0
+      - BACKEND_PORT=8000
+      - CORS_ORIGINS=["http://localhost:5173","http://localhost:5050"]
+      - MAP_OSM_PATH=storage/maps/lanelet2_map.osm
+      - MAP_PROJECTOR_PATH=storage/maps/map_projector_info.yaml
+      - MISSION_FOLDER=storage/missions
+      - APP_STATE_PATH=storage/app_state.yaml
+      - DEVICE_OFFLINE_TIMEOUT_SEC=3.0
+      - DEVICE_MONITOR_INTERVAL_SEC=1.0
+      # Off by default here -- there are no devices/anomalies to show unless a
+      # device_gateway (or its demo dummy_robot/iot_device) is also running
+      # and connected to the same zenohd. Set to true in a root .env once one is.
+      - ZENOH_ENABLED=${ZENOH_ENABLED:-false}
+      - ZENOH_ROUTER=${ZENOH_ROUTER:-tcp/zenohd:7447}
+      - ZENOH_DEVICE_STATE_KEYEXPR=devices/*/state
+      # Empty (the default) = no anomaly history at all: the backend never
+      # tries to connect. Set in the root .env together with
+      # COMPOSE_PROFILES=db to record it (see .env.example).
+      - DATABASE_URL=${DATABASE_URL:-}
     volumes:
-      - ./maps:/app/maps:ro
-      
+      # Whole storage/ dir, read-write, persisted on the host -- missions and
+      # app_state.yaml created/edited through the app survive container
+      # recreation. app_state.yaml specifically MUST be covered by a
+      # directory mount, not bind-mounted as a single file: mission_server.py
+      # saves it via write-tmp-then-os.replace() for atomicity, and
+      # os.replace() over a file that is itself an individual bind-mount
+      # point fails with "Device or resource busy" (EBUSY) -- the kernel
+      # won't let rename() replace a mountpoint. Mounting the parent
+      # directory avoids that entirely.
+      - ./backend/storage:/app/storage
+      # Map data overrides the parent mount for this one path, read-only --
+      # swap in a different map without rebuilding the image.
+      - ./backend/storage/maps:/app/storage/maps:ro
     restart: unless-stopped
 
   frontend:
@@ -14,9 +86,19 @@ services:
     ports:
       - "5050:80"
     environment:
-      - API_BASE_URL=http://localhost:8000
-      - WS_URL=ws://localhost:8000/ws
-
+      # These are baked into /config.js at container start (see
+      # docker-entrypoint.sh) and read by the BROWSER, not proxied through
+      # nginx — so they must be reachable from wherever the browser runs, not
+      # just from inside the frontend container. "localhost" is correct when
+      # viewing the page from the same machine Docker runs on; for a real
+      # robot deployment, override via a root .env (see .env.example), e.g.
+      # API_BASE_URL=http://robot-host:8000.
+      - API_BASE_URL=${API_BASE_URL:-http://localhost:8000}
+      - WS_URL=${WS_URL:-ws://localhost:8000/ws}
+      - CAMERA_MODE=${CAMERA_MODE:-mock}
     depends_on:
       - backend
     restart: unless-stopped
+
+volumes:
+  postgres-data:

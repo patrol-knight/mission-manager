@@ -1,9 +1,9 @@
 from typing import Literal
 
-from pydantic import BaseModel
+from models.base import WireModel
 
 
-class Waypoint(BaseModel):
+class Waypoint(WireModel):
     waypoint_id: str
     x: float
     y: float

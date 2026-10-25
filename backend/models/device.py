@@ -1,7 +1,9 @@
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import ConfigDict, Field
+
+from models.base import WireModel
 
 
 class DeviceType(str, Enum):
@@ -9,14 +11,23 @@ class DeviceType(str, Enum):
     IOT = "iot"
 
 
-class Pose2D(BaseModel):
+class Pose2D(WireModel):
     frame_id: str = "map"
     x: float
     y: float
     yaw: float = 0.0
+    # Computed once, server-side, at Zenoh ingest time (see
+    # transport/zenoh_gateway.py's ingest_device_payload) using MapServer's
+    # real lanelet2 projector -- never set by an incoming device payload
+    # itself (device_gateway only knows local x/y). Carried through every
+    # broadcast/REST response so the frontend never needs a per-marker
+    # xy-to-lnglat round trip for a continuously-updating device position.
+    # Null whenever the map service is unavailable.
+    lat: float | None = None
+    lon: float | None = None
 
 
-class DeviceState(BaseModel):
+class DeviceState(WireModel):
     model_config = ConfigDict(extra="forbid")
 
     device_id: str

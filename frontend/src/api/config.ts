@@ -3,7 +3,7 @@
  * Falls back to localhost defaults for local dev.
  */
 
-const rc = (window as any).RUNTIME_CONFIG ?? {};
+const rc = window.RUNTIME_CONFIG ?? {};
 
 const hostname = window.location.hostname;
 

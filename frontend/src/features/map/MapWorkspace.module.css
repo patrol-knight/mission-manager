@@ -1,0 +1,41 @@
+/* Floating "back to the whole site" pill, bottom left of the map (the
+   attribution sits bottom right). Fades in only once the view has moved
+   away from the overview. */
+.overview {
+  position: absolute;
+  left: 16px;
+  bottom: 16px;
+  z-index: var(--z-map-overlay);
+  padding: 7px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+  color: var(--color-text);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  cursor: pointer;
+  opacity: 0;
+  transform: translateY(6px);
+  pointer-events: none;
+  transition:
+    opacity var(--duration-fast),
+    transform var(--duration-fast),
+    background var(--duration-fast);
+}
+
+.overview[data-visible="true"] {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+
+.overview:hover {
+  background: var(--color-surface-hover);
+}
+
+.overview:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}

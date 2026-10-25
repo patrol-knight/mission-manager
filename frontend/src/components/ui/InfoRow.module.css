@@ -1,0 +1,26 @@
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: var(--text-md);
+}
+
+.dense {
+  font-size: var(--text-sm);
+}
+
+.label {
+  color: var(--color-text-muted);
+}
+
+.value {
+  color: var(--color-text);
+  font-weight: 500;
+  text-align: right;
+}
