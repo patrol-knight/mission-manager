@@ -1,5 +1,7 @@
 import { useEffect, useRef } from "react";
-import type maplibregl from "maplibre-gl";
+import type * as maplibregl from "maplibre-gl";
+
+type PaintKey = Parameters<maplibregl.Map["setPaintProperty"]>[1];
 
 const EMPTY: GeoJSON.FeatureCollection = { type: "FeatureCollection", features: [] };
 
@@ -52,15 +54,15 @@ export function useGeoJsonLineLayer(
   // reset to their default -- e.g. MissionPreviewLayer's dashed route turning
   // solid. Callers that want a reactive paint should keep their paint objects
   // stable (constants or useMemo) so this only fires on a real change.
-  const appliedKeysRef = useRef<string[]>([]);
+  const appliedKeysRef = useRef<PaintKey[]>([]);
   useEffect(() => {
     if (!map || !paint || !map.getLayer(layerId)) return;
     for (const key of appliedKeysRef.current) {
       if (!(key in paint)) map.setPaintProperty(layerId, key, undefined);
     }
     for (const [key, value] of Object.entries(paint)) {
-      map.setPaintProperty(layerId, key, value);
+      map.setPaintProperty(layerId, key as PaintKey, value);
     }
-    appliedKeysRef.current = Object.keys(paint);
+    appliedKeysRef.current = Object.keys(paint) as PaintKey[];
   }, [map, layerId, paint]);
 }

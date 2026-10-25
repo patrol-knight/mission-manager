@@ -1,5 +1,5 @@
 import { useContext, useEffect } from "react";
-import type maplibregl from "maplibre-gl";
+import type * as maplibregl from "maplibre-gl";
 import { MapContext } from "./MapContext";
 import { useLaneletMap } from "../../hooks/useMapData";
 import { mapPalette } from "./mapPalette";

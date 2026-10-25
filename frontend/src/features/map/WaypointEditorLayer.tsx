@@ -1,5 +1,5 @@
 import { useContext, useEffect, useMemo } from "react";
-import type maplibregl from "maplibre-gl";
+import type * as maplibregl from "maplibre-gl";
 import { MapContext } from "./MapContext";
 import { useMarkerList, type UseMarkerListOptions, type LngLat } from "./mapMarkers";
 import { useMissionEditor } from "../missions/useMissionEditor";

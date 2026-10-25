@@ -46,7 +46,7 @@ const { FakeMarker } = vi.hoisted(() => {
 });
 
 vi.mock("maplibre-gl", () => ({
-  default: { Marker: FakeMarker },
+  Marker: FakeMarker,
 }));
 
 // Per-device connectivity only; the backend-disconnected case is in connectivity.test.ts.

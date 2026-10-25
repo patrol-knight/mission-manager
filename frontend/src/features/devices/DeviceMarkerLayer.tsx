@@ -1,5 +1,5 @@
 import { useCallback, useContext, useMemo } from "react";
-import maplibregl from "maplibre-gl";
+import * as maplibregl from "maplibre-gl";
 import { useShallow } from "zustand/react/shallow";
 import { MapContext } from "../map/MapContext";
 import { useMarkerList, type UseMarkerListOptions } from "../map/mapMarkers";

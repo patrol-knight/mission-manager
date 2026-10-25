@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
-import type maplibregl from "maplibre-gl";
+import type * as maplibregl from "maplibre-gl";
 import { getMapBounds } from "../../api/mapApi";
 import { useDeviceStore } from "../../stores/deviceStore";
 import { overviewBounds, type LngLatBoundsLike } from "./overviewBounds";

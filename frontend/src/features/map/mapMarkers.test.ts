@@ -32,7 +32,7 @@ const { FakeMarker } = vi.hoisted(() => {
 });
 
 vi.mock("maplibre-gl", () => ({
-  default: { Marker: FakeMarker },
+  Marker: FakeMarker,
 }));
 
 interface Item {

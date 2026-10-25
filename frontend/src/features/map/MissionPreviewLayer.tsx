@@ -1,5 +1,5 @@
 import { useContext, useEffect, useMemo, useState } from "react";
-import maplibregl from "maplibre-gl";
+import * as maplibregl from "maplibre-gl";
 import { MapContext } from "./MapContext";
 import { useGeoJsonLineLayer } from "./useGeoJsonLineLayer";
 import { useMarkerList, type UseMarkerListOptions } from "./mapMarkers";

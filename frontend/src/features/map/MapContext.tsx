@@ -1,5 +1,5 @@
 import { createContext } from "react";
-import type maplibregl from "maplibre-gl";
+import type * as maplibregl from "maplibre-gl";
 
 export interface MapContextValue {
   map: maplibregl.Map | null;

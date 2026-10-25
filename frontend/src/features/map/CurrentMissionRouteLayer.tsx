@@ -1,5 +1,5 @@
 import { useContext } from "react";
-import type maplibregl from "maplibre-gl";
+import type * as maplibregl from "maplibre-gl";
 import { MapContext } from "./MapContext";
 import { useMissionStore } from "../../stores/missionStore";
 import { useInvestigationStore } from "../../stores/investigationStore";

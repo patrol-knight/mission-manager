@@ -1,4 +1,4 @@
-import type maplibregl from "maplibre-gl";
+import type * as maplibregl from "maplibre-gl";
 import type { DeviceType } from "../../types/domain";
 
 /** Colors drawn on the map canvas -- MapLibre paint properties and the marker
