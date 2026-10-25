@@ -1,6 +1,8 @@
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import ConfigDict, Field
+
+from models.base import WireModel
 
 CameraStreamStatus = Literal["idle", "connecting", "live", "no_signal", "offline", "error"]
 CameraSessionState = Literal["idle", "starting", "negotiating", "streaming", "stopping"]
@@ -12,7 +14,7 @@ CommandStatus = Literal["accepted", "running", "succeeded", "failed", "rejected"
 SESSION_ID_PATTERN = r"^[A-Za-z0-9_-]{8,64}$"
 
 
-class CameraState(BaseModel):
+class CameraState(WireModel):
     """Mirrors zenoh_bridge's CameraStatePayload (contract/types.hpp), published on
     devices/{device_id}/cameras/{camera_id}/state.
 
@@ -41,7 +43,7 @@ class CameraState(BaseModel):
         return self.model_dump(mode="json") | {"session_id": None}
 
 
-class WebRtcSignal(BaseModel):
+class WebRtcSignal(WireModel):
     """Mirrors zenoh_bridge's WebRtcSignalPayload -- carried on both
     .../webrtc/to-device (backend -> gateway) and .../webrtc/to-backend
     (gateway -> backend). session_id is the frontend-generated id of the
@@ -56,7 +58,7 @@ class WebRtcSignal(BaseModel):
     sdp_mline_index: int | None = None
 
 
-class CommandResult(BaseModel):
+class CommandResult(WireModel):
     """Mirrors zenoh_bridge's CommandResult, published on devices/{device_id}/events
     for every command. `accepted` only means queued; the outcome is one of
     running/succeeded/rejected/failed. The camera-session fields are null for
@@ -76,7 +78,7 @@ class CommandResult(BaseModel):
     state_revision: int | None = None
 
 
-class StartCameraStreamRequest(BaseModel):
+class StartCameraStreamRequest(WireModel):
     model_config = ConfigDict(extra="forbid")
 
     session_id: str = Field(pattern=SESSION_ID_PATTERN)
@@ -85,13 +87,13 @@ class StartCameraStreamRequest(BaseModel):
     connection_id: str
 
 
-class StopCameraStreamRequest(BaseModel):
+class StopCameraStreamRequest(WireModel):
     model_config = ConfigDict(extra="forbid")
 
     connection_id: str
 
 
-class CameraSessionInfo(BaseModel):
+class CameraSessionInfo(WireModel):
     device_id: str
     camera_id: str
     session_id: str

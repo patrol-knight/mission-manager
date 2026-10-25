@@ -2,7 +2,7 @@ import asyncio
 import logging
 import threading
 import uuid
-from typing import Coroutine
+from collections.abc import Coroutine
 
 from fastapi import WebSocket
 

@@ -1,7 +1,9 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import ConfigDict, Field, field_validator
+
+from models.base import WireModel
 
 # The anomaly categories Anomaly Detection may report -- see
 # ../anomaly_detection/docs/topics_format.md section 2.1.
@@ -14,7 +16,7 @@ AnomalyVerdict = Literal["true_positive", "false_positive", "unclear"]
 FINAL_VERDICTS: tuple[AnomalyResolution, ...] = ("true_positive", "false_positive")
 
 
-class AnomalyStateMessage(BaseModel):
+class AnomalyStateMessage(WireModel):
     """Wire payload on anomalies/{anomaly_id}/state, published by Anomaly
     Detection (../anomaly_detection/docs/topics_format.md section 2.1). The
     first message for an id creates the anomaly; every later one refreshes it
@@ -42,7 +44,7 @@ class AnomalyStateMessage(BaseModel):
         return value
 
 
-class AnomalyFeedbackMessage(BaseModel):
+class AnomalyFeedbackMessage(WireModel):
     """Wire payload on anomalies/{anomaly_id}/feedback, published by this
     backend once the operator resolves an anomaly (section 2.2 of the same
     doc). Anomaly Detection stops publishing that id afterwards."""
@@ -54,7 +56,7 @@ class AnomalyFeedbackMessage(BaseModel):
     resolved_at: float  # epoch seconds
 
 
-class Anomaly(BaseModel):
+class Anomaly(WireModel):
     model_config = ConfigDict(extra="forbid")
 
     anomaly_id: str

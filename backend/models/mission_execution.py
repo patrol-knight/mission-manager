@@ -1,7 +1,9 @@
 from datetime import datetime
 from enum import Enum
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import ConfigDict
+
+from models.base import WireModel
 
 
 class MissionStatus(str, Enum):
@@ -15,7 +17,7 @@ class MissionStatus(str, Enum):
     COMPLETED = "completed"
 
 
-class MissionExecutionState(BaseModel):
+class MissionExecutionState(WireModel):
     """Runtime execution progress for whichever mission is current. Kept
     entirely separate from `Mission` (the persisted definition) — this is
     in-memory-only, never written to YAML. See core/mission_execution.py."""

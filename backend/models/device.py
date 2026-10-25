@@ -1,7 +1,9 @@
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import ConfigDict, Field
+
+from models.base import WireModel
 
 
 class DeviceType(str, Enum):
@@ -9,7 +11,7 @@ class DeviceType(str, Enum):
     IOT = "iot"
 
 
-class Pose2D(BaseModel):
+class Pose2D(WireModel):
     frame_id: str = "map"
     x: float
     y: float
@@ -25,7 +27,7 @@ class Pose2D(BaseModel):
     lon: float | None = None
 
 
-class DeviceState(BaseModel):
+class DeviceState(WireModel):
     model_config = ConfigDict(extra="forbid")
 
     device_id: str

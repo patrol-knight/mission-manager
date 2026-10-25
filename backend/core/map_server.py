@@ -1,23 +1,24 @@
 import logging
 import math
 from functools import lru_cache
+from itertools import pairwise
 from pathlib import Path
 
 import yaml
 
 from core.errors import MapUnavailableError
-from models.map import LatLon, MapInfo, MapPoint, RouteWaypoint, XY
+from models.map import XY, LatLon, MapInfo, MapPoint, RouteWaypoint
 
 logger = logging.getLogger(__name__)
 
 try:
+    from lanelet2 import traffic_rules
     from lanelet2.core import BasicPoint2d, BasicPoint3d, GPSPoint
     from lanelet2.geometry import findNearest, inside
     from lanelet2.io import Origin
     from lanelet2.io import load as ll2_load
     from lanelet2.projection import LocalCartesianProjector
     from lanelet2.routing import RoutingGraph
-    from lanelet2 import traffic_rules
 
     _LANELET2_AVAILABLE = True
 except ImportError:
@@ -57,7 +58,7 @@ class MapServer:
             )
 
         try:
-            with open(projector_yaml, "r") as f:
+            with open(projector_yaml) as f:
                 data = yaml.safe_load(f)
 
             self._origin_lat = data["map_origin"]["latitude"]
@@ -182,7 +183,7 @@ class MapServer:
         if cached is None:
             pts = list(ll.centerline)
             arc = [0.0]
-            for a, b in zip(pts, pts[1:]):
+            for a, b in pairwise(pts):
                 arc.append(arc[-1] + math.sqrt((b.x - a.x) ** 2 + (b.y - a.y) ** 2))
             cached = self._centerlines[ll.id] = (pts, arc)
         return cached
@@ -290,7 +291,7 @@ class MapServer:
             return None
         return self._route(tuple((wp["x"], wp["y"]) for wp in waypoints))
 
-    @lru_cache(maxsize=256)
+    @lru_cache(maxsize=256)  # noqa: B019 -- MapServer lives as long as the app
     def _route(self, points: tuple[tuple[float, float], ...]) -> dict | None:
         waypoints = [{"x": x, "y": y} for x, y in points]
 

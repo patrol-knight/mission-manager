@@ -1,3 +1,4 @@
+import type { components } from "../../api/schema";
 /** See ../anomaly_detection/docs/topics_format.md section 2.1. */
 export type AnomalyType = "lying_down" | "loitering" | "trespassing";
 
@@ -30,26 +31,7 @@ export interface Anomaly {
   missionId: string | null;
 }
 
-/** Wire shape — see backend/models/anomaly.py::Anomaly. */
-export interface RawAnomaly {
-  anomaly_id: string;
-  types: AnomalyType[];
-  x: number;
-  y: number;
-  frame_id: string;
-  confidence: number;
-  source_device_id: string;
-  detected_at: string;
-  updated_at: string;
-  last_seen_at: string;
-  degrade_sec: number;
-  expires_at: string;
-  lat: number | null;
-  lon: number | null;
-  resolution: AnomalyVerdict | null;
-  resolved_at: string | null;
-  mission_id: string | null;
-}
+export type RawAnomaly = components["schemas"]["Anomaly"];
 
 export function anomalyFromRaw(raw: RawAnomaly): Anomaly {
   return {

@@ -1,4 +1,8 @@
-export type WaypointType = "patrol" | "inspection" | "charging" | "custom";
+import type { components } from "../../api/schema";
+
+type Schemas = components["schemas"];
+
+export type WaypointType = Schemas["Waypoint"]["type"];
 
 export interface Waypoint {
   waypointId: string;
@@ -33,7 +37,7 @@ export interface MissionDefinition {
 }
 
 /** "not_ready": idle, but the robot can't run a mission (offline). */
-export type MissionStatus = "not_ready" | "ready" | "running" | "paused" | "completed";
+export type MissionStatus = Schemas["MissionStatus"];
 
 /** Runtime execution progress — see backend/models/mission_execution.py::MissionExecutionState. */
 export interface MissionExecutionState {
@@ -50,16 +54,7 @@ export interface MissionExecutionState {
   updatedAt: string | null;
 }
 
-export interface RawMissionExecutionState {
-  mission_id: string;
-  status: MissionStatus;
-  current_loop: number;
-  completed_loops: number;
-  current_waypoint_index: number;
-  target_waypoint_index: number | null;
-  joining: boolean;
-  updated_at: string | null;
-}
+export type RawMissionExecutionState = Schemas["MissionExecutionState"];
 
 export function missionExecutionStateFromRaw(raw: RawMissionExecutionState): MissionExecutionState {
   return {
@@ -87,32 +82,9 @@ export interface RouteValidationResult {
   warnings?: ValidationIssue[];
 }
 
-// ---- wire shapes (snake_case, backend/models/mission.py & waypoint.py) + adapter ----
+// ---- wire shapes (generated from the backend, see api/schema.ts) + adapter ----
 
-interface RawWaypoint {
-  waypoint_id: string;
-  x: number;
-  y: number;
-  yaw: number | null;
-  label: string | null;
-  type: WaypointType;
-  lat?: number | null;
-  lon?: number | null;
-}
-
-export interface RawMission {
-  mission_id: string;
-  name: string;
-  map_name: string;
-  frame_id: string;
-  description: string | null;
-  waypoints: RawWaypoint[];
-  loop_count: number;
-  infinite_loop: boolean;
-  created_at: string | null;
-  updated_at: string | null;
-  metadata: Record<string, unknown>;
-}
+export type RawMission = Schemas["MissionGeo"];
 
 export function missionDefinitionFromRaw(raw: RawMission): MissionDefinition {
   return {
@@ -156,20 +128,7 @@ export interface MissionSummary {
   updatedAt: string | null;
 }
 
-export interface RawMissionSummary {
-  mission_id: string;
-  name: string;
-  map_name: string;
-  frame_id: string;
-  waypoint_count: number;
-  loop_count: number;
-  infinite_loop: boolean;
-  home_x: number | null;
-  home_y: number | null;
-  distance_m: number | null;
-  is_current: boolean;
-  updated_at: string | null;
-}
+export type RawMissionSummary = Schemas["MissionSummary"];
 
 export function missionSummaryFromRaw(raw: RawMissionSummary): MissionSummary {
   return {
@@ -203,7 +162,7 @@ interface ResolvedMissionDraft extends Omit<MissionDraftInput, "missionId"> {
 }
 
 /** The backend fills in map_name from the loaded map. */
-export function missionDraftToRawPayload(draft: ResolvedMissionDraft): Omit<RawMission, "map_name"> {
+export function missionDraftToRawPayload(draft: ResolvedMissionDraft): Schemas["Mission"] {
   return {
     mission_id: draft.missionId,
     name: draft.name.trim(),

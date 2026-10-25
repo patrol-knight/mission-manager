@@ -43,7 +43,7 @@ class MissionServer:
 
             missions: dict[str, Mission] = {}
             for path in sorted(self._mission_folder.glob("*.yaml")):
-                with open(path, "r", encoding="utf-8") as f:
+                with open(path, encoding="utf-8") as f:
                     raw = yaml.safe_load(f)
                 if raw is None:
                     raise MissionValidationError(
@@ -60,7 +60,7 @@ class MissionServer:
 
             current_id: str | None = None
             if self._app_state_path.exists():
-                with open(self._app_state_path, "r", encoding="utf-8") as f:
+                with open(self._app_state_path, encoding="utf-8") as f:
                     state = yaml.safe_load(f) or {}
                 current_id = state.get("current_mission_id")
                 # Rewrite files still carrying the removed default_mission_id.

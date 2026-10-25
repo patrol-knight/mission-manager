@@ -41,7 +41,7 @@ def test_mission_waypoints_are_on_lanelets(map_server: MapServer, waypoints):
 
 
 def test_routes_exist_between_mission_waypoints(map_server: MapServer, waypoints):
-    for a, b in zip(waypoints, waypoints[1:] + waypoints[:1]):
+    for a, b in zip(waypoints, waypoints[1:] + waypoints[:1], strict=True):
         route = map_server.get_route([{"x": a.x, "y": a.y}, {"x": b.x, "y": b.y}])
         assert route is not None
         assert route["properties"]["length_m"] > 0

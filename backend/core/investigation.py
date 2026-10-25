@@ -69,7 +69,7 @@ class InvestigationCoordinator:
         self._devices = device_registry
         self._gateway = zenoh_gateway
         self._websocket = websocket_manager
-        self._drive: "MissionDriveCoordinator | None" = None
+        self._drive: MissionDriveCoordinator | None = None
 
         self._lock = threading.RLock()
         self._state: InvestigationState | None = None

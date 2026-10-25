@@ -1,3 +1,4 @@
+import type { components } from "../../api/schema";
 import type { AnomalyVerdict } from "../anomalies/anomalyTypes";
 
 /** See backend/models/investigation.py and the README's state machine section. */
@@ -24,17 +25,10 @@ export interface Investigation {
   arrivedAt: string | null;
 }
 
-/** Wire shape — see backend/models/investigation.py::InvestigationState. */
-export interface RawInvestigation {
-  anomaly_id: string;
-  robot_device_id: string;
-  phase: InvestigationPhase;
-  target: { x: number; y: number; frame_id: string; lat: number | null; lon: number | null };
+/** The backend types route as a plain dict. */
+export type RawInvestigation = Omit<components["schemas"]["InvestigationState"], "route"> & {
   route: GeoJSON.Feature<GeoJSON.LineString>;
-  draft_verdict: AnomalyVerdict | null;
-  started_at: string;
-  arrived_at: string | null;
-}
+};
 
 export function investigationFromRaw(raw: RawInvestigation): Investigation {
   return {

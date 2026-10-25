@@ -63,20 +63,30 @@ cd backend && .venv/bin/uvicorn app:app --host 0.0.0.0 --port 8000
 cd frontend && npm run dev   # http://localhost:5173
 ```
 
-## Tests
+## Tests and checks
 
 ```bash
-cd backend && pytest     # needs backend/requirements.txt installed
-cd frontend && npm test  # plus `npm run lint` and `npm run build` for lint/type checks
+scripts/check.sh            # everything CI runs: backend, frontend, API contract
+scripts/check.sh --docker   # plus building the images and smoke-testing the stack
 ```
+
+Each step also runs on its own: `scripts/check-backend.sh` (ruff + pytest; needs
+`backend/requirements-dev.txt`), `scripts/check-frontend.sh` (lint, tests, type-check + build; needs
+`npm ci`), `scripts/check-contract.sh` and `scripts/docker-smoke.sh`. The scripts use `backend/.venv`
+when it exists, or `$PYTHON`.
 
 - **Backend** (`backend/tests/`) runs the real app on a temporary copy of `storage/`, with a fake robot,
   anomaly source and straight-line map, so no Zenoh or devices are needed. The real lanelet2 map tests
   are skipped when lanelet2 isn't installed, and the Postgres history tests run only when
   `TEST_DATABASE_URL` points at a database (they drop and recreate `anomaly_history` there, so use a
   throwaway one).
-- **CI** (`.github/workflows/`) runs on pull requests only: `Backend tests` when `backend/` changes
-  (with a Postgres service), `Frontend checks` (lint, tests, type-check + build) when `frontend/` changes.
+- **API contract**: the frontend's wire types come from `frontend/src/api/schema.ts`, generated from the
+  backend's OpenAPI schema. After changing a backend model or route, run `scripts/gen-api-types.sh` and
+  commit the result; `check-contract.sh` fails while it is out of date. WebSocket-only messages
+  (camera signals, `autonomy.aborted`, `anomaly.expired`) aren't in the schema and are still typed by hand.
+- **CI** (`.github/workflows/ci.yml`) runs the same scripts on pull requests into `main` (not drafts),
+  on the merge into `main`, and on demand from the Actions tab. Pushes to `feat/*` branches don't
+  trigger it.
 
 ## Backend layout
 

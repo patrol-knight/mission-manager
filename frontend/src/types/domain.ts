@@ -1,3 +1,4 @@
+import type { components } from "../api/schema";
 export type DeviceType = "robot" | "iot";
 
 export interface Pose2D {
@@ -27,20 +28,7 @@ export interface Device {
   lastSeen: number;
 }
 
-/** Wire shape sent by the backend — see backend/models/device.py::DeviceView. */
-export interface RawDevice {
-  device_id: string;
-  name: string | null;
-  type: DeviceType;
-  pose: { frame_id: string; x: number; y: number; yaw: number; lat: number | null; lon: number | null };
-  timestamp: number;
-  battery: number | null;
-  speed: number | null;
-  status: Record<string, unknown>;
-  capabilities: string[];
-  connected: boolean;
-  last_seen: number;
-}
+export type RawDevice = components["schemas"]["DeviceView"];
 
 export function deviceFromRaw(raw: RawDevice): Device {
   return {

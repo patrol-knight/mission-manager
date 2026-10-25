@@ -1,9 +1,10 @@
 from datetime import datetime
 from enum import Enum
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import ConfigDict
 
 from models.anomaly import AnomalyVerdict
+from models.base import WireModel
 from models.map import MapPoint
 
 
@@ -12,7 +13,7 @@ class InvestigationPhase(str, Enum):
     ON_SITE = "on_site"
 
 
-class InvestigationState(BaseModel):
+class InvestigationState(WireModel):
     """The robot's current investigation (core/investigation.py). In memory
     only, same as MissionExecutionState; None when the robot isn't
     investigating."""
@@ -34,9 +35,9 @@ class InvestigationState(BaseModel):
     arrived_at: datetime | None = None
 
 
-class StartInvestigationRequest(BaseModel):
+class StartInvestigationRequest(WireModel):
     anomaly_id: str
 
 
-class SetVerdictRequest(BaseModel):
+class SetVerdictRequest(WireModel):
     verdict: AnomalyVerdict

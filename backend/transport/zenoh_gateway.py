@@ -61,13 +61,13 @@ class ZenohGateway:
         self._anomaly_registry = anomaly_registry
         self._map_server = map_server
         self._camera_registry = camera_registry
-        self._investigation: "InvestigationCoordinator | None" = None
-        self._mission_drive_coordinator: "MissionDriveCoordinator | None" = None
+        self._investigation: InvestigationCoordinator | None = None
+        self._mission_drive_coordinator: MissionDriveCoordinator | None = None
         self._session = None
         self._subscribers: list = []
         # device_id -> ((x, y, frame_id), (lat, lon)): towers never move.
         self._last_projection: dict[str, tuple[tuple[float, float, str], tuple[float, float] | None]] = {}
-        self._camera_sessions: "CameraStreamService | None" = None
+        self._camera_sessions: CameraStreamService | None = None
 
     def bind_camera_sessions(self, camera_sessions: "CameraStreamService") -> None:
         """Late-bound for the same reason as bind_coordinators: the service

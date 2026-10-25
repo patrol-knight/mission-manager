@@ -1,7 +1,9 @@
-from pydantic import BaseModel, Field
+from pydantic import Field
+
+from models.base import WireModel
 
 
-class MapInfo(BaseModel):
+class MapInfo(WireModel):
     map_name: str
     frame_id: str = "map"
     origin_lat: float
@@ -9,18 +11,18 @@ class MapInfo(BaseModel):
     lanelet_count: int
 
 
-class LatLon(BaseModel):
+class LatLon(WireModel):
     lat: float
     lon: float
 
 
-class XY(BaseModel):
+class XY(WireModel):
     x: float
     y: float
     frame_id: str = "map"
 
 
-class MapPoint(BaseModel):
+class MapPoint(WireModel):
     x: float
     y: float
     frame_id: str = "map"
@@ -33,24 +35,24 @@ class MapPoint(BaseModel):
     lon: float | None = None
 
 
-class PointQuery(BaseModel):
+class PointQuery(WireModel):
     x: float
     y: float
     frame_id: str = "map"
 
 
-class LatLonQuery(BaseModel):
+class LatLonQuery(WireModel):
     lat: float
     lon: float
     frame_id: str = "map"
 
 
-class RouteWaypoint(BaseModel):
+class RouteWaypoint(WireModel):
     x: float
     y: float
     yaw: float | None = None
     frame_id: str = "map"
 
 
-class RoutePreviewRequest(BaseModel):
+class RoutePreviewRequest(WireModel):
     waypoints: list[RouteWaypoint] = Field(min_length=2)

@@ -1,3 +1,4 @@
+import type { components } from "./schema";
 import { http } from "./httpClient";
 
 export interface PlacedPoint {
@@ -24,14 +25,7 @@ export interface RoutePreviewResult {
   route: GeoJSON.Feature<GeoJSON.LineString> | null;
 }
 
-interface RawMapPoint {
-  x: number;
-  y: number;
-  frame_id: string;
-  lanelet_id: number | null;
-  lat: number | null;
-  lon: number | null;
-}
+type RawMapPoint = components["schemas"]["MapPoint"];
 
 
 export function getLaneletGeojson(): Promise<GeoJSON.FeatureCollection> {

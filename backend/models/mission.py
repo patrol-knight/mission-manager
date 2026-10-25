@@ -2,12 +2,13 @@ import re
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import ConfigDict, Field, field_validator, model_validator
 
+from models.base import WireModel
 from models.waypoint import Waypoint
 
 _MISSION_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
-class Mission(BaseModel):
+class Mission(WireModel):
     model_config = ConfigDict(extra="forbid")
 
     mission_id: str
@@ -58,7 +59,7 @@ class Mission(BaseModel):
         return self
 
 
-class MissionSummary(BaseModel):
+class MissionSummary(WireModel):
     mission_id: str
     name: str
     map_name: str
