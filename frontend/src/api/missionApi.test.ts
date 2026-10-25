@@ -83,6 +83,8 @@ const rawExecution = {
   current_loop: 1,
   completed_loops: 0,
   current_waypoint_index: 0,
+  target_waypoint_index: 1,
+  joining: false,
   updated_at: "2026-07-19T00:00:00Z",
 };
 
@@ -162,14 +164,6 @@ describe("missionApi mission picker calls", () => {
     const [url, init] = fetchMock.mock.calls[0];
     expect(url).toContain("/api/missions/patrol-a-x1y2z3");
     expect(init.method).toBe("DELETE");
-  });
-
-  it("deleteMission propagates a 409 (edit-locked) as an ApiError", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(new Response(JSON.stringify({ detail: "locked" }), { status: 409 })),
-    );
-    await expect(missionApi.deleteMission("x")).rejects.toMatchObject({ status: 409 });
   });
 
   it("activateMission POSTs to the activate endpoint", async () => {

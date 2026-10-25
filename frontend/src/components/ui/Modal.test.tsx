@@ -26,6 +26,28 @@ describe("Modal", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it("takes focus on open and gives it back on close", async () => {
+    function Harness() {
+      const [open, setOpen] = useState(false);
+      return (
+        <>
+          <button onClick={() => setOpen(true)}>Open</button>
+          {open && (
+            <Modal label="Test" onClose={() => setOpen(false)}>
+              <button>Inside</button>
+            </Modal>
+          )}
+        </>
+      );
+    }
+    render(<Harness />);
+    const opener = screen.getByText("Open");
+    await userEvent.click(opener);
+    await waitFor(() => expect(screen.getByRole("dialog")).toHaveFocus());
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => expect(opener).toHaveFocus());
+  });
+
   it("keeps Tab focus inside the dialog", async () => {
     render(
       <Modal label="Test" onClose={() => {}}>

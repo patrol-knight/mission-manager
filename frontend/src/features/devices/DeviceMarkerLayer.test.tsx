@@ -49,10 +49,7 @@ vi.mock("maplibre-gl", () => ({
   default: { Marker: FakeMarker },
 }));
 
-// These tests are about per-device connectivity styling, not the
-// backend-disconnected case (see DeviceConnectivityPanel.test.tsx-style
-// coverage for that) -- pin the websocket status to "connected" so it
-// doesn't interfere.
+// Per-device connectivity only; the backend-disconnected case is in connectivity.test.ts.
 vi.mock("../../hooks/useApiConnection", () => ({
   useApiConnection: () => ({ status: "connected" }),
 }));

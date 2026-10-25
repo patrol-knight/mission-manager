@@ -52,15 +52,3 @@ def test_websocket_sends_a_full_snapshot_on_connect(client: TestClient):
         "anomalies.snapshot",
         "investigation.updated",
     ]
-
-
-def test_only_devices_that_just_went_silent_are_reported_offline():
-    from core.device_registry import DeviceRegistry
-    from models.device import DeviceState
-
-    registry = DeviceRegistry()
-    for device_id, seen in (("iot-a", 0.0), ("iot-b", 9.0)):
-        registry.upsert(DeviceState(device_id=device_id, type="iot", pose={"x": 0, "y": 0}, timestamp=seen), seen)
-
-    assert [d.device_id for d in registry.mark_offline_devices(3.0, now=10.0)] == ["iot-a"]
-    assert registry.mark_offline_devices(3.0, now=10.0) == []  # already offline

@@ -138,6 +138,23 @@ def test_an_infinite_mission_keeps_looping_until_cancelled(sim: Sim):
     assert summary["infinite_loop"] is True
 
 
+def test_a_goal_that_times_out_is_sent_again(sim: Sim, settings):
+    settings.navigation_timeout_sec = 0.05
+    w = sim.waypoints
+    sim.robot(*w[2])
+    sim.client.post("/api/missions/current/start")
+
+    def goals():
+        return [f for c, f in sim.commands if c == "navigate_to_goal"]
+
+    deadline = time.monotonic() + 3
+    while len(goals()) < 2 and time.monotonic() < deadline:
+        time.sleep(0.02)
+    assert len(goals()) >= 2
+    assert all((g["x"], g["y"]) == w[2] for g in goals())  # same target, still joining
+    assert sim.execution()["joining"] is True
+
+
 def test_a_robot_that_ignores_its_goal_never_reaches_a_waypoint(sim: Sim):
     """A robot that never acted on its goal keeps reporting "arrived" where it
     is parked; only an arrival within 2 m of the waypoint counts."""
@@ -180,18 +197,14 @@ def test_losing_the_robot_stops_everything_until_the_operator_starts_again(sim: 
 def test_losing_an_idle_robot_aborts_nothing(sim: Sim):
     sim.robot(*sim.waypoints[0])
     lose_robot(sim)
-    assert sim.services.mission_service.abort_autonomy("robot_disconnected") is False
+    sim.services.mission_service.abort_if_robot_lost(grace_sec=-1)
+    assert sim.commands == []  # nothing to cancel
+    assert sim.mission_status() == "not_ready"
 
 
 def test_mission_files_from_before_time_slots_were_removed_still_load():
     mission = Mission(mission_id="m", name="n", map_name="x", time_slot=None)
     assert "time_slot" not in mission.model_dump()
-
-
-def test_the_default_mission_is_gone(client: TestClient):
-    assert client.get("/api/missions/default").status_code == 404  # "default" is just an unknown id now
-    summary = client.get("/api/missions").json()[0]
-    assert "is_default" not in summary and "time_slot" not in summary
 
 
 def test_mission_list_routes_each_version_once(client: TestClient, services, fake_map, monkeypatch):

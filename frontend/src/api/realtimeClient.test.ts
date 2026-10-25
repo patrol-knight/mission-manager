@@ -138,6 +138,8 @@ describe("realtimeClient", () => {
       current_loop: 1,
       completed_loops: 0,
       current_waypoint_index: 2,
+      target_waypoint_index: 0,
+      joining: false,
       updated_at: null,
     };
     socket.emitMessage({ type: "mission.execution", data: raw });
@@ -150,6 +152,8 @@ describe("realtimeClient", () => {
         currentLoop: 1,
         completedLoops: 0,
         currentWaypointIndex: 2,
+        targetWaypointIndex: 0,
+        joining: false,
         updatedAt: null,
       },
       null,

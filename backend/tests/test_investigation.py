@@ -22,6 +22,14 @@ def test_unknown_anomaly_is_404(sim: Sim):
     assert sim.investigate("nope").status_code == 404
 
 
+def test_unreachable_anomaly_is_409_and_sends_nothing(sim: Sim, monkeypatch):
+    sim.robot(*sim.waypoints[0])
+    sim.anomaly("a", 0, 0)
+    monkeypatch.setattr(sim.services.map_server, "get_route", lambda points: None)
+    assert sim.investigate("a").status_code == 409
+    assert sim.investigation() is None and sim.commands == []
+
+
 def test_full_flow_from_an_idle_robot(sim: Sim):
     w = sim.waypoints
     sim.robot(*w[1])

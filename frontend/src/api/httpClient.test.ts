@@ -29,19 +29,10 @@ describe("httpClient", () => {
   });
 
   it("throws an ApiError with the backend's detail message on failure", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(jsonResponse({ detail: "Mission not found" }, 404)),
-    );
-    await expect(http.get("/api/missions/current")).rejects.toBeInstanceOf(ApiError);
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(jsonResponse({ detail: "Mission not found" }, 404)),
-    );
-    await expect(http.get("/api/missions/current")).rejects.toMatchObject({
-      status: 404,
-      message: "Mission not found",
-    });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ detail: "Mission not found" }, 404)));
+    const error = await http.get("/api/missions/current").catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toMatchObject({ status: 404, message: "Mission not found" });
   });
 
   it("returns undefined for 204 No Content", async () => {
