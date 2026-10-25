@@ -1,0 +1,17 @@
+# Core
+fastapi>=0.110
+uvicorn[standard]>=0.29
+pydantic>=2.6
+pydantic-settings>=2.2
+PyYAML>=6.0
+
+# Zenoh (real transport; backend must run with ZENOH_ENABLED=false when absent)
+eclipse-zenoh>=1.0
+
+# Map (only required when map files + this dependency are present; see core/map_server.py)
+lanelet2
+pyproj
+
+# Anomaly-history persistence (only required when DATABASE_URL is set; see
+# core/anomaly_repository.py -- fail-soft, backend runs fine without it)
+psycopg[binary]>=3.1

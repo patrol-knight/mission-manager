@@ -1,0 +1,22 @@
+mission_id: mission-1-48umx5
+name: Mission 1
+map_name: lanelet2_map
+frame_id: map
+description: null
+waypoints:
+- waypoint_id: 572d76a0-8578-4e9a-8ce9-aeace5cba3cc
+  x: -54.818426363850335
+  y: 66.03214713795371
+  yaw: null
+  label: null
+  type: patrol
+- waypoint_id: 5a1cee39-2af1-4974-973a-55de3c674cdb
+  x: -55.0277623740773
+  y: 75.77520366463787
+  yaw: null
+  label: null
+  type: patrol
+loop_count: 2
+created_at: '2026-07-20T05:42:11.874453Z'
+updated_at: '2026-07-27T02:43:06.071035Z'
+metadata: {}

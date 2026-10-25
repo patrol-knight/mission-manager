@@ -1,49 +1,94 @@
 name: CI
 
+# PRs into main (not drafts), merges into main, or manually. Locally: scripts/check.sh.
 on:
   pull_request:
-    branches: ["main", "dev"]
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  docker-check:
-    name: Docker Lint and Build
+  backend:
+    if: ${{ !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
-
+    timeout-minutes: 15
+    # For tests/test_repository.py's write-once anomaly history tests.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
-
-      - name: Validate Docker Compose
-        run: docker compose config
-
-      - name: Lint frontend Dockerfile
-        uses: hadolint/hadolint-action@v3.1.0
+      - uses: actions/setup-python@v5
         with:
-          dockerfile: frontend/Dockerfile
-          ignore: DL3008
+          python-version: "3.10" # same as backend/Dockerfile
+          cache: pip
+          cache-dependency-path: backend/requirements*.txt
+      - run: pip install -r backend/requirements-dev.txt
+      - name: Ruff and pytest
+        env:
+          TEST_DATABASE_URL: postgresql://test:test@localhost:5432/test
+        run: scripts/check.sh backend
 
-      - name: Lint backend Dockerfile
-        uses: hadolint/hadolint-action@v3.1.0
+  frontend:
+    if: ${{ !github.event.pull_request.draft }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          dockerfile: backend/Dockerfile
-          ignore: DL3008,DL3013
+          node-version: "20" # same as frontend/Dockerfile
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+        working-directory: frontend
+      - name: Lint, test and build
+        run: scripts/check.sh frontend
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build frontend image
-        uses: docker/build-push-action@v6
+  contract:
+    if: ${{ !github.event.pull_request.draft }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
-          context: ./frontend
-          file: ./frontend/Dockerfile
-          push: false
-          cache-from: type=gha,scope=frontend
-          cache-to: type=gha,mode=max,scope=frontend
-
-      - name: Build backend image
-        uses: docker/build-push-action@v6
+          python-version: "3.10"
+          cache: pip
+          cache-dependency-path: backend/requirements*.txt
+      - uses: actions/setup-node@v4
         with:
-          context: ./backend
-          file: ./backend/Dockerfile
-          push: false
-          cache-from: type=gha,scope=backend
-          cache-to: type=gha,mode=max,scope=backend
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: pip install -r backend/requirements.txt
+      - run: npm ci
+        working-directory: frontend
+      - name: Generated API types match the backend
+        run: scripts/check.sh contract
+
+  docker:
+    if: ${{ !github.event.pull_request.draft }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build images and smoke-test the stack
+        run: scripts/check.sh docker

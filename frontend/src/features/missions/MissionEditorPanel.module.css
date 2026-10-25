@@ -1,0 +1,145 @@
+.header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.headerLabel {
+  flex: 1;
+}
+
+/* The mission name reads as the panel's title, and is edited in place. */
+.nameInput {
+  width: 100%;
+  padding: 6px 0;
+  border: none;
+  border-bottom: 1px solid var(--color-border-strong);
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  font-size: var(--text-xl);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  transition: border-color var(--duration-fast);
+}
+
+.nameInput::placeholder {
+  color: var(--color-text-faint);
+}
+
+.nameInput:focus {
+  outline: none;
+  border-bottom-color: var(--color-primary);
+}
+
+.fieldRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.fieldLabel {
+  font-size: var(--text-md);
+  color: var(--color-text-secondary);
+}
+
+.stepper {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.stepper:has(input:disabled) {
+  opacity: 0.4;
+}
+
+.stepButton {
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.stepButton:hover:not(:disabled) {
+  background: var(--color-surface-hover);
+}
+
+.stepButton:disabled {
+  cursor: not-allowed;
+}
+
+.stepInput {
+  width: 44px;
+  height: 32px;
+  border: none;
+  border-left: 1px solid var(--color-border-strong);
+  border-right: 1px solid var(--color-border-strong);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  font-size: var(--text-md);
+  text-align: center;
+  -moz-appearance: textfield;
+}
+
+.stepInput::-webkit-outer-spin-button,
+.stepInput::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.stepInput:focus {
+  outline: none;
+}
+
+.toggle {
+  height: 34px;
+  padding: 0 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-strong);
+  background: transparent;
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background var(--duration-fast),
+    color var(--duration-fast),
+    border-color var(--duration-fast);
+}
+
+.toggle[aria-pressed="true"] {
+  background: var(--color-surface-selected);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.loopControls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.routeStatus {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--text-sm);
+}
+
+.footer {
+  margin-top: auto;
+  padding-top: 12px;
+}
+
+.fieldError {
+  margin-top: 6px;
+}

@@ -1,0 +1,68 @@
+/* The three verdicts, stacked: tinted like the app's pills, each in its own
+   color, filled a little more when chosen. */
+.verdicts {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.verdict {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 14px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background var(--duration-fast),
+    border-color var(--duration-fast);
+}
+
+.verdict:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--verdict-color) 60%, transparent);
+  background: color-mix(in srgb, var(--verdict-color) 8%, transparent);
+}
+
+.verdict:disabled {
+  cursor: wait;
+}
+
+.verdict:focus-visible {
+  outline: 2px solid var(--verdict-color);
+  outline-offset: 2px;
+}
+
+.selected,
+.selected:hover:not(:disabled) {
+  border-color: var(--verdict-color);
+  background: color-mix(in srgb, var(--verdict-color) 20%, transparent);
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--verdict-color);
+  flex-shrink: 0;
+}
+
+.label {
+  font-size: var(--text-base);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.hint {
+  margin-left: auto;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.selected .hint {
+  color: var(--color-text-secondary);
+}

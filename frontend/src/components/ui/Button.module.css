@@ -1,0 +1,114 @@
+.button {
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  font-family: inherit;
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background var(--duration-fast),
+    border-color var(--duration-fast),
+    color var(--duration-fast);
+}
+
+.button:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.md {
+  padding: 9px 14px;
+  font-size: var(--text-md);
+}
+
+.sm {
+  padding: 5px 10px;
+  font-size: var(--text-sm);
+}
+
+/* Fills its row (flex) or its column (width), sharing space with siblings. */
+.block {
+  flex: 1 1 0;
+  width: 100%;
+}
+
+.primary {
+  background: var(--color-primary);
+  color: var(--color-text-on-accent);
+}
+
+.primary:hover:not(:disabled) {
+  background: var(--color-primary-hover);
+}
+
+.dangerSolid {
+  background: var(--color-danger);
+  color: var(--color-text-on-accent);
+}
+
+.secondary {
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  border-color: var(--color-border-strong);
+  font-weight: 500;
+}
+
+.secondary:hover:not(:disabled) {
+  background: var(--color-surface-hover);
+}
+
+.danger {
+  background: transparent;
+  color: var(--color-danger);
+  border-color: var(--color-danger-border);
+  font-weight: 500;
+}
+
+.danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-danger) 10%, transparent);
+}
+
+/* Text-only, for low-weight actions (All missions, Undo, Remove). */
+.ghost {
+  background: transparent;
+  color: var(--color-text-muted);
+  font-weight: 500;
+  padding-left: 6px;
+  padding-right: 6px;
+}
+
+.ghost:hover:not(:disabled) {
+  color: var(--color-text);
+  background: var(--color-surface-hover);
+}
+
+.button:disabled {
+  cursor: not-allowed;
+}
+
+.primary:disabled,
+.dangerSolid:disabled {
+  background: var(--color-disabled-fill);
+  color: var(--color-disabled-text);
+}
+
+.secondary:disabled,
+.danger:disabled,
+.ghost:disabled {
+  opacity: 0.4;
+}
+
+.close {
+  border: none;
+  background: none;
+  padding: 0;
+  font-size: 22px;
+  line-height: 1;
+  color: var(--color-text-faint);
+  cursor: pointer;
+}
+
+.close:hover {
+  color: var(--color-text);
+}

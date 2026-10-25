@@ -1,35 +1,12 @@
 import * as React from "react";
+import { ToastContext, type ToastMessage, type ToastOptions, type ToastType } from "./toastContextObject";
 
-export type ToastType = "success" | "error" | "info" | "warning";
-
-export type ToastMessage = {
-  id: number;
-  type: ToastType;
-  title: string;
-  subtitle?: string;
-};
-
-const COLORS: Record<ToastType, { bg: string; icon: string; border: string }> = {
-  success: {
-    bg: "linear-gradient(135deg, #11998e 0%, #38ef7d 100%)",
-    icon: "✓",
-    border: "rgba(56, 239, 125, 0.3)",
-  },
-  error: {
-    bg: "linear-gradient(135deg, #c0392b 0%, #e74c3c 100%)",
-    icon: "✕",
-    border: "rgba(231, 76, 60, 0.3)",
-  },
-  info: {
-    bg: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-    icon: "↑",
-    border: "rgba(102, 126, 234, 0.3)",
-  },
-  warning: {
-    bg: "linear-gradient(135deg, #f7971e 0%, #ffd200 100%)",
-    icon: "⚠",
-    border: "rgba(255, 210, 0, 0.35)",
-  },
+/** Each toast type's accent: the bar on the toast's left edge. */
+const ACCENTS: Record<ToastType, string> = {
+  success: "var(--color-success)",
+  error: "var(--color-danger)",
+  info: "var(--color-primary)",
+  warning: "var(--color-warning)",
 };
 
 const DURATION = 3000;
@@ -42,12 +19,15 @@ function ToastItem({
   onDismiss: (id: number) => void;
 }) {
   const [visible, setVisible] = React.useState(false);
-  const color = COLORS[toast.type];
+  const accent = ACCENTS[toast.type];
 
   React.useEffect(() => {
     const show = requestAnimationFrame(() =>
       requestAnimationFrame(() => setVisible(true))
     );
+    if (toast.persistent) {
+      return () => cancelAnimationFrame(show);
+    }
     const hide = setTimeout(() => setVisible(false), DURATION);
     const remove = setTimeout(() => onDismiss(toast.id), DURATION + 400);
 
@@ -56,25 +36,26 @@ function ToastItem({
       clearTimeout(hide);
       clearTimeout(remove);
     };
-  }, [toast.id, onDismiss]);
+  }, [toast.id, toast.persistent, onDismiss]);
 
   return (
     <div
       onClick={() => {
+        if (toast.persistent) return; // persistent toasts only close via an explicit action
         setVisible(false);
         setTimeout(() => onDismiss(toast.id), 400);
       }}
       style={{
         display: "flex",
         alignItems: "center",
-        gap: 14,
-        background: "rgba(20, 20, 30, 0.92)",
+        gap: 12,
+        background: "color-mix(in srgb, var(--color-surface-raised) 94%, transparent)",
         backdropFilter: "blur(12px)",
-        border: `1px solid ${color.border}`,
-        borderRadius: 12,
-        padding: "14px 18px",
-        cursor: "pointer",
-        boxShadow: "0 8px 32px rgba(0,0,0,0.35)",
+        border: "1px solid var(--color-border-strong)",
+        borderRadius: "var(--radius-md)",
+        padding: "12px 16px 12px 12px",
+        cursor: toast.persistent ? "default" : "pointer",
+        boxShadow: "var(--shadow-floating)",
         minWidth: 280,
         maxWidth: 360,
         transform: visible ? "translateY(0)" : "translateY(-110%)",
@@ -84,31 +65,39 @@ function ToastItem({
         userSelect: "none",
       }}
     >
-      <div
-        style={{
-          width: 36,
-          height: 36,
-          borderRadius: "50%",
-          background: color.bg,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          fontSize: 16,
-          fontWeight: 700,
-          color: "white",
-          flexShrink: 0,
-          boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
-        }}
-      >
-        {color.icon}
-      </div>
+      <div style={{ alignSelf: "stretch", width: 3, borderRadius: 2, background: accent, flexShrink: 0 }} />
       <div style={{ flex: 1 }}>
-        <div style={{ fontSize: 14, fontWeight: 600, color: "#f8f9fa" }}>
+        <div style={{ fontSize: "var(--text-base)", fontWeight: 600, color: "var(--color-text)" }}>
           {toast.title}
         </div>
         {toast.subtitle && (
-          <div style={{ fontSize: 12, color: "#adb5bd", marginTop: 2 }}>
+          <div style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", marginTop: 2 }}>
             {toast.subtitle}
+          </div>
+        )}
+        {toast.actions && toast.actions.length > 0 && (
+          <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+            {toast.actions.map((action, i) => (
+              <button
+                key={i}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  action.onClick();
+                }}
+                style={{
+                  padding: "6px 12px",
+                  borderRadius: "var(--radius-sm)",
+                  border: "1px solid var(--color-border-strong)",
+                  background: i === 0 ? "var(--color-surface-hover)" : "transparent",
+                  color: "var(--color-text)",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                {action.label}
+              </button>
+            ))}
           </div>
         )}
       </div>
@@ -116,26 +105,18 @@ function ToastItem({
   );
 }
 
-// ── Context ───────────────────────────────────────────────────────────────────
-
-type ToastContextValue = {
-  show: (type: ToastType, title: string, subtitle?: string) => void;
-};
-
-const ToastContext = React.createContext<ToastContextValue>({ show: () => {} });
-
-export function useToast() {
-  return React.useContext(ToastContext);
-}
-
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = React.useState<ToastMessage[]>([]);
   const counter = React.useRef(0);
 
   const show = React.useCallback(
-    (type: ToastType, title: string, subtitle?: string) => {
+    (type: ToastType, title: string, subtitle?: string, options?: ToastOptions): number => {
       const id = ++counter.current;
-      setToasts((prev) => [...prev, { id, type, title, subtitle }]);
+      setToasts((prev) => [
+        ...prev,
+        { id, type, title, subtitle, persistent: options?.persistent, actions: options?.actions },
+      ]);
+      return id;
     },
     []
   );
@@ -144,8 +125,10 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
+  const value = React.useMemo(() => ({ show, dismiss }), [show, dismiss]);
+
   return (
-    <ToastContext.Provider value={{ show }}>
+    <ToastContext.Provider value={value}>
       {children}
       <div
         style={{
@@ -157,7 +140,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
           flexDirection: "column",
           alignItems: "center",
           gap: 8,
-          zIndex: 99999,
+          zIndex: "var(--z-toast)",
           pointerEvents: "none",
         }}
       >
