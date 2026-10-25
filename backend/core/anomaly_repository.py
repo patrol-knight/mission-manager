@@ -17,10 +17,7 @@ CONNECT_TIMEOUT_SEC = 3
 RETRY_AFTER_SEC = 30.0
 
 # Write-once history: one row per anomaly, inserted at its terminal event
-# (resolved, or expired) and never updated -- see record_final(). A new table
-# name rather than a change to the old `anomalies` table, since init_schema()
-# can't migrate an existing table (see the class docstring); the old table is
-# simply no longer used.
+# (resolved, or expired) and never updated -- see record_final().
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS anomaly_history (
     anomaly_id       TEXT PRIMARY KEY,

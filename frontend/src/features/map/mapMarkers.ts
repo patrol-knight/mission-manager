@@ -27,11 +27,7 @@ export interface UseMarkerListOptions<T> {
   onDragEnd?: (item: T, lngLat: LngLat, marker: maplibregl.Marker) => void;
 }
 
-/**
- * Generic marker-diffing hook shared by every marker-based map layer
- * (devices, waypoints, anomalies) — replaces the near-duplicate "clear all,
- * recreate all" effects the old MapView.tsx had one of per marker kind.
- */
+/** Marker-diffing hook shared by the marker layers (devices, waypoints, anomalies). */
 function sameDeps(a: readonly unknown[], b: readonly unknown[]): boolean {
   return a.length === b.length && a.every((v, i) => Object.is(v, b[i]));
 }

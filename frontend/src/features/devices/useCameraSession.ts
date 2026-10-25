@@ -5,7 +5,7 @@ import type { CameraInfo } from "../../types/domain";
 
 /**
  * Owns the open-on-mount / close-on-unmount session lifecycle -- the shared
- * seam both DeviceInspectorOverlay and AnomalyVerifyModal drive their camera
+ * seam both DeviceInspectorOverlay and VerifyModal drive their camera
  * UI through (see api/cameraApi.ts's mock/real switch). Every device has
  * exactly one camera; `stream` is populated once WebRTC negotiation
  * completes and the gateway's track arrives (real mode only -- always null

@@ -18,9 +18,8 @@ const OSM_STYLE: maplibregl.StyleSpecification = {
     },
   },
   layers: [
-    // No layer maxzoom: a layer is hidden at zoom >= its maxzoom, so the old
-    // `maxzoom: 22` (the map's own max) blanked the map when fully zoomed in.
-    // Past the source's maxzoom (19) MapLibre scales up the z19 tiles.
+    // No layer maxzoom: it would blank the map when fully zoomed in. Past the
+    // source's maxzoom (19) MapLibre scales up the z19 tiles.
     { id: "osm-tiles", type: "raster", source: "osm" },
   ],
 };

@@ -123,7 +123,7 @@ const rawSummary = {
   updated_at: "2026-07-19T00:00:00Z",
 };
 
-describe("missionApi mission picker calls", () => {
+describe("missionApi mission library calls", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
   });
