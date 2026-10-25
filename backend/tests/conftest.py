@@ -139,8 +139,15 @@ class Sim:
     def verdict(self, verdict: str):
         return self.client.put("/api/investigation/verdict", json={"verdict": verdict})
 
-    def stop_investigation(self):
-        return self.client.post("/api/investigation/stop")
+    def cancel_investigation(self):
+        return self.client.post("/api/investigation/cancel")
+
+    def finish_investigation(self):
+        return self.client.post("/api/investigation/finish")
+
+    def goal(self) -> tuple[float, float]:
+        fields = next(f for c, f in reversed(self.commands) if c == "navigate_to_goal")
+        return fields["x"], fields["y"]
 
 
 @pytest.fixture

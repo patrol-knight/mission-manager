@@ -9,8 +9,17 @@ const definition = {
   waypoints: [{}, {}, {}],
 } as unknown as MissionDefinition;
 
-function execution(status: MissionStatus, currentWaypointIndex = 1): MissionExecutionState {
-  return { missionId: "m1", status, currentLoop: 2, completedLoops: 1, currentWaypointIndex, updatedAt: null };
+function execution(status: MissionStatus): MissionExecutionState {
+  return {
+    missionId: "m1",
+    status,
+    currentLoop: 2,
+    completedLoops: 1,
+    currentWaypointIndex: 1,
+    targetWaypointIndex: 2,
+    joining: false,
+    updatedAt: null,
+  };
 }
 
 describe("fallbackAfterInvestigation", () => {
@@ -21,12 +30,8 @@ describe("fallbackAfterInvestigation", () => {
     expect(paused.doneMessage).toMatch(/Mission resumed/);
   });
 
-  it("returns to start when the mission is idle or already returning", () => {
-    expect(fallbackAfterInvestigation(execution("ready"), definition).kind).toBe("start");
-    expect(fallbackAfterInvestigation(execution("returning"), definition).kind).toBe("start");
-  });
-
-  it("holds in place without a mission or waypoints", () => {
+  it("holds in place when the mission is idle, or without a mission or waypoints", () => {
+    expect(fallbackAfterInvestigation(execution("ready"), definition).kind).toBe("hold");
     expect(fallbackAfterInvestigation(null, null).kind).toBe("hold");
     const empty = { ...definition, waypoints: [] } as MissionDefinition;
     expect(fallbackAfterInvestigation(execution("running"), empty).kind).toBe("hold");

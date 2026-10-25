@@ -1,10 +1,9 @@
 import type { MissionDefinition, MissionExecutionState } from "../missions/missionTypes";
 
 /** Where the robot goes when an investigation ends -- mirrors the backend's
- * InvestigationCoordinator._hand_back (README "Mission & Investigation State
- * Machines"). The mission is frozen during an investigation, so the current
- * mission state predicts the outcome before the operator presses Stop/Finish. */
-export type FallbackKind = "route" | "start" | "hold";
+ * InvestigationCoordinator._hand_back. The mission is frozen during an
+ * investigation, so its state predicts the outcome. */
+export type FallbackKind = "route" | "hold";
 
 export interface Fallback {
   kind: FallbackKind;
@@ -27,8 +26,5 @@ export function fallbackAfterInvestigation(
         execution.status === "paused" ? "Mission resumed, back on the route" : "Back on the mission route",
     };
   }
-  if (hasRoute) {
-    return { kind: "start", nextLabel: "return to start", doneMessage: "Returning to start (WP 1)" };
-  }
-  return { kind: "hold", nextLabel: "stay here", doneMessage: "No mission, the robot is holding its position" };
+  return { kind: "hold", nextLabel: "stay here", doneMessage: "The robot is holding its position" };
 }

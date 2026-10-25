@@ -8,7 +8,8 @@ import { Button } from "../../components/ui/Button";
 import { Pill } from "../../components/ui/Pill";
 import { Note } from "../../components/ui/Note";
 import { Collapse } from "../../components/ui/Collapse";
-import { startMission, pauseMission, resumeMission, stopMission } from "../../api/missionApi";
+import { ConfirmDialog } from "../../components/ConfirmDialog";
+import { startMission, pauseMission, resumeMission, cancelMission } from "../../api/missionApi";
 import { useConnectedRobot } from "../devices/useConnectedRobot";
 import { ProgressTrack } from "./ProgressTrack";
 import { ButtonRow } from "../../components/ui/ButtonRow";
@@ -103,23 +104,53 @@ function MissionProgress({
   );
 }
 
-/** Start + Edit when idle; Pause/Resume + Stop while it runs. */
+/** Start + Edit when idle; Pause/Resume + Cancel while it runs. */
 function MissionActions({ execution, onEdit }: { execution: MissionExecutionState | null; onEdit: () => void }) {
   const setExecution = useMissionStore((s) => s.setExecution);
   const robot = useConnectedRobot();
   const { show } = useToast();
   const [pending, setPending] = useState(false);
+  const [confirmCancel, setConfirmCancel] = useState(false);
 
   const run = async (action: () => Promise<MissionExecutionState>, label: string) => {
     setPending(true);
     try {
-      setExecution(await action());
+      const result = await action();
+      setExecution(result);
+      return result;
     } catch (err) {
       show("error", `${label} failed`, err instanceof Error ? err.message : undefined);
+      return null;
     } finally {
       setPending(false);
     }
   };
+
+  const start = async () => {
+    const result = await run(startMission, "Start");
+    if (result?.targetWaypointIndex != null) show("info", `Starting from waypoint ${result.targetWaypointIndex + 1}`);
+  };
+
+  const cancel = async () => {
+    setConfirmCancel(false);
+    if (await run(cancelMission, "Cancel")) show("info", "Mission cancelled", "The robot is holding its position");
+  };
+
+  const cancelButton = (
+    <Button variant="danger" block disabled={pending} onClick={() => setConfirmCancel(true)}>
+      Cancel
+    </Button>
+  );
+  const cancelDialog = confirmCancel && (
+    <ConfirmDialog
+      title="Cancel the mission?"
+      message="The robot stops where it is and this run's progress is lost."
+      confirmLabel="Cancel mission"
+      cancelLabel="Keep going"
+      onConfirm={() => void cancel()}
+      onCancel={() => setConfirmCancel(false)}
+    />
+  );
 
   switch (execution?.status) {
     case "running":
@@ -128,9 +159,8 @@ function MissionActions({ execution, onEdit }: { execution: MissionExecutionStat
           <Button block disabled={pending} onClick={() => run(pauseMission, "Pause")}>
             Pause
           </Button>
-          <Button variant="danger" block disabled={pending} onClick={() => run(stopMission, "Stop")}>
-            Stop
-          </Button>
+          {cancelButton}
+          {cancelDialog}
         </ButtonRow>
       );
     case "paused":
@@ -139,26 +169,17 @@ function MissionActions({ execution, onEdit }: { execution: MissionExecutionStat
           <Button variant="primary" block disabled={pending} onClick={() => run(resumeMission, "Resume")}>
             Resume
           </Button>
-          <Button variant="danger" block disabled={pending} onClick={() => run(stopMission, "Stop")}>
-            Stop
-          </Button>
+          {cancelButton}
+          {cancelDialog}
         </ButtonRow>
       );
-    case "returning":
-      // Driving back to WP 1; it becomes ready (and editable) on arrival.
-      return null;
-    default:
-      // ready / completed ("completed" is only broadcast for a moment before
-      // the backend resets to "ready"), or no execution data yet.
+    default: {
+      // "completed" is only broadcast for a moment before the backend resets to idle.
+      const ready = execution?.status === "ready" && robot !== null;
       return (
         <ButtonRow>
-          <span style={{ display: "flex", flex: 1 }} data-hint={robot ? undefined : "The robot is offline"}>
-            <Button
-              variant="primary"
-              block
-              disabled={pending || robot === null || execution === null}
-              onClick={() => run(startMission, "Start")}
-            >
+          <span style={{ display: "flex", flex: 1 }} data-hint={ready ? undefined : "The robot is offline"}>
+            <Button variant="primary" block disabled={pending || !ready} onClick={() => void start()}>
               Start
             </Button>
           </span>
@@ -167,5 +188,6 @@ function MissionActions({ execution, onEdit }: { execution: MissionExecutionStat
           </Button>
         </ButtonRow>
       );
+    }
   }
 }

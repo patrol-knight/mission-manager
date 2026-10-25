@@ -2,6 +2,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from core.errors import (
+    AlreadyOnSiteError,
     AnomalyNotFoundError,
     CameraSessionError,
     CameraUnavailableError,
@@ -45,6 +46,7 @@ _STATUS_BY_ERROR: dict[type[Exception], int] = {
     NoActiveInvestigationError: 409,
     VerdictRequiredError: 409,
     NotOnSiteError: 409,
+    AlreadyOnSiteError: 409,
     NoRouteError: 409,
     MapUnavailableError: 503,
     DeviceUnreachableError: 503,

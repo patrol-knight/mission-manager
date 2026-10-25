@@ -37,20 +37,18 @@ def test_full_flow_from_an_idle_robot(sim: Sim):
     sim.robot(0.5, 0, "arrived")
     assert sim.investigation()["phase"] == "on_site"
 
-    assert sim.stop_investigation().status_code == 409  # Finish needs a verdict
+    assert sim.finish_investigation().status_code == 409  # Finish needs a verdict
+    assert sim.cancel_investigation().status_code == 409  # on site: Finish, not Cancel
     sim.verdict("false_positive")
     assert sim.verdict("true_positive").json()["draft_verdict"] == "true_positive"  # can change its mind
-    assert sim.stop_investigation().status_code == 204
+    assert sim.finish_investigation().status_code == 204
 
     assert sim.investigation() is None
     assert sim.client.get("/api/anomalies/a").json()["resolution"] == "true_positive"
     assert sim.feedback == [("a", "true_positive")]
-    # READY mission -> RETURNING to WP 1, then READY on arrival
-    assert sim.mission_status() == "returning"
-    assert sim.last_command()[0] == "navigate_to_goal"
-    assert (sim.last_command()[1]["x"], sim.last_command()[1]["y"]) == w[0]
-    sim.drive_to(*w[0])
+    # Idle mission: the robot holds where it is
     assert sim.mission_status() == "ready"
+    assert sim.last_command() == ("cancel_navigation", None)
 
 
 def test_the_mission_is_frozen_while_investigating(sim: Sim):
@@ -69,6 +67,7 @@ def test_verdict_only_on_site(sim: Sim):
     sim.anomaly("a", 0, 0)
     sim.investigate("a")
     assert sim.verdict("true_positive").status_code == 409
+    assert sim.finish_investigation().status_code == 409  # en route: Cancel, not Finish
 
 
 def test_switching_on_site_needs_a_verdict_and_commits_it(sim: Sim):
@@ -103,20 +102,21 @@ def test_unclear_anomalies_can_be_revisited_but_closed_ones_cannot(sim: Sim):
     sim.investigate("a")
     arrive_on_site(sim, 0, 0)
     sim.verdict("unclear")
-    sim.stop_investigation()
+    sim.finish_investigation()
 
     assert sim.investigate("a").status_code == 200
     arrive_on_site(sim, 0, 0)
     sim.verdict("false_positive")
-    sim.stop_investigation()
+    sim.finish_investigation()
     assert sim.investigate("a").status_code == 409
 
 
 def test_running_mission_rejoins_at_the_closest_waypoint_without_counting_a_loop(sim: Sim):
     w = sim.waypoints
     sim.robot(*w[0])
-    assert sim.client.post("/api/missions/current/start").json()["status"] == "running"
-    assert (sim.last_command()[1]["x"], sim.last_command()[1]["y"]) == w[1]
+    sim.client.post("/api/missions/current/start")
+    sim.drive_to(*w[0])
+    assert sim.goal() == w[1]
 
     sim.anomaly("a", 0, 0)
     sim.investigate("a")
@@ -124,11 +124,12 @@ def test_running_mission_rejoins_at_the_closest_waypoint_without_counting_a_loop
     assert sim.execution()["current_waypoint_index"] == 0  # the mission ignores arrivals meanwhile
     arrive_on_site(sim, 0, 0)
     sim.verdict("false_positive")
-    sim.stop_investigation()
+    sim.finish_investigation()
 
     assert sim.mission_status() == "running"
     closest = min(range(len(w)), key=lambda i: math.hypot(*w[i]))
-    assert (sim.last_command()[1]["x"], sim.last_command()[1]["y"]) == w[closest]
+    assert sim.goal() == w[closest]
+    assert sim.execution()["joining"] is True
     sim.drive_to(*w[closest])
     execution = sim.execution()
     assert execution["current_waypoint_index"] == closest
@@ -142,8 +143,9 @@ def test_paused_mission_resumes_after_the_investigation(sim: Sim):
     sim.anomaly("a", 3, 3)
     sim.investigate("a")
     assert sim.client.post("/api/missions/current/resume").status_code == 409
+    assert sim.client.post("/api/missions/current/cancel").status_code == 409
 
-    assert sim.stop_investigation().status_code == 204  # Stop en route needs no verdict
+    assert sim.cancel_investigation().status_code == 204  # Cancel en route needs no verdict
     assert sim.client.get("/api/anomalies/a").json()["resolution"] is None
     assert sim.mission_status() == "running"
 
@@ -153,7 +155,7 @@ def test_without_a_mission_the_robot_holds_in_place(sim: Sim):
     assert sim.client.delete(f"/api/missions/{MISSION_ID}").status_code == 204
     sim.anomaly("a", 4, 4)
     sim.investigate("a")
-    sim.stop_investigation()
+    sim.cancel_investigation()
     assert sim.last_command()[0] == "cancel_navigation"
 
 

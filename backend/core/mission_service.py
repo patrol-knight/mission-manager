@@ -4,13 +4,19 @@ import uuid
 from typing import TYPE_CHECKING
 
 from core.device_registry import DeviceRegistry
-from core.errors import InvestigationActiveError, MapUnavailableError, MissionNotFoundError, NoCurrentMissionError
+from core.errors import (
+    InvestigationActiveError,
+    MapUnavailableError,
+    MissionExecutionLockedError,
+    MissionNotFoundError,
+    NoCurrentMissionError,
+)
 from core.map_server import MapServer
-from core.mission_execution import MissionExecutionManager
+from core.mission_execution import ACTIVE_STATUSES, MissionExecutionManager
 from core.mission_server import MissionServer
 from core.websocket_manager import WebSocketManager
 from models.mission import Mission, MissionGeo, MissionSummary, WaypointGeo
-from models.mission_execution import MissionExecutionState, MissionStatus
+from models.mission_execution import MissionExecutionState
 from transport.zenoh_gateway import ZenohGateway
 
 if TYPE_CHECKING:
@@ -19,13 +25,10 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Mission statuses in which the robot is driving (or about to) on its own.
-_ACTIVE_STATUSES = (MissionStatus.RUNNING, MissionStatus.PAUSED, MissionStatus.RETURNING)
-
 
 class MissionService:
     """The mission use cases the API exposes -- mission CRUD and
-    start/pause/resume/stop -- each tying together the pieces that must move
+    start/pause/resume/cancel -- each tying together the pieces that must move
     in step: MissionServer (definitions + YAML), MissionExecutionManager
     (runtime status), MissionDriveCoordinator (robot goals) and the robot
     itself. Routers in api/ call exactly one method here and never sequence
@@ -88,7 +91,6 @@ class MissionService:
         self._assert_current_unlocked(mission_id)
         self._execution.assert_editable(mission_id)
         updated = self._missions.update_mission(mission_id, self._with_map_name(mission))
-        self._execution.on_edited(mission_id)
         if activate:
             return self.activate(mission_id)
         self._broadcast_current()
@@ -103,6 +105,9 @@ class MissionService:
 
     def activate(self, mission_id: str) -> MissionGeo:
         self._assert_not_investigating()
+        execution = self._execution.get_state()
+        if execution is not None and execution.status in ACTIVE_STATUSES:
+            raise MissionExecutionLockedError("Cancel the running mission before switching")
         activated = self._missions.activate(mission_id)
         self._execution.on_activated(mission_id)
         self._broadcast_current()
@@ -117,23 +122,18 @@ class MissionService:
         return state
 
     def start(self) -> MissionExecutionState:
+        """From the waypoint closest to the robot (waypoint 0 without a map)."""
         self._assert_not_investigating()
-        result = self._execution.start()
+        current = self._missions.get_current()
+        closest = self._drive.closest_waypoint_index(current) if current is not None else None
+        result = self._execution.start(closest if closest is not None else 0)
         self._drive.advance()
         return result
 
     def pause(self) -> MissionExecutionState:
         self._assert_not_investigating()
         result = self._execution.pause()
-        self._drive.abort()
-        # The robot has no concept of "pause" and keeps driving toward its
-        # last goal unless explicitly told to stop (see device_gateway's
-        # NavigationGatewayComponent / dummy_robot_node.py's cancel_navigation).
-        robot = self._devices.get_connected_robot()
-        if robot is not None:
-            self._gateway.publish_command(
-                robot.device_id, "cancel_navigation", request_id=f"pause-{uuid.uuid4().hex[:8]}"
-            )
+        self._halt("pause")
         return result
 
     def resume(self) -> MissionExecutionState:
@@ -142,12 +142,20 @@ class MissionService:
         self._drive.advance()
         return result
 
-    def stop(self) -> MissionExecutionState:
+    def cancel(self) -> MissionExecutionState:
         self._assert_not_investigating()
-        result = self._execution.stop()
-        self._drive.abort()
-        self._drive.advance()  # drives the return to waypoint 0 (RETURNING)
+        result = self._execution.cancel()
+        self._halt("cancel")
         return result
+
+    def _halt(self, reason: str) -> None:
+        # The robot keeps driving toward its last goal unless told to stop.
+        self._drive.abort()
+        robot = self._devices.get_connected_robot()
+        if robot is not None:
+            self._gateway.publish_command(
+                robot.device_id, "cancel_navigation", request_id=f"{reason}-{uuid.uuid4().hex[:8]}"
+            )
 
     # -- Aborting autonomy ------------------------------------------------------
 
@@ -157,7 +165,7 @@ class MissionService:
         resumes by itself -- the operator has to Start or Investigate again.
         Used when the robot is lost (abort_if_robot_lost) and, later, when the
         joystick takes over. Returns whether anything was running."""
-        cancelled = self._investigation.cancel()
+        cancelled = self._investigation.abort()
         aborted = self._execution.abort()
         if cancelled is None and not aborted:
             return False
@@ -184,12 +192,13 @@ class MissionService:
     def abort_if_robot_lost(self, grace_sec: float) -> None:
         """Call on every monitor tick. Aborts autonomy once the robot has been
         offline for longer than `grace_sec`; a no-op otherwise, or when
-        nothing is running."""
+        nothing is running. Also refreshes READY/NOT_READY."""
+        self._execution.refresh_readiness()
         robot = self._devices.get_robot()
         if robot is None or robot.connected or time.time() - robot.last_seen < grace_sec:
             return
         execution = self._execution.get_state()
-        mission_active = execution is not None and execution.status in _ACTIVE_STATUSES
+        mission_active = execution is not None and execution.status in ACTIVE_STATUSES
         if mission_active or self._investigation.is_active():
             self.abort_autonomy("robot_disconnected")
 

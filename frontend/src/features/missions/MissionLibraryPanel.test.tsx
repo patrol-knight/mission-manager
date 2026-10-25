@@ -152,27 +152,6 @@ describe("MissionLibraryPanel", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
-  it("warns before switching the active mission while another is running", async () => {
-    useMissionStore.setState({
-      execution: {
-        missionId: "current-mission",
-        status: "running",
-        currentLoop: 1,
-        completedLoops: 0,
-        currentWaypointIndex: 0,
-        updatedAt: null,
-      },
-    });
-    render(<Harness />);
-    await selectRow("Patrol B");
-    await userEvent.click(screen.getByRole("button", { name: "Activate" }));
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
-    expect(missionApi.activateMission).not.toHaveBeenCalled();
-
-    await userEvent.click(screen.getByText("Switch anyway"));
-    await waitFor(() => expect(missionApi.activateMission).toHaveBeenCalledWith("other-mission"));
-  });
-
   it("deletes a mission after confirming", async () => {
     render(<Harness />);
     await selectRow("Patrol B");

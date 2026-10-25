@@ -88,5 +88,9 @@ class NotOnSiteError(Exception):
     pass
 
 
+class AlreadyOnSiteError(Exception):
+    pass
+
+
 class NoRouteError(Exception):
     pass

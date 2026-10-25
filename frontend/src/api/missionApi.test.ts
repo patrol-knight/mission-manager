@@ -95,7 +95,7 @@ describe("missionApi execution controls", () => {
     ["startMission", "/api/missions/current/start"],
     ["pauseMission", "/api/missions/current/pause"],
     ["resumeMission", "/api/missions/current/resume"],
-    ["stopMission", "/api/missions/current/stop"],
+    ["cancelMission", "/api/missions/current/cancel"],
   ] as const)("%s POSTs to %s", async (fnName, path) => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(rawExecution));
     vi.stubGlobal("fetch", fetchMock);

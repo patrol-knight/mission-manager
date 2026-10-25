@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from core.anomaly_registry import AnomalyRegistry
 from core.device_registry import DeviceRegistry
 from core.errors import (
+    AlreadyOnSiteError,
     AnomalyNotFoundError,
     InvalidAnomalyTransitionError,
     MapUnavailableError,
@@ -42,8 +43,8 @@ class InvestigationCoordinator:
     - start(): send the robot to an anomaly, or switch to another one.
     - on_device_state(): EN_ROUTE -> ON_SITE when the robot reports arrival.
     - set_verdict(): the operator's draft verdict while ON_SITE.
-    - stop(): leave investigate mode -- Stop (EN_ROUTE, nothing to commit) or
-      Finish (ON_SITE, commits the verdict) -- and hand the robot back to the
+    - cancel() (EN_ROUTE, nothing to commit) / finish() (ON_SITE, commits
+      the verdict): leave investigate mode and hand the robot back to the
       mission (MissionExecutionManager.after_investigation()).
 
     The verdict is committed only when the robot leaves the anomaly, and a
@@ -170,20 +171,27 @@ class InvestigationCoordinator:
         self._broadcast_state()
         return state
 
-    def stop(self) -> None:
-        """Leaves investigate mode: Stop while EN_ROUTE (nothing to commit) or
-        Finish while ON_SITE (commits the chosen verdict). Then hands the
-        robot back to the mission."""
+    def cancel(self) -> None:
+        self._end(InvestigationPhase.EN_ROUTE)
+
+    def finish(self) -> None:
+        self._end(InvestigationPhase.ON_SITE)
+
+    def _end(self, phase: InvestigationPhase) -> None:
         with self._lock:
             previous = self._state
             if previous is None:
                 raise NoActiveInvestigationError("The robot is not investigating")
-            if previous.phase == InvestigationPhase.ON_SITE and previous.draft_verdict is None:
+            if previous.phase != phase:
+                if phase == InvestigationPhase.EN_ROUTE:
+                    raise AlreadyOnSiteError("The robot is on site: finish with a verdict instead")
+                raise NotOnSiteError("The robot hasn't reached the anomaly yet")
+            if phase == InvestigationPhase.ON_SITE and previous.draft_verdict is None:
                 raise VerdictRequiredError("Verify the current anomaly first")
             self._state = None
             self._anomalies.set_target(None)
 
-        if previous.phase == InvestigationPhase.ON_SITE:
+        if phase == InvestigationPhase.ON_SITE:
             self._commit(previous)
         self._broadcast_state()
         logger.info("Investigation of anomaly %s ended (%s)", previous.anomaly_id, previous.phase.value)
@@ -209,7 +217,7 @@ class InvestigationCoordinator:
         self._broadcast_state()
         logger.info("Investigation: robot arrived at anomaly %s", state.anomaly_id)
 
-    def cancel(self) -> InvestigationState | None:
+    def abort(self) -> InvestigationState | None:
         """Ends the investigation without a verdict and without handing the
         robot back to the mission -- for when autonomy is aborted altogether
         (MissionService.abort_autonomy). Returns what was cancelled, if
@@ -242,15 +250,12 @@ class InvestigationCoordinator:
         self._websocket.broadcast_threadsafe({"type": "anomaly.updated", "data": anomaly.model_dump(mode="json")})
 
     def _hand_back(self, robot_device_id: str) -> None:
-        """The hand-back rules (README table): the mission takes the robot
-        back -- rejoining the route, or returning to waypoint 0 -- or, with no
-        mission to go back to, the robot holds where it is."""
+        """A running mission (paused ones resume) takes the robot back;
+        otherwise it holds where it is."""
         execution = self._execution.after_investigation()
-        if execution is not None and execution.status in (MissionStatus.RUNNING, MissionStatus.RETURNING):
+        if execution is not None and execution.status == MissionStatus.RUNNING:
             if self._drive is not None:
-                if execution.status == MissionStatus.RUNNING:
-                    self._drive.request_rejoin()
-                self._drive.advance()
+                self._drive.rejoin()
             return
         self._gateway.publish_command(
             robot_device_id, "cancel_navigation", request_id=f"investigate-hold-{uuid.uuid4().hex[:8]}"

@@ -11,25 +11,21 @@ export function missionStatus(execution: MissionExecutionState | null, suspended
       return { label: "Running", tone: "mission", live: true };
     case "paused":
       return { label: "Paused", tone: "missionSoft", live: false };
-    case "returning":
-      return { label: "Returning", tone: "mission", live: true };
     case "completed":
       return { label: "Completed", tone: "mission", live: false };
+    case "not_ready":
+      return { label: "Not ready", tone: "muted", live: false };
     default:
       return { label: "Ready", tone: "missionSoft", live: false };
   }
 }
 
-/** Index of the waypoint the robot is heading to. The backend's
- * current_waypoint_index is the last one *reached*; returning always heads
- * to waypoint 0. Null when the robot isn't driving the mission. */
+/** Index of the waypoint the robot is heading to; null when it isn't
+ * driving the mission. */
 export function targetWaypointIndex(execution: MissionExecutionState | null, waypointCount: number): number | null {
   if (!execution || waypointCount === 0) return null;
-  if (execution.status === "returning") return 0;
-  if (execution.status === "running" || execution.status === "paused") {
-    return (execution.currentWaypointIndex + 1) % waypointCount;
-  }
-  return null;
+  if (execution.status !== "running" && execution.status !== "paused") return null;
+  return execution.targetWaypointIndex;
 }
 
 export interface ProgressRow {
@@ -47,7 +43,8 @@ export interface ProgressRow {
  * Waypoints: one segment per leg of the loop (WP 1 -> 2, 2 -> 3, ..., and
  * back to 1), filled once the robot reaches the leg's end -- heading from 1
  * to 2 shows nothing filled, reaching 2 fills the first segment. Starts
- * over every loop.
+ * over every loop. Joining the route at waypoint k counts the legs before
+ * it as done.
  *
  * Loops: a segment per loop, filled once that loop is finished. An
  * infinite mission has no total: just the number of the loop it's on.
@@ -64,9 +61,8 @@ export function missionProgress(
 
   let legsDone = 0;
   if (driving && target !== null) {
-    // Heading to waypoint `target`: every leg before it is done; heading
-    // back to waypoint 1 (target 0) means all but the closing leg are.
-    legsDone = target === 0 ? n - 1 : target - 1;
+    // Heading back to waypoint 1 (target 0) closes the loop, unless joining there.
+    legsDone = target === 0 ? (execution?.joining ? 0 : n - 1) : target - 1;
   } else if (status === "completed") {
     legsDone = n;
   }
@@ -77,9 +73,7 @@ export function missionProgress(
     label:
       driving && target !== null
         ? `Heading to waypoint ${target + 1} -- ${legsDone} of ${n} legs done this loop`
-        : status === "returning"
-          ? "Returning to waypoint 1"
-          : `${legsDone} of ${n} legs done`,
+        : `${legsDone} of ${n} legs done`,
   };
 
   const completed = execution?.completedLoops ?? 0;
@@ -90,7 +84,7 @@ export function missionProgress(
         done: completed,
         // No end to count towards: just the loop number.
         fraction: String(driving ? currentLoop : completed),
-        label: driving ? `Loop ${currentLoop}, repeats until stopped` : `${completed} loops done, repeats until stopped`,
+        label: driving ? `Loop ${currentLoop}, repeats until cancelled` : `${completed} loops done, repeats until cancelled`,
       }
     : {
         total: loops.loopCount,

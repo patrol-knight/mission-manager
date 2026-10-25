@@ -7,7 +7,7 @@ import { Card } from "../../components/ui/Card";
 import { Button } from "../../components/ui/Button";
 import { ButtonRow } from "../../components/ui/ButtonRow";
 import { Pill, type PillTone } from "../../components/ui/Pill";
-import { stopInvestigation } from "../../api/investigationApi";
+import { cancelInvestigation, finishInvestigation } from "../../api/investigationApi";
 import { AnomalyInfoRows } from "../anomalies/AnomalyInfoRows";
 import { anomalyTitle, VERDICT_LABELS, type AnomalyVerdict } from "../anomalies/anomalyTypes";
 import { fallbackAfterInvestigation } from "./fallback";
@@ -41,17 +41,17 @@ function InvestigateCardBody({ investigation }: { investigation: Investigation }
   const verdict = investigation.draftVerdict;
   const fallback = fallbackAfterInvestigation(execution, definition);
 
-  // No confirm dialog: Stop/Submit act at once, and the toast says what was
+  // No confirm dialog: Cancel/Submit act at once, and the toast says what was
   // recorded and where the robot goes next.
   const end = async () => {
-    const recorded = onSite && verdict ? `Recorded as ${VERDICT_LABELS[verdict]}` : "Investigation stopped";
+    const recorded = onSite && verdict ? `Recorded as ${VERDICT_LABELS[verdict]}` : "Investigation cancelled";
     setPending(true);
     try {
-      await stopInvestigation();
+      await (onSite ? finishInvestigation() : cancelInvestigation());
       setInvestigation(null);
       show("info", recorded, fallback.doneMessage);
     } catch (err) {
-      show("error", onSite ? "Submit failed" : "Stop failed", err instanceof Error ? err.message : undefined);
+      show("error", onSite ? "Submit failed" : "Cancel failed", err instanceof Error ? err.message : undefined);
     } finally {
       setPending(false);
     }
@@ -82,7 +82,7 @@ function InvestigateCardBody({ investigation }: { investigation: Investigation }
           </>
         ) : (
           <Button variant="danger" block onClick={() => void end()} disabled={pending}>
-            Stop
+            Cancel
           </Button>
         )}
       </ButtonRow>

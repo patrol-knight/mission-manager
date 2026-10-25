@@ -15,7 +15,12 @@ export async function setVerdict(verdict: AnomalyVerdict): Promise<Investigation
   return investigationFromRaw(await http.put<RawInvestigation>("/api/investigation/verdict", { verdict }));
 }
 
-/** Stop (before arrival) or Finish (on site, commits the verdict). */
-export async function stopInvestigation(): Promise<void> {
-  await http.post<void>("/api/investigation/stop");
+/** Before arrival; nothing is recorded. */
+export async function cancelInvestigation(): Promise<void> {
+  await http.post<void>("/api/investigation/cancel");
+}
+
+/** On site; commits the verdict. */
+export async function finishInvestigation(): Promise<void> {
+  await http.post<void>("/api/investigation/finish");
 }

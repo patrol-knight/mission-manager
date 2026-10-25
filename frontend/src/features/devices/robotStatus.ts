@@ -27,8 +27,6 @@ export function robotStatus(
   switch (execution?.status) {
     case "running":
       return { label: "Patrolling", tone: "mission", live: true };
-    case "returning":
-      return { label: "Returning", tone: "mission", live: true };
     case "paused":
       return { label: "Holding", tone: "missionSoft", live: false };
     default:

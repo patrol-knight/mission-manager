@@ -89,7 +89,7 @@ backend/
 │   ├── deps.py       #   get_services(): how routers reach the services
 │   └── errors.py     #   the single mapping from core/errors.py exceptions to HTTP status codes
 ├── core/             # services and domain logic (no FastAPI imports)
-│   ├── mission_service.py    # mission use cases the API calls: CRUD, start/pause/resume/stop
+│   ├── mission_service.py    # mission use cases the API calls: CRUD, start/pause/resume/cancel
 │   ├── mission_server.py     # mission definitions + YAML persistence
 │   ├── mission_execution.py  # runtime mission status state machine
 │   ├── mission_drive.py      # drives the robot through the mission's waypoints
@@ -114,24 +114,23 @@ The robot is driven by two independent state machines. The **mission**
 **investigation** (`InvestigationState`, `backend/core/investigation.py`) is
 started by the operator on an anomaly and takes priority: while it is active,
 mission drive sends no goals and every mission transition is refused (409).
-The UI shows both as one status line (`RobotActivityStatus.tsx`).
+The robot's status pill shows both (`features/devices/robotStatus.ts`).
 
 ```mermaid
 stateDiagram-v2
     state "Mission" as M {
-        [*] --> Ready
-        Ready --> Running : Start (robot connected)
+        [*] --> NotReady
+        NotReady --> Ready : robot connected
+        Ready --> NotReady : robot disconnected
+        Ready --> Running : Start (from the closest waypoint)
         Running --> Paused : Pause
         Paused --> Running : Resume
-        Running --> Returning : Stop
-        Paused --> Returning : Stop
-        Returning --> Ready : robot reaches WP 1
+        Running --> Ready : Cancel (robot holds in place)
+        Paused --> Ready : Cancel
         Running --> Ready : all loops finished (COMPLETED broadcast; never for an infinite mission)
         Paused --> Running : investigation ended (rejoin route)
-        Ready --> Returning : investigation ended (back to WP 1)
-        Running --> Ready : robot lost
-        Paused --> Ready : robot lost
-        Returning --> Ready : robot lost
+        Running --> NotReady : robot lost
+        Paused --> NotReady : robot lost
     }
     state "Investigation" as I {
         [*] --> None
@@ -141,7 +140,7 @@ stateDiagram-v2
         OnSite --> OnSite : verdict TRUE / FALSE / UNCLEAR (draft)
         OnSite --> EnRoute : Investigate another [verdict chosen]
         OnSite --> None : Finish [verdict chosen]
-        EnRoute --> None : Stop
+        EnRoute --> None : Cancel
         EnRoute --> None : robot lost
         OnSite --> None : robot lost
     }
@@ -153,25 +152,29 @@ When an investigation ends, the mission takes the robot back
 | Mission when it ends | Then |
 |---|---|
 | Running or Paused | Running, rejoining the route at the waypoint closest by lanelet route distance |
-| Ready or Returning | Returning to WP 1, then Ready |
-| no mission | the robot holds in place |
+| idle, or no mission | the robot holds in place |
 
 Notes:
+- **There is no home.** Cancel stops the robot where it is; nothing drives it back to WP 1.
+- **Start and rejoin join the route at the closest waypoint** (by lanelet route distance), shown as
+  `target_waypoint_index` with `joining: true`. The waypoints before it count as done for the first
+  loop, and reaching it never finishes a loop, even if it is WP 1. WP 1 is still the loop boundary,
+  so a mission started near the end of the route has a short first loop.
+- **Not ready** means the robot can't run a mission: for now only when it is disconnected; its own
+  failure states will join once the robot reports them.
 - **The verdict is committed when the robot leaves the anomaly** (Finish, or investigating another
   one). TRUE/FALSE close the anomaly: it is written to `anomaly_history`, sent to Anomaly Detection as
   feedback, and leaves the map. UNCLEAR is recorded but keeps the anomaly on the map for another look.
-  Stopping before arrival, or a robot disconnect, records nothing.
-- **The rejoin waypoint doesn't count as finishing a loop**, even if it is WP 1, so skipping part of
-  the route never completes the mission early.
+  Cancelling before arrival, or a robot disconnect, records nothing.
 - **Infinite missions** (the editor's "Infinite" box next to the loop count) loop until the operator
-  stops them. Loops are still counted, and the loop count is kept for when the box is unticked.
+  cancels them. Loops are still counted, and the loop count is kept for when the box is unticked.
 - **Library/Editor is a frontend view state** (`AppShell.tsx`'s `view`), not a backend status.
 - **`COMPLETED` is a one-shot broadcast** (`MissionExecutionManager._finish_mission`); the state is
-  `READY` again immediately.
+  idle again immediately.
 - **Losing the robot stops everything.** Once the robot has been offline for `ROBOT_LOST_GRACE_SEC`
   (default 10 s; the UI shows it offline after 3 s), `MissionService.abort_autonomy` cancels the
-  investigation without a verdict and drops the mission to Ready. Nothing resumes on its own: when the
+  investigation without a verdict and drops the mission to idle. Nothing resumes on its own: when the
   robot reports in again it is sent `cancel_navigation`, and the operator has to Start or Investigate
   again. The same entry point is meant for a future joystick takeover.
 - **There is no timeout on an investigation.** The Investigate card shows the distance to the
-  anomaly and the elapsed time; the operator decides whether to Stop.
+  anomaly and the elapsed time; the operator decides whether to Cancel.

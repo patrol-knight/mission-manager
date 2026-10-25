@@ -29,8 +29,9 @@ def test_unknown_ids_are_404(client: TestClient, path):
     assert client.get(path).status_code == 404
 
 
-def test_no_investigation_to_stop_is_409(client: TestClient):
-    assert client.post("/api/investigation/stop").status_code == 409
+def test_no_investigation_to_end_is_409(client: TestClient):
+    assert client.post("/api/investigation/cancel").status_code == 409
+    assert client.post("/api/investigation/finish").status_code == 409
 
 
 def test_system_status_without_a_database(client: TestClient):

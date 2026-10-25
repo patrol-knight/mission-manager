@@ -25,14 +25,15 @@ export interface MissionDefinition {
   description: string | null;
   waypoints: Waypoint[];
   loopCount: number;
-  /** Loop until stopped; loopCount is kept but unused while this is set. */
+  /** Loop until cancelled; loopCount is kept but unused while this is set. */
   infiniteLoop: boolean;
   createdAt: string | null;
   updatedAt: string | null;
   metadata: Record<string, unknown>;
 }
 
-export type MissionStatus = "ready" | "running" | "paused" | "returning" | "completed";
+/** "not_ready": idle, but the robot can't run a mission (offline). */
+export type MissionStatus = "not_ready" | "ready" | "running" | "paused" | "completed";
 
 /** Runtime execution progress — see backend/models/mission_execution.py::MissionExecutionState. */
 export interface MissionExecutionState {
@@ -40,7 +41,12 @@ export interface MissionExecutionState {
   status: MissionStatus;
   currentLoop: number;
   completedLoops: number;
+  /** The last waypoint reached. */
   currentWaypointIndex: number;
+  /** Set while running or paused. */
+  targetWaypointIndex: number | null;
+  /** Heading to where the robot joins the route (Start, or after an investigation). */
+  joining: boolean;
   updatedAt: string | null;
 }
 
@@ -50,6 +56,8 @@ export interface RawMissionExecutionState {
   current_loop: number;
   completed_loops: number;
   current_waypoint_index: number;
+  target_waypoint_index: number | null;
+  joining: boolean;
   updated_at: string | null;
 }
 
@@ -60,6 +68,8 @@ export function missionExecutionStateFromRaw(raw: RawMissionExecutionState): Mis
     currentLoop: raw.current_loop,
     completedLoops: raw.completed_loops,
     currentWaypointIndex: raw.current_waypoint_index,
+    targetWaypointIndex: raw.target_waypoint_index,
+    joining: raw.joining,
     updatedAt: raw.updated_at,
   };
 }

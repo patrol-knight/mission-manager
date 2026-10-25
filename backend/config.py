@@ -77,5 +77,5 @@ class Settings(BaseSettings):
     # "arrived" after a waypoint navigate_to_goal before re-sending it. The
     # robot is the source of truth for arrival -- this is only a safety net
     # for a lost command, not a simulated travel time. (Investigations
-    # deliberately have no timeout; the operator decides when to Stop.)
+    # deliberately have no timeout; the operator decides when to Cancel.)
     navigation_timeout_sec: float = 60.0

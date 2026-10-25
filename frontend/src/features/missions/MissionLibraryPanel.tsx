@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMissionEditor } from "./useMissionEditor";
-import { useMissionStore } from "../../stores/missionStore";
 import { useLibraryStore } from "../../stores/libraryStore";
 import { useAsyncResource } from "../../hooks/useAsyncResource";
 import { listMissionSummaries, getMission, deleteMission, activateMission } from "../../api/missionApi";
@@ -31,7 +30,6 @@ interface MissionLibraryPanelProps {
  */
 export function MissionLibraryPanel({ onBack, onEnterEditor }: MissionLibraryPanelProps) {
   const { dispatch } = useMissionEditor();
-  const execution = useMissionStore((s) => s.execution);
   const selectedId = useLibraryStore((s) => s.selectedMissionId);
   const selectMission = useLibraryStore((s) => s.selectMission);
   const { show } = useToast();
@@ -39,7 +37,6 @@ export function MissionLibraryPanel({ onBack, onEnterEditor }: MissionLibraryPan
   const [query, setQuery] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<MissionSummary | null>(null);
-  const [activateTarget, setActivateTarget] = useState<MissionSummary | null>(null);
 
   const sorted = useMemo(
     () =>
@@ -88,20 +85,7 @@ export function MissionLibraryPanel({ onBack, onEnterEditor }: MissionLibraryPan
       show("error", "Failed to activate mission", err instanceof Error ? err.message : undefined);
     } finally {
       setBusyId(null);
-      setActivateTarget(null);
     }
-  };
-
-  const handleActivate = (mission: MissionSummary) => {
-    const runningElsewhere =
-      execution !== null &&
-      execution.missionId !== mission.missionId &&
-      (execution.status === "running" || execution.status === "paused" || execution.status === "returning");
-    if (runningElsewhere) {
-      setActivateTarget(mission);
-      return;
-    }
-    void runActivate(mission.missionId, mission.name);
   };
 
   const handleDelete = async (missionId: string) => {
@@ -189,7 +173,7 @@ export function MissionLibraryPanel({ onBack, onEnterEditor }: MissionLibraryPan
                         size="sm"
                         block
                         disabled={m.isCurrent || busy}
-                        onClick={() => handleActivate(m)}
+                        onClick={() => void runActivate(m.missionId, m.name)}
                         // Activating hands the mission over to be run.
                         className="mode-activate"
                       >
@@ -219,17 +203,6 @@ export function MissionLibraryPanel({ onBack, onEnterEditor }: MissionLibraryPan
           cancelLabel="Cancel"
           onConfirm={() => void handleDelete(deleteTarget.missionId)}
           onCancel={() => setDeleteTarget(null)}
-        />
-      )}
-
-      {activateTarget && (
-        <ConfirmDialog
-          title="Robot is currently executing another mission"
-          message={`Activating "${activateTarget.name}" will stop tracking that in-progress run.`}
-          confirmLabel="Switch anyway"
-          cancelLabel="Cancel"
-          onConfirm={() => void runActivate(activateTarget.missionId, activateTarget.name)}
-          onCancel={() => setActivateTarget(null)}
         />
       )}
     </>

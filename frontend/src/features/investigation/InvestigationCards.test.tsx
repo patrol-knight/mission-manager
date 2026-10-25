@@ -17,7 +17,8 @@ vi.mock("../../hooks/useApiConnection", () => ({ useApiConnection: () => ({ stat
 vi.mock("../../api/investigationApi", () => ({
   startInvestigation: vi.fn(),
   setVerdict: vi.fn(),
-  stopInvestigation: vi.fn(),
+  cancelInvestigation: vi.fn(),
+  finishInvestigation: vi.fn(),
 }));
 
 const anomaly: Anomaly = {
@@ -121,25 +122,35 @@ describe("AnomalyCard", () => {
 
 describe("InvestigateCard", () => {
   beforeEach(() => {
-    vi.mocked(investigationApi.stopInvestigation).mockReset();
+    vi.mocked(investigationApi.cancelInvestigation).mockReset();
+    vi.mocked(investigationApi.finishInvestigation).mockReset();
     useDeviceStore.setState({ devices: { "robot-1": robot }, anomalies: { [anomaly.anomalyId]: anomaly } });
     useMissionStore.setState({
       definition,
-      execution: { missionId: "m1", status: "ready", currentLoop: 0, completedLoops: 0, currentWaypointIndex: 0, updatedAt: null },
+      execution: {
+        missionId: "m1",
+        status: "ready",
+        currentLoop: 0,
+        completedLoops: 0,
+        currentWaypointIndex: 0,
+        targetWaypointIndex: null,
+        joining: false,
+        updatedAt: null,
+      },
     });
     useInvestigationStore.setState({ investigation, selectedAnomalyId: null, verifyOpen: false });
   });
 
-  it("stops at once while en route and says where the robot goes", async () => {
-    vi.mocked(investigationApi.stopInvestigation).mockResolvedValue(undefined);
+  it("cancels at once while en route and says where the robot goes", async () => {
+    vi.mocked(investigationApi.cancelInvestigation).mockResolvedValue(undefined);
     renderWithToasts(<InvestigateCard />);
     expect(screen.getByText("Anomaly-6f1c2a8e")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Stop" }));
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(investigationApi.stopInvestigation).toHaveBeenCalled();
+    expect(investigationApi.cancelInvestigation).toHaveBeenCalled();
     expect(useInvestigationStore.getState().investigation).toBeNull();
-    expect(await screen.findByText("Investigation stopped")).toBeInTheDocument();
-    expect(screen.getByText("Returning to start (WP 1)")).toBeInTheDocument();
+    expect(await screen.findByText("Investigation cancelled")).toBeInTheDocument();
+    expect(screen.getByText("The robot is holding its position")).toBeInTheDocument();
   });
 
   it("requires a verdict before Submit on site", () => {
@@ -151,12 +162,12 @@ describe("InvestigateCard", () => {
   });
 
   it("submits at once and toasts the recorded verdict", async () => {
-    vi.mocked(investigationApi.stopInvestigation).mockResolvedValue(undefined);
+    vi.mocked(investigationApi.finishInvestigation).mockResolvedValue(undefined);
     useInvestigationStore.setState({ investigation: { ...investigation, phase: "on_site", draftVerdict: "false_positive" } });
     renderWithToasts(<InvestigateCard />);
     expect(screen.getByText("FALSE")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Submit" }));
-    expect(investigationApi.stopInvestigation).toHaveBeenCalled();
+    expect(investigationApi.finishInvestigation).toHaveBeenCalled();
     expect(await screen.findByText("Recorded as FALSE")).toBeInTheDocument();
   });
 });

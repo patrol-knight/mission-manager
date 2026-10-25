@@ -25,9 +25,13 @@ def set_verdict(request: SetVerdictRequest, services: Services = Depends(get_ser
     return services.investigation.set_verdict(request.verdict)
 
 
-@router.post("/stop", status_code=status.HTTP_204_NO_CONTENT)
-def stop_investigation(services: Services = Depends(get_services)) -> Response:
-    """Stop (before arrival) or Finish (on site, commits the verdict); the
-    robot then goes back to the mission."""
-    services.investigation.stop()
+@router.post("/cancel", status_code=status.HTTP_204_NO_CONTENT)
+def cancel_investigation(services: Services = Depends(get_services)) -> Response:
+    services.investigation.cancel()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/finish", status_code=status.HTTP_204_NO_CONTENT)
+def finish_investigation(services: Services = Depends(get_services)) -> Response:
+    services.investigation.finish()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

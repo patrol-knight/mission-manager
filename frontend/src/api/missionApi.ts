@@ -74,8 +74,8 @@ export async function resumeMission(): Promise<MissionExecutionState> {
   return missionExecutionStateFromRaw(raw);
 }
 
-export async function stopMission(): Promise<MissionExecutionState> {
-  const raw = await http.post<RawMissionExecutionState>("/api/missions/current/stop");
+export async function cancelMission(): Promise<MissionExecutionState> {
+  const raw = await http.post<RawMissionExecutionState>("/api/missions/current/cancel");
   return missionExecutionStateFromRaw(raw);
 }
 

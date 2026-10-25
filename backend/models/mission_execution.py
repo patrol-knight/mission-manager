@@ -5,12 +5,11 @@ from pydantic import BaseModel, ConfigDict
 
 
 class MissionStatus(str, Enum):
+    # Idle, but the robot can't run a mission (disconnected, later also failed).
+    NOT_READY = "not_ready"
     READY = "ready"
     RUNNING = "running"
     PAUSED = "paused"
-    # Driving back to waypoint 0 -- after Stop, or after an investigation
-    # that started while the mission was READY. READY again on arrival.
-    RETURNING = "returning"
     # Broadcast for a moment when the last loop finishes, then reset to READY
     # (see MissionExecutionManager._finish_mission).
     COMPLETED = "completed"
@@ -27,5 +26,11 @@ class MissionExecutionState(BaseModel):
     status: MissionStatus
     current_loop: int = 0
     completed_loops: int = 0
+    # The last waypoint reached.
     current_waypoint_index: int = 0
+    # Set while RUNNING or PAUSED.
+    target_waypoint_index: int | None = None
+    # Heading to where the robot joins the route (Start, or after an
+    # investigation): reaching it finishes no loop, even at waypoint 0.
+    joining: bool = False
     updated_at: datetime | None = None

@@ -46,9 +46,9 @@ def resume_mission(services: Services = Depends(get_services)) -> MissionExecuti
     return services.mission_service.resume()
 
 
-@router.post("/current/stop", response_model=MissionExecutionState)
-def stop_mission(services: Services = Depends(get_services)) -> MissionExecutionState:
-    return services.mission_service.stop()
+@router.post("/current/cancel", response_model=MissionExecutionState)
+def cancel_mission(services: Services = Depends(get_services)) -> MissionExecutionState:
+    return services.mission_service.cancel()
 
 
 @router.get("/{mission_id}", response_model=MissionGeo)
