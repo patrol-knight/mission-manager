@@ -44,7 +44,7 @@ jobs:
       - name: Ruff and pytest
         env:
           TEST_DATABASE_URL: postgresql://test:test@localhost:5432/test
-        run: scripts/check-backend.sh
+        run: scripts/check.sh backend
 
   frontend:
     if: ${{ !github.event.pull_request.draft }}
@@ -60,7 +60,7 @@ jobs:
       - run: npm ci
         working-directory: frontend
       - name: Lint, test and build
-        run: scripts/check-frontend.sh
+        run: scripts/check.sh frontend
 
   contract:
     if: ${{ !github.event.pull_request.draft }}
@@ -82,7 +82,7 @@ jobs:
       - run: npm ci
         working-directory: frontend
       - name: Generated API types match the backend
-        run: scripts/check-contract.sh
+        run: scripts/check.sh contract
 
   docker:
     if: ${{ !github.event.pull_request.draft }}
@@ -91,4 +91,4 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build images and smoke-test the stack
-        run: scripts/docker-smoke.sh
+        run: scripts/check.sh docker

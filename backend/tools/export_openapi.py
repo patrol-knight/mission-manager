@@ -1,4 +1,4 @@
-"""Prints the OpenAPI schema (see scripts/gen-api-types.sh)."""
+"""Prints the OpenAPI schema (see scripts/check.sh gen-api)."""
 
 import json
 import sys
