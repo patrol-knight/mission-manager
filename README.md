@@ -39,18 +39,22 @@ flowchart TB
     subgraph Browser["Browser · React + MapLibre"]
         UI["Panels<br/>mission editor"]
         Map["Map layers<br/>lanelet · routes · markers"]
+        Video["Camera view<br/>WebRTC"]
     end
 
     subgraph Backend["Backend · FastAPI"]
         REST["REST routers"]
         WS["WebSocket"]
+        MapS["Map server<br/>Lanelet2"]
         MS["Missions<br/>service · drive"]
         Inv["Investigation"]
-        MapS["Map server<br/>Lanelet2"]
+        Cam["Camera streams"]
         Reg["Device & anomaly<br/>registries"]
         GW["Zenoh gateway"]
     end
 
+    Files[("storage/<br/>maps · missions")]
+    DB[("Postgres<br/>anomaly history")]
     Z["zenohd"]
     Robot["Robot"]
     Tower["IoT towers"]
@@ -59,20 +63,29 @@ flowchart TB
     UI -- commands --> REST
     Map ~~~ WS
     WS -- live state --> Map
-    REST --> MS & Inv & MapS
+    Video <-- signaling --> WS
+    REST --> MapS & MS & Inv & Cam
     WS <--> Reg
     MS & Inv -- goals --> GW
+    Cam -- "start · stop · SDP" --> GW
     Reg <-- states --> GW
+    MapS -.- Files
+    MS -.- Files
+    Reg -.-> DB
     GW <--> Z
-    Z <-- "devices/*/state<br/>devices/{id}/commands" --> Robot
-    Z <-- "devices/*/state" --> Tower
-    Z <-- "anomalies/*/state<br/>anomalies/{id}/feedback" --> AD
+    Z <-- "devices/{id}/state · events<br/>devices/{id}/commands<br/>devices/{id}/cameras/*" --> Robot
+    Z <-- "devices/{id}/state<br/>devices/{id}/cameras/*" --> Tower
+    Z <-- "anomalies/{id}/state<br/>anomalies/{id}/feedback" --> AD
 
     classDef ext fill:#f6f6f6,stroke:#999,color:#333
+    classDef store fill:#fff,stroke:#999,color:#333
     class Robot,Tower,AD,Z ext
+    class Files,DB store
     style Browser fill:#fafafa,stroke:#bbb
     style Backend fill:#fafafa,stroke:#bbb
 ```
+
+The browser sends commands over REST and gets live state and camera signaling over one WebSocket. Camera video itself travels over WebRTC between the device and the browser and does not pass through the backend. A background monitor marks devices offline, stops autonomy when the robot is lost, and expires stale anomalies.
 
 ## State machines
 
