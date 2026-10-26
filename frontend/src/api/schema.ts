@@ -482,6 +482,8 @@ export interface components {
         Anomaly: {
             /** Anomaly Id */
             anomaly_id: string;
+            /** Arrived At */
+            arrived_at: string | null;
             /** Confidence */
             confidence: number;
             /** Degrade Sec */
@@ -491,6 +493,8 @@ export interface components {
              * Format: date-time
              */
             detected_at: string;
+            /** Dispatched At */
+            dispatched_at: string | null;
             /**
              * Expires At
              * Format: date-time

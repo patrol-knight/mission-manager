@@ -58,6 +58,9 @@ services:
       # Set DATABASE_URL to empty in the root .env to stop recording history.
       - DATABASE_URL=${DATABASE_URL-postgresql://${POSTGRES_USER:-mission_manager}:${POSTGRES_PASSWORD:-mission_manager}@postgres:5432/${POSTGRES_DB:-mission_manager}}
       - ANOMALY_SOURCE=${ANOMALY_SOURCE:-sim}
+      - HEATMAP_SOURCES=${HEATMAP_SOURCES:-}
+      - HEATMAP_SCALE_FLOOR=${HEATMAP_SCALE_FLOOR:-0.05}
+      - HEATMAP_SCALE_CEILING=${HEATMAP_SCALE_CEILING:-5}
       - MAP_NAME=${MAP_NAME:-}
     volumes:
       # Whole storage/ dir, read-write, persisted on the host -- missions and

@@ -125,7 +125,17 @@ class AnomalyRegistry:
                     update={"expires_at": max(previous.expires_at, fresh_end)}
                 )
             self._target_id = anomaly_id
+            if candidate is not None and candidate.dispatched_at is None:
+                candidate = candidate.model_copy(update={"dispatched_at": datetime.now(timezone.utc)})
+                self._anomalies[anomaly_id] = candidate
             return candidate.model_copy(deep=True) if candidate is not None else None
+
+    def mark_arrived(self, anomaly_id: str, at: datetime) -> None:
+        """Records the robot's first arrival at the anomaly."""
+        with self._lock:
+            anomaly = self._anomalies.get(anomaly_id)
+            if anomaly is not None and anomaly.arrived_at is None:
+                self._anomalies[anomaly_id] = anomaly.model_copy(update={"arrived_at": at})
 
     def resolve(self, anomaly_id: str, verdict: AnomalyVerdict, mission_id: str | None) -> Anomaly:
         """Records the operator's verdict. A final verdict closes the anomaly

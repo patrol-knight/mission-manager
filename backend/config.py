@@ -42,6 +42,24 @@ class Settings(BaseSettings):
     # real perception. sim by default, so test data never passes as real.
     anomaly_source: Literal["sim", "real"] = "sim"
 
+    # Mission editor heatmap (core/heatmap_service.py). Sources it shows,
+    # comma-separated; empty = just anomaly_source. "sim,real" lets a demo
+    # show simulated history with live real alerts.
+    heatmap_sources: str = ""
+    # Alerts per operating hour drawn transparent / fully colored (log scale).
+    heatmap_scale_floor: float = 0.05
+    heatmap_scale_ceiling: float = 5.0
+    heatmap_bandwidth_m: float = 4.0
+    heatmap_half_life_days: float = 21.0
+    heatmap_prior_hours: float = 2.0
+
+    def heatmap_source_list(self) -> list[str]:
+        sources = [s.strip() for s in self.heatmap_sources.split(",") if s.strip()]
+        unknown = set(sources) - {"sim", "real"}
+        if unknown:
+            raise ValueError(f"HEATMAP_SOURCES: unknown source(s) {sorted(unknown)}; use sim and/or real")
+        return sources or [self.anomaly_source]
+
     zenoh_enabled: bool = False
     zenoh_router: str = "tcp/localhost:7447"
     zenoh_device_state_keyexpr: str = "devices/*/state"

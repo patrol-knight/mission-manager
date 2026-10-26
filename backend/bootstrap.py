@@ -71,10 +71,11 @@ def build_services(settings: Settings) -> Services:
         )
         try:
             anomaly_repository.init_schema()
+            anomaly_repository.heartbeat()
         except Exception:
             logger.warning("Failed to initialize anomaly history schema; continuing without it", exc_info=True)
     anomaly_registry = AnomalyRegistry(repository=anomaly_repository)
-    heatmap_service = HeatmapService(anomaly_repository, map_server)
+    heatmap_service = HeatmapService(anomaly_repository, map_server, settings)
     websocket_manager = WebSocketManager()
 
     mission_execution_manager = MissionExecutionManager(mission_server, websocket_manager, device_registry)

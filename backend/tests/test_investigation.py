@@ -59,6 +59,21 @@ def test_full_flow_from_an_idle_robot(sim: Sim):
     assert sim.last_command() == ("cancel_navigation", None)
 
 
+def test_dispatch_and_arrival_times_are_kept_for_history(sim: Sim):
+    sim.robot(*sim.waypoints[1])
+    sim.anomaly("a", 0, 0)
+    assert sim.client.get("/api/anomalies/a").json()["dispatched_at"] is None
+
+    sim.investigate("a")
+    dispatched = sim.client.get("/api/anomalies/a").json()
+    assert dispatched["dispatched_at"] is not None and dispatched["arrived_at"] is None
+
+    sim.robot(0.5, 0, "arrived")
+    arrived = sim.client.get("/api/anomalies/a").json()
+    assert arrived["dispatched_at"] == dispatched["dispatched_at"]
+    assert arrived["arrived_at"] >= arrived["dispatched_at"]
+
+
 def test_the_mission_is_frozen_while_investigating(sim: Sim):
     sim.robot(*sim.waypoints[0])
     sim.anomaly("a", 0, 0)

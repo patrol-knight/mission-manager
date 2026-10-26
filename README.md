@@ -24,7 +24,9 @@ Set these in the root `.env`. Every one is optional.
 | `DATABASE_URL` | the postgres service | Where anomaly history is recorded. Empty turns it off |
 | `ANOMALY_SOURCE` | `sim` | Tags recorded history as `sim` (dummy detectors) or `real` (real perception) |
 | `MAP_NAME` | osm file name | Map name the history is recorded under |
-| `HEATMAP_ESTIMATOR_PATH` | unset | `heatmap-estimator` checkout to build in; shows the anomaly heatmap in the mission editor |
+| `HEATMAP_ESTIMATOR_PATH` | unset | `heatmap` repo checkout (package `heatmap-estimator`) to build in; shows the anomaly heatmap in the mission editor |
+| `HEATMAP_SOURCES` | `ANOMALY_SOURCE` | Sources the heatmap shows, e.g. `sim,real` for a demo with simulated history |
+| `HEATMAP_SCALE_FLOOR` / `HEATMAP_SCALE_CEILING` | `0.05` / `5` | Alerts per operating hour drawn transparent / fully colored |
 
 If you open the UI from another machine, point `API_BASE_URL` / `WS_URL` at the host running Docker instead of `localhost`. 
 Data lives in `backend/storage/` on the host, so it survives container rebuilds:

@@ -211,9 +211,9 @@ class InvestigationCoordinator:
                 return
             if not arrived_at(view, state.target.x, state.target.y, self._issued_after_timestamp):
                 return
-            self._state = state.model_copy(
-                update={"phase": InvestigationPhase.ON_SITE, "arrived_at": datetime.now(timezone.utc)}
-            )
+            now = datetime.now(timezone.utc)
+            self._state = state.model_copy(update={"phase": InvestigationPhase.ON_SITE, "arrived_at": now})
+            self._anomalies.mark_arrived(state.anomaly_id, now)
         self._broadcast_state()
         logger.info("Investigation: robot arrived at anomaly %s", state.anomaly_id)
 

@@ -16,10 +16,23 @@ from api import websocket as websocket_api
 from api.errors import register_error_handlers
 from bootstrap import build_services
 from config import Settings
+from core.anomaly_repository import DeviceSample
 from core.monitor import run_monitor
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+SESSION_HEARTBEAT_SEC = 60.0
+
+
+async def heartbeat_sessions(repository, device_registry) -> None:
+    while True:
+        await asyncio.sleep(SESSION_HEARTBEAT_SEC)
+        devices = [
+            DeviceSample(d.device_id, d.type.value, d.pose.x, d.pose.y)
+            for d in device_registry.list_devices() if d.connected
+        ]
+        await asyncio.to_thread(repository.heartbeat, devices)
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -52,10 +65,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         )
 
+        heartbeat_task = (
+            asyncio.create_task(heartbeat_sessions(services.anomaly_repository, services.device_registry))
+            if services.anomaly_repository is not None
+            else None
+        )
+
         logger.info("[Backend] Started")
         try:
             yield
         finally:
+            if heartbeat_task is not None:
+                heartbeat_task.cancel()
             monitor_task.cancel()
             try:
                 await monitor_task

@@ -3,12 +3,12 @@ set (CI provides a postgres service) and are skipped otherwise."""
 
 import os
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import psycopg
 import pytest
 
-from core.anomaly_repository import AnomalyRepository, RecordingContext
+from core.anomaly_repository import AnomalyRepository, DeviceSample, RecordingContext
 from models.anomaly import Anomaly
 
 DATABASE_URL = os.environ.get("TEST_DATABASE_URL")
@@ -37,7 +37,7 @@ def make_anomaly(anomaly_id: str, resolution=None) -> Anomaly:
 
 def drop_all():
     with psycopg.connect(DATABASE_URL, autocommit=True) as conn:
-        conn.execute("DROP TABLE IF EXISTS anomaly_history, sessions, schema_version")
+        conn.execute("DROP TABLE IF EXISTS device_uptime, anomaly_history, sessions, schema_version")
 
 
 @pytest.fixture
@@ -86,6 +86,77 @@ def test_a_run_records_into_one_session_created_with_its_first_row(repository: A
 
     repository.close()
     assert sessions()[0][4] is True
+
+
+@needs_postgres
+def test_a_run_without_anomalies_is_still_a_session(repository: AnomalyRepository):
+    repository.heartbeat()
+    assert [(s[0], s[4]) for s in sessions()] == [(repository.session_id, False)]
+    assert rows() == []
+
+    (start, end), = repository.operating_periods(["sim"])
+    assert start <= end <= datetime.now(timezone.utc)
+
+
+@needs_postgres
+def test_operating_periods_end_at_the_last_heartbeat_unless_ended(repository: AnomalyRepository):
+    crashed = AnomalyRepository(DATABASE_URL, CONTEXT)
+    crashed.heartbeat()
+    ended = AnomalyRepository(DATABASE_URL, CONTEXT)
+    ended.heartbeat()
+    ended.close()
+    other_map = AnomalyRepository(DATABASE_URL, RecordingContext(map_name="elsewhere", source="sim"))
+    other_map.heartbeat()
+
+    periods = repository.operating_periods(["sim"])
+    assert len(periods) == 2
+    assert all(start <= end for start, end in periods)
+
+
+@needs_postgres
+def test_verification_times_are_recorded(repository: AnomalyRepository):
+    anomaly = make_anomaly("a", "true_positive")
+    dispatched = datetime.now(timezone.utc)
+    anomaly = anomaly.model_copy(update={"dispatched_at": dispatched, "arrived_at": dispatched + timedelta(seconds=40)})
+    repository.record_final(anomaly, closed_at=datetime.now(timezone.utc))
+    with psycopg.connect(DATABASE_URL) as conn:
+        row = conn.execute("SELECT arrived_at - dispatched_at FROM anomaly_history").fetchone()
+    assert row[0] == timedelta(seconds=40)
+
+
+@needs_postgres
+def test_device_uptime_follows_heartbeats(repository: AnomalyRepository):
+    tower = DeviceSample("iot-01", "iot", 0.0, 0.0)
+    robot = DeviceSample("robot-1", "robot", 5.0, 5.0)
+    repository.heartbeat([tower, robot])
+    repository.heartbeat([tower])
+    repository.heartbeat([tower, robot])
+
+    periods = repository.device_operating_periods(["sim"])
+    assert sorted(d for d, _, _ in periods) == ["iot-01", "robot-1", "robot-1"]
+    assert all(start <= end for _, start, end in periods)
+
+
+@needs_postgres
+def test_device_uptime_survives_its_session_being_deleted(repository: AnomalyRepository):
+    tower = DeviceSample("iot-01", "iot", 0.0, 0.0)
+    repository.heartbeat([tower])
+    with psycopg.connect(DATABASE_URL, autocommit=True) as conn:
+        conn.execute("DELETE FROM sessions")
+    repository.heartbeat([tower])
+    assert [d for d, _, _ in repository.device_operating_periods(["sim"])] == ["iot-01"]
+
+
+@needs_postgres
+def test_reads_can_mix_sources(repository: AnomalyRepository):
+    real = AnomalyRepository(DATABASE_URL, RecordingContext(map_name="campus", source="real"))
+    repository.record_final(make_anomaly("sim-1"), closed_at=datetime.now(timezone.utc))
+    real.record_final(make_anomaly("real-1"), closed_at=datetime.now(timezone.utc))
+
+    assert len(repository.history(["sim"])) == 1
+    assert len(repository.history(["real"])) == 1
+    assert len(repository.history(["sim", "real"])) == 2
+    assert len(repository.operating_periods(["sim", "real"])) == 2
 
 
 @needs_postgres
