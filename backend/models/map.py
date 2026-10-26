@@ -11,6 +11,22 @@ class MapInfo(WireModel):
     lanelet_count: int
 
 
+class HeatmapImage(WireModel):
+    width: int
+    height: int
+    # Base64 of width*height uint8 intensities, row 0 = north edge.
+    data: str
+    # [lon, lat] of the top-left, top-right, bottom-right, bottom-left corners.
+    corners: list[list[float]]
+    record_count: int
+
+
+class HeatmapView(WireModel):
+    # False when heatmap-estimator isn't installed, or there is no history to read.
+    available: bool
+    image: HeatmapImage | None = None
+
+
 class LatLon(WireModel):
     lat: float
     lon: float

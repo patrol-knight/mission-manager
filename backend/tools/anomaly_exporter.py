@@ -29,7 +29,9 @@ import psycopg
 COLUMNS = [
     "anomaly_id", "types", "frame_id", "x", "y", "lat", "lon", "confidence",
     "source_device_id", "mission_id", "detected_at", "last_seen_at", "closed_at", "resolution",
+    "session_id", "map_name", "source",
 ]
+SESSION_COLUMNS = {"map_name", "source"}
 
 
 def build_query(args: argparse.Namespace) -> tuple[str, list]:
@@ -37,29 +39,40 @@ def build_query(args: argparse.Namespace) -> tuple[str, list]:
     params: list = []
 
     if args.resolution == "unresolved":
-        clauses.append("resolution IS NULL")
+        clauses.append("h.resolution IS NULL")
     elif args.resolution is not None:
-        clauses.append("resolution = %s")
+        clauses.append("h.resolution = %s")
         params.append(args.resolution)
 
     if args.mission_id is not None:
-        clauses.append("mission_id = %s")
+        clauses.append("h.mission_id = %s")
         params.append(args.mission_id)
 
+    if args.map_name is not None:
+        clauses.append("s.map_name = %s")
+        params.append(args.map_name)
+
+    if args.source is not None:
+        clauses.append("s.source = %s")
+        params.append(args.source)
+
     if args.since is not None:
-        clauses.append("detected_at >= %s")
+        clauses.append("h.detected_at >= %s")
         params.append(args.since)
 
     if args.until is not None:
-        clauses.append("detected_at < %s")
+        clauses.append("h.detected_at < %s")
         params.append(args.until)
 
     # types is a Postgres array -- joined with "|" so it stays one CSV cell.
-    select = ["array_to_string(types, '|')" if c == "types" else c for c in COLUMNS]
-    query = f"SELECT {', '.join(select)} FROM anomaly_history"
+    select = [
+        "array_to_string(h.types, '|')" if c == "types" else f"s.{c}" if c in SESSION_COLUMNS else f"h.{c}"
+        for c in COLUMNS
+    ]
+    query = f"SELECT {', '.join(select)} FROM anomaly_history h JOIN sessions s ON s.id = h.session_id"
     if clauses:
         query += " WHERE " + " AND ".join(clauses)
-    query += " ORDER BY detected_at"
+    query += " ORDER BY h.detected_at"
     return query, params
 
 
@@ -76,6 +89,8 @@ def main() -> None:
         "verifying it). Omit to include all rows regardless of resolution.",
     )
     parser.add_argument("--mission-id", default=None, help="Filter to anomalies detected during this mission.")
+    parser.add_argument("--map-name", default=None, help="Only anomalies recorded on this map.")
+    parser.add_argument("--source", choices=["sim", "real"], default=None, help="Only sim or only real history.")
     parser.add_argument("--since", default=None, help="Only anomalies detected on/after this date (YYYY-MM-DD or full timestamp).")
     parser.add_argument("--until", default=None, help="Only anomalies detected before this date (YYYY-MM-DD or full timestamp).")
     args = parser.parse_args()

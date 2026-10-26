@@ -48,7 +48,7 @@ class MapServer:
                 "Map service is unavailable: map files or Lanelet2 dependency not loaded"
             )
 
-    def load(self, osm_path: str, projector_yaml: str) -> None:
+    def load(self, osm_path: str, projector_yaml: str, map_name: str | None = None) -> None:
         if not _LANELET2_AVAILABLE:
             logger.warning(
                 "MapServer.load() skipped: lanelet2 dependency is not installed"
@@ -79,7 +79,7 @@ class MapServer:
             self._geojson = None
             self._centerlines = {}
             self._route.cache_clear()
-            self._map_name = Path(osm_path).stem
+            self._map_name = map_name or Path(osm_path).stem
             self._available = True
             logger.info(
                 "MapServer loaded %d lanelets from %s", len(self._lanelet_layer), osm_path
@@ -123,6 +123,15 @@ class MapServer:
     def get_bounds(self) -> list[list[float]]:
         self._ensure_available()
         return self._map_bounds
+
+    def get_xy_bounds(self) -> tuple[float, float, float, float]:
+        """(min_x, min_y, max_x, max_y) of every lanelet bound, map frame."""
+        self._ensure_available()
+        points = [p for ll in self._lanelet_layer for bound in (ll.leftBound, ll.rightBound) for p in bound]
+        return (
+            min(p.x for p in points), min(p.y for p in points),
+            max(p.x for p in points), max(p.y for p in points),
+        )
 
     def get_info(self) -> MapInfo:
         self._ensure_available()

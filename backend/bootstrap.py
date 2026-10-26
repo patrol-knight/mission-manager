@@ -1,13 +1,15 @@
 import logging
 from dataclasses import dataclass
+from pathlib import Path
 
 from config import Settings
 from core.anomaly_registry import AnomalyRegistry
-from core.anomaly_repository import AnomalyRepository
+from core.anomaly_repository import AnomalyRepository, RecordingContext, file_hash
 from core.camera_registry import CameraRegistry
 from core.camera_stream import CameraStreamService
 from core.device_registry import DeviceRegistry
 from core.errors import MapUnavailableError
+from core.heatmap_service import HeatmapService
 from core.investigation import InvestigationCoordinator
 from core.map_server import MapServer
 from core.mission_drive import MissionDriveCoordinator
@@ -34,6 +36,7 @@ class Services:
     camera_registry: CameraRegistry
     anomaly_registry: AnomalyRegistry
     anomaly_repository: AnomalyRepository | None
+    heatmap_service: HeatmapService
     investigation: InvestigationCoordinator
     mission_drive_coordinator: MissionDriveCoordinator
     mission_service: MissionService
@@ -43,9 +46,10 @@ class Services:
 
 
 def build_services(settings: Settings) -> Services:
+    map_name = settings.map_name or Path(settings.map_osm_path).stem
     map_server = MapServer()
     try:
-        map_server.load(settings.map_osm_path, settings.map_projector_path)
+        map_server.load(settings.map_osm_path, settings.map_projector_path, map_name)
     except MapUnavailableError as exc:
         logger.warning("%s; map endpoints will return 503", exc)
 
@@ -57,12 +61,20 @@ def build_services(settings: Settings) -> Services:
 
     anomaly_repository: AnomalyRepository | None = None
     if settings.database_url:
-        anomaly_repository = AnomalyRepository(settings.database_url)
+        anomaly_repository = AnomalyRepository(
+            settings.database_url,
+            RecordingContext(
+                map_name=map_name,
+                source=settings.anomaly_source,
+                map_hash=file_hash(settings.map_osm_path),
+            ),
+        )
         try:
             anomaly_repository.init_schema()
         except Exception:
             logger.warning("Failed to initialize anomaly history schema; continuing without it", exc_info=True)
     anomaly_registry = AnomalyRegistry(repository=anomaly_repository)
+    heatmap_service = HeatmapService(anomaly_repository, map_server)
     websocket_manager = WebSocketManager()
 
     mission_execution_manager = MissionExecutionManager(mission_server, websocket_manager, device_registry)
@@ -118,6 +130,7 @@ def build_services(settings: Settings) -> Services:
         camera_registry=camera_registry,
         anomaly_registry=anomaly_registry,
         anomaly_repository=anomaly_repository,
+        heatmap_service=heatmap_service,
         investigation=investigation,
         mission_drive_coordinator=mission_drive_coordinator,
         mission_service=mission_service,

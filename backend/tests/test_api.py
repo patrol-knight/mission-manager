@@ -35,7 +35,9 @@ def test_no_investigation_to_end_is_409(client: TestClient):
 
 
 def test_system_status_without_a_database(client: TestClient):
-    assert client.get("/api/system/status").json() == {"database": {"configured": False, "connected": False}}
+    status = client.get("/api/system/status").json()
+    assert status["database"] == {"configured": False, "connected": False}
+    assert client.get("/api/map/heatmap").json() == {"available": False, "image": None}
 
 
 def test_websocket_sends_a_full_snapshot_on_connect(client: TestClient):

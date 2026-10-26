@@ -62,6 +62,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             except asyncio.CancelledError:
                 pass
             services.zenoh_gateway.stop()
+            if services.anomaly_repository is not None:
+                services.anomaly_repository.close()
             logger.info("[Backend] Stopped")
 
     fastapi_app = FastAPI(lifespan=lifespan)

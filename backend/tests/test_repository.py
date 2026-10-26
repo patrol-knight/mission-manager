@@ -8,11 +8,12 @@ from datetime import datetime, timezone
 import psycopg
 import pytest
 
-from core.anomaly_repository import AnomalyRepository
+from core.anomaly_repository import AnomalyRepository, RecordingContext
 from models.anomaly import Anomaly
 
 DATABASE_URL = os.environ.get("TEST_DATABASE_URL")
 needs_postgres = pytest.mark.skipif(not DATABASE_URL, reason="TEST_DATABASE_URL not set")
+CONTEXT = RecordingContext(map_name="campus", source="sim", map_hash="abc123")
 
 
 def make_anomaly(anomaly_id: str, resolution=None) -> Anomaly:
@@ -34,13 +35,24 @@ def make_anomaly(anomaly_id: str, resolution=None) -> Anomaly:
     )
 
 
+def drop_all():
+    with psycopg.connect(DATABASE_URL, autocommit=True) as conn:
+        conn.execute("DROP TABLE IF EXISTS anomaly_history, sessions, schema_version")
+
+
 @pytest.fixture
 def repository():
-    with psycopg.connect(DATABASE_URL, autocommit=True) as conn:
-        conn.execute("DROP TABLE IF EXISTS anomaly_history")
-    repo = AnomalyRepository(DATABASE_URL)
+    drop_all()
+    repo = AnomalyRepository(DATABASE_URL, CONTEXT)
     repo.init_schema()
     return repo
+
+
+def sessions():
+    with psycopg.connect(DATABASE_URL) as conn:
+        return conn.execute(
+            "SELECT id, map_name, map_hash, source, ended_at IS NOT NULL, label FROM sessions ORDER BY started_at"
+        ).fetchall()
 
 
 def rows():
@@ -65,9 +77,64 @@ def test_each_anomaly_is_written_exactly_once(repository: AnomalyRepository):
     assert repository.is_connected()
 
 
+@needs_postgres
+def test_a_run_records_into_one_session_created_with_its_first_row(repository: AnomalyRepository):
+    assert sessions() == []
+    repository.record_final(make_anomaly("a"), closed_at=datetime.now(timezone.utc))
+    repository.record_final(make_anomaly("b"), closed_at=datetime.now(timezone.utc))
+    assert sessions() == [(repository.session_id, "campus", "abc123", "sim", False, None)]
+
+    repository.close()
+    assert sessions()[0][4] is True
+
+
+@needs_postgres
+def test_a_deleted_session_comes_back_with_the_next_row(repository: AnomalyRepository):
+    repository.record_final(make_anomaly("a"), closed_at=datetime.now(timezone.utc))
+    with psycopg.connect(DATABASE_URL, autocommit=True) as conn:
+        conn.execute("DELETE FROM sessions")
+    assert rows() == []
+
+    repository.record_final(make_anomaly("b"), closed_at=datetime.now(timezone.utc))
+    assert [r[0] for r in rows()] == ["b"]
+    assert len(sessions()) == 1
+
+
+@needs_postgres
+def test_rows_from_before_sessions_are_migrated_into_an_unknown_session():
+    drop_all()
+    with psycopg.connect(DATABASE_URL, autocommit=True) as conn:
+        conn.execute(_V1_TABLE)
+        conn.execute(
+            "INSERT INTO anomaly_history VALUES ('old', '{loitering}', 'map', 0, 0, NULL, NULL, 0.8, 'iot-01', "
+            "now(), now(), NULL, NULL, now())"
+        )
+    repo = AnomalyRepository(DATABASE_URL, CONTEXT)
+    repo.init_schema()
+    repo.init_schema()
+    repo.record_final(make_anomaly("new"), closed_at=datetime.now(timezone.utc))
+
+    assert [(s[1], s[3], s[5]) for s in sessions()] == [
+        ("unknown", "sim", "Recorded before sessions"),
+        ("campus", "sim", None),
+    ]
+    assert [r[0] for r in rows()] == ["new", "old"]
+
+
+_V1_TABLE = """
+CREATE TABLE anomaly_history (
+    anomaly_id TEXT PRIMARY KEY, types TEXT[] NOT NULL, frame_id TEXT NOT NULL,
+    x DOUBLE PRECISION NOT NULL, y DOUBLE PRECISION NOT NULL, lat DOUBLE PRECISION, lon DOUBLE PRECISION,
+    confidence DOUBLE PRECISION NOT NULL, source_device_id TEXT NOT NULL,
+    detected_at TIMESTAMPTZ NOT NULL, last_seen_at TIMESTAMPTZ NOT NULL, mission_id TEXT,
+    resolution TEXT, closed_at TIMESTAMPTZ NOT NULL
+)
+"""
+
+
 def test_an_unreachable_database_never_blocks_for_long():
     # 192.0.2.0/24 is reserved for documentation: nothing answers there.
-    repo = AnomalyRepository("postgresql://u:p@192.0.2.1:5432/db")
+    repo = AnomalyRepository("postgresql://u:p@192.0.2.1:5432/db", CONTEXT)
     started = time.monotonic()
     repo.record_final(make_anomaly("a"), closed_at=datetime.now(timezone.utc))
     assert time.monotonic() - started < 5  # gives up after the connect timeout

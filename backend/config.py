@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -16,6 +18,8 @@ class Settings(BaseSettings):
 
     map_osm_path: str = "storage/maps/lanelet2_map.osm"
     map_projector_path: str = "storage/maps/map_projector_info.yaml"
+    # Defaults to the osm file name, which is often the generic "lanelet2_map".
+    map_name: str | None = None
 
     mission_folder: str = "storage/missions"
     app_state_path: str = "storage/app_state.yaml"
@@ -34,6 +38,9 @@ class Settings(BaseSettings):
     # zenoh_enabled/map loading below. Example:
     # postgresql://mission_manager:mission_manager@localhost:5432/mission_manager
     database_url: str | None = None
+    # Tags this run's anomaly history: "sim" for dummy detectors, "real" for
+    # real perception. sim by default, so test data never passes as real.
+    anomaly_source: Literal["sim", "real"] = "sim"
 
     zenoh_enabled: bool = False
     zenoh_router: str = "tcp/localhost:7447"

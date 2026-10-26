@@ -3,6 +3,7 @@ import type * as maplibregl from "maplibre-gl";
 import { MapContext } from "./MapContext";
 import { useLaneletMap } from "../../hooks/useMapData";
 import { mapPalette } from "./mapPalette";
+import { HEATMAP_LAYER_ID } from "./HeatmapLayer";
 
 const LAYER_IDS = ["ll-arrows", "ll-center", "ll-right", "ll-left"];
 
@@ -28,9 +29,9 @@ export function LaneletLayer() {
 
     map.addSource("lanelet", { type: "geojson", data: geojson });
     // The map data arrives after the route and FOV layers may already exist,
-    // so insert just above the OSM tiles -- under everything else -- rather
-    // than on top of the mission route.
-    const beforeId = layerAfter(map, "osm-tiles");
+    // so insert just above the OSM tiles (and the heatmap) -- under
+    // everything else -- rather than on top of the mission route.
+    const beforeId = layerAfter(map, map.getLayer(HEATMAP_LAYER_ID) ? HEATMAP_LAYER_ID : "osm-tiles");
     map.addLayer({
       id: "ll-left",
       type: "line",

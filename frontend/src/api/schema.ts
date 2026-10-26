@@ -229,6 +229,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/map/heatmap": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Heatmap */
+        get: operations["get_heatmap_api_map_heatmap_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/map/place-waypoint": {
         parameters: {
             query?: never;
@@ -561,6 +578,25 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** HeatmapImage */
+        HeatmapImage: {
+            /** Corners */
+            corners: number[][];
+            /** Data */
+            data: string;
+            /** Height */
+            height: number;
+            /** Record Count */
+            record_count: number;
+            /** Width */
+            width: number;
+        };
+        /** HeatmapView */
+        HeatmapView: {
+            /** Available */
+            available: boolean;
+            image: components["schemas"]["HeatmapImage"] | null;
         };
         /**
          * InvestigationPhase
@@ -1262,6 +1298,26 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    get_heatmap_api_map_heatmap_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HeatmapView"];
                 };
             };
         };

@@ -26,7 +26,12 @@ export interface RoutePreviewResult {
 }
 
 type RawMapPoint = components["schemas"]["MapPoint"];
+export type HeatmapView = components["schemas"]["HeatmapView"];
 
+
+export function getHeatmap(): Promise<HeatmapView> {
+  return http.get<HeatmapView>("/api/map/heatmap");
+}
 
 export function getLaneletGeojson(): Promise<GeoJSON.FeatureCollection> {
   return http.get<GeoJSON.FeatureCollection>("/api/map/geojson");

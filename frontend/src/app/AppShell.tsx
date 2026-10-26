@@ -6,6 +6,7 @@ import { useMapInstance } from "../features/map/useMapInstance";
 import { MapContext } from "../features/map/MapContext";
 import { MapWorkspace } from "../features/map/MapWorkspace";
 import { LaneletLayer } from "../features/map/LaneletLayer";
+import { HeatmapLayer } from "../features/map/HeatmapLayer";
 import { TowerFovLayer } from "../features/map/TowerFovLayer";
 import { DeviceMarkerLayer } from "../features/devices/DeviceMarkerLayer";
 import { AnomalyLayer } from "../features/map/AnomalyLayer";
@@ -55,6 +56,7 @@ export function AppShell() {
                   {view === "library" && <MissionPreviewLayer />}
                   {view === "editor" && (
                     <>
+                      <HeatmapLayer />
                       <MissionRouteLayer />
                       <WaypointEditorLayer />
                     </>

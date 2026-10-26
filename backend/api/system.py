@@ -15,5 +15,6 @@ def get_system_status(services: Services = Depends(get_services)) -> dict:
         "database": {
             "configured": repository is not None,
             "connected": repository.is_connected() if repository is not None else False,
-        }
+        },
+        "heatmap": {"installed": services.heatmap_service.installed},
     }

@@ -1,0 +1,2 @@
+Empty build context: the backend image is built without heatmap-estimator
+unless HEATMAP_ESTIMATOR_PATH points at it (see .env.example).

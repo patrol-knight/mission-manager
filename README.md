@@ -8,7 +8,7 @@ Mission Manager is the operator console for the `husky` patrol robot. It shows a
 docker compose up --build
 ```
 
-Then open <http://localhost:5050>. Use `--build` again whenever the source code changes. Compose starts three services. The **frontend** is nginx serving the built UI on port 5050. The **backend** serves the REST and WebSocket API on port 8000. **zenohd** is the Zenoh router that robots, towers and the anomaly detector connect to, on port 7447. A fourth service, **postgres**, starts only when anomaly history is enabled (see below).
+Then open <http://localhost:5050>. Use `--build` again whenever the source code changes. Compose starts four services. The **frontend** is nginx serving the built UI on port 5050. The **backend** serves the REST and WebSocket API on port 8000. **zenohd** is the Zenoh router that robots, towers and the anomaly detector connect to, on port 7447. **postgres** records anomaly history, on `127.0.0.1:5432`.
 
 ## Configuration
 
@@ -21,7 +21,10 @@ Set these in the root `.env`. Every one is optional.
 | `API_BASE_URL` | `http://localhost:8000` | Backend address **as seen from the browser** |
 | `WS_URL` | `ws://localhost:8000/ws` | WebSocket address as seen from the browser |
 | `CAMERA_MODE` | `mock` | `mock` or `real` camera streams |
-| `COMPOSE_PROFILES` + `DATABASE_URL` | unset | Set both to start Postgres and record anomaly history |
+| `DATABASE_URL` | the postgres service | Where anomaly history is recorded. Empty turns it off |
+| `ANOMALY_SOURCE` | `sim` | Tags recorded history as `sim` (dummy detectors) or `real` (real perception) |
+| `MAP_NAME` | osm file name | Map name the history is recorded under |
+| `HEATMAP_ESTIMATOR_PATH` | unset | `heatmap-estimator` checkout to build in; shows the anomaly heatmap in the mission editor |
 
 If you open the UI from another machine, point `API_BASE_URL` / `WS_URL` at the host running Docker instead of `localhost`. 
 Data lives in `backend/storage/` on the host, so it survives container rebuilds:
@@ -32,7 +35,7 @@ Data lives in `backend/storage/` on the host, so it survives container rebuilds:
 
 ## Architecture
 
-The browser sends commands over REST and receives all live state over a single WebSocket. Only the backend talks to Zenoh: the gateway turns device and anomaly messages into registry updates, and mission drive and investigation send robot goals back out through it. The map server computes every route and waypoint snap from the Lanelet2 map. Missions and maps are files in `backend/storage/`, and resolved anomalies go to Postgres when it is enabled.
+The browser sends commands over REST and receives all live state over a single WebSocket. Only the backend talks to Zenoh: the gateway turns device and anomaly messages into registry updates, and mission drive and investigation send robot goals back out through it. The map server computes every route and waypoint snap from the Lanelet2 map. Missions and maps are files in `backend/storage/`, and closed anomalies go to Postgres, grouped into one session per backend run (map, `sim`/`real`).
 
 ```mermaid
 flowchart TB
