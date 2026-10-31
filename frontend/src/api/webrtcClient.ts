@@ -30,6 +30,7 @@ export interface WebrtcSessionCallbacks {
 export interface WebrtcSession {
   sessionId: string;
   stop: () => Promise<void>;
+  getStats: () => Promise<RTCStatsReport>;
 }
 
 /** sessionStorage record of the session this tab is running -- what a
@@ -288,6 +289,7 @@ export async function startWebrtcSession(
 
   return {
     sessionId,
+    getStats: () => pc.getStats(),
     stop: async () => {
       if (closed) return;
       const connectionId = ownerConnectionId;
