@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from api import anomaly as anomaly_api
 from api import camera as camera_api
 from api import device as device_api
+from api import devtools as devtools_api
 from api import investigation as investigation_api
 from api import map as map_api
 from api import mission as mission_api
@@ -52,15 +53,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         )
 
+        devtools_tasks = [
+            asyncio.create_task(services.devtools.run()),
+            asyncio.create_task(services.devtools.run_pings()),
+        ]
+
         logger.info("[Backend] Started")
         try:
             yield
         finally:
-            monitor_task.cancel()
-            try:
-                await monitor_task
-            except asyncio.CancelledError:
-                pass
+            for task in [monitor_task, *devtools_tasks]:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+            services.devtools.stop_recording()
             services.zenoh_gateway.stop()
             logger.info("[Backend] Stopped")
 
@@ -83,6 +91,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     fastapi_app.include_router(map_api.router, prefix="/api/map", tags=["map"])
     fastapi_app.include_router(camera_api.router, prefix="/api/cameras", tags=["cameras"])
     fastapi_app.include_router(system_api.router, prefix="/api/system", tags=["system"])
+    fastapi_app.include_router(devtools_api.router, prefix="/api/dev", tags=["devtools"])
     fastapi_app.include_router(websocket_api.router, tags=["websocket"])
 
     return fastapi_app

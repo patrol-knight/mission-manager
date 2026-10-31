@@ -47,7 +47,9 @@ services:
     environment:
       - BACKEND_HOST=0.0.0.0
       - BACKEND_PORT=8000
-      - CORS_ORIGINS=["http://localhost:5173","http://localhost:5050"]
+      - CORS_ORIGINS=${CORS_ORIGINS:-["http://localhost:5173","http://localhost:5050"]}
+      - RUNS_DIR=/data/runs
+      - RUNS_OWNER=${HOST_UID:-1000}:${HOST_GID:-1000}
       - MAP_OSM_PATH=storage/maps/lanelet2_map.osm
       - MAP_PROJECTOR_PATH=storage/maps/map_projector_info.yaml
       - MISSION_FOLDER=storage/missions
@@ -78,6 +80,7 @@ services:
       # Map data overrides the parent mount for this one path, read-only --
       # swap in a different map without rebuilding the image.
       - ./backend/storage/maps:/app/storage/maps:ro
+      - ./data:/data
     restart: unless-stopped
 
   frontend:

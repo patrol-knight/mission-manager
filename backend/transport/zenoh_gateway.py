@@ -322,6 +322,22 @@ class ZenohGateway:
             return False
         return True
 
+    def declare_subscriber(self, key: str, handler):
+        """For devtools' tap; None while the session is not open."""
+        if self._session is None:
+            return None
+        return self._session.declare_subscriber(key, handler)
+
+    def query(self, selector: str, timeout_sec: float = 1.0) -> list[tuple[str, bytes]]:
+        """Blocking get, e.g. on the router's admin space (@/...)."""
+        if self._session is None:
+            return []
+        return [
+            (str(reply.ok.key_expr), reply.ok.payload.to_bytes())
+            for reply in self._session.get(selector, timeout=timeout_sec)
+            if reply.ok is not None
+        ]
+
     def publish_camera_signal(self, device_id: str, camera_id: str, signal: dict) -> bool:
         """Relays the browser's answer/ICE (from the WebSocket) to the device's gateway."""
         key = self._settings.zenoh_camera_webrtc_to_device_keyexpr.format(device_id=device_id, camera_id=camera_id)

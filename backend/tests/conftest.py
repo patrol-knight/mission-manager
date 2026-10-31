@@ -32,6 +32,7 @@ def settings(tmp_path: Path) -> Settings:
         map_osm_path=str(tmp_path / "no-map.osm"),  # MapServer stays unavailable unless faked
         zenoh_enabled=False,
         database_url=None,
+        runs_dir=str(tmp_path / "data" / "runs"),
         device_monitor_interval_sec=3600,  # tests drive the monitor's checks themselves
     )
 

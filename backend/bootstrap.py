@@ -7,6 +7,7 @@ from core.anomaly_repository import AnomalyRepository
 from core.camera_registry import CameraRegistry
 from core.camera_stream import CameraStreamService
 from core.device_registry import DeviceRegistry
+from core.devtools import DevtoolsService
 from core.errors import MapUnavailableError
 from core.investigation import InvestigationCoordinator
 from core.map_server import MapServer
@@ -40,6 +41,7 @@ class Services:
     camera_stream: CameraStreamService
     websocket_manager: WebSocketManager
     zenoh_gateway: ZenohGateway
+    devtools: DevtoolsService
 
 
 def build_services(settings: Settings) -> Services:
@@ -124,4 +126,5 @@ def build_services(settings: Settings) -> Services:
         camera_stream=camera_stream,
         websocket_manager=websocket_manager,
         zenoh_gateway=zenoh_gateway,
+        devtools=DevtoolsService(settings.runs_dir, settings.runs_owner, zenoh_gateway, device_registry),
     )
