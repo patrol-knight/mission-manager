@@ -5,10 +5,11 @@ Mission Manager is the operator console for the `husky` patrol robot. It shows a
 ## Quick start
 
 ```bash
+git submodule update --init
 docker compose up --build
 ```
 
-Then open <http://localhost:5050>. Use `--build` again whenever the source code changes. Compose starts four services. The **frontend** is nginx serving the built UI on port 5050. The **backend** serves the REST and WebSocket API on port 8000. **zenohd** is the Zenoh router that robots, towers and the anomaly detector connect to, on port 7447. **postgres** records anomaly history, on `127.0.0.1:5432`.
+Then open <http://localhost:5050>. Use `--build` again whenever the source code changes. Compose starts four services. The **frontend** is nginx serving the built UI on port 5050. The **backend** serves the REST and WebSocket API on port 8000. **zenohd** is the Zenoh router that robots, towers and the anomaly detector connect to, on port 7447. **postgres** records anomaly history, on `127.0.0.1:5432`. The anomaly heatmap in the mission editor comes from the `modules/heatmap` submodule; without it the backend runs without the heatmap.
 
 ## Configuration
 
@@ -24,7 +25,6 @@ Set these in the root `.env`. Every one is optional.
 | `DATABASE_URL` | the postgres service | Where anomaly history is recorded. Empty turns it off |
 | `ANOMALY_SOURCE` | `sim` | Tags recorded history as `sim` (dummy detectors) or `real` (real perception) |
 | `MAP_NAME` | osm file name | Map name the history is recorded under |
-| `HEATMAP_ESTIMATOR_PATH` | unset | `heatmap` repo checkout (package `heatmap-estimator`) to build in; shows the anomaly heatmap in the mission editor |
 | `HEATMAP_SOURCES` | `ANOMALY_SOURCE` | Sources the heatmap shows, e.g. `sim,real` for a demo with simulated history |
 | `HEATMAP_SCALE_FLOOR` / `HEATMAP_SCALE_CEILING` | `0.05` / `5` | Alerts per operating hour drawn transparent / fully colored |
 

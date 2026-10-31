@@ -28,7 +28,7 @@ services:
     build:
       context: ./backend
       additional_contexts:
-        heatmap: ${HEATMAP_ESTIMATOR_PATH:-./docker/no-heatmap}
+        heatmap: ./modules/heatmap
     # Connects explicitly to the zenohd service below (ZENOH_ROUTER) rather
     # than relying on multicast peer discovery, so plain bridge networking
     # works here -- no network_mode: host, portable to Docker Desktop too.
