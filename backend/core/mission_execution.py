@@ -9,6 +9,7 @@ from core.errors import (
     MissionExecutionLockedError,
     NoConnectedRobotError,
     NoCurrentMissionError,
+    RobotNotReadyError,
 )
 from core.mission_server import MissionServer
 from core.websocket_manager import WebSocketManager
@@ -44,8 +45,15 @@ class MissionExecutionManager:
             self._state = self._idle_state(current.mission_id) if current else None
 
     def _robot_ready(self) -> bool:
-        # The robot's own not-ready/failed states belong here once it reports them.
-        return self._device_registry.get_connected_robot() is not None
+        robot = self._device_registry.get_connected_robot()
+        return robot is not None and not robot.unavailable
+
+    def _require_robot_ready(self, action: str) -> None:
+        robot = self._device_registry.get_connected_robot()
+        if robot is None:
+            raise NoConnectedRobotError(f"Cannot {action} mission: no connected robot device")
+        if robot.unavailable:
+            raise RobotNotReadyError(f"Cannot {action} mission: the robot is {robot.operational_state}")
 
     def _idle_state(self, mission_id: str) -> MissionExecutionState:
         return MissionExecutionState(
@@ -102,8 +110,7 @@ class MissionExecutionManager:
                     f"Mission requires at least {MIN_WAYPOINTS_TO_START} waypoints to start"
                 )
 
-            if not self._robot_ready():
-                raise NoConnectedRobotError("Cannot start mission: no connected robot device")
+            self._require_robot_ready("start")
 
             return self._update(
                 state,
@@ -127,6 +134,7 @@ class MissionExecutionManager:
             state = self._require_state()
             if state.status != MissionStatus.PAUSED:
                 raise InvalidExecutionTransitionError(f"Cannot resume from status {state.status.value}")
+            self._require_robot_ready("resume")
             return self._update(state, status=MissionStatus.RUNNING)
 
     def cancel(self) -> MissionExecutionState:

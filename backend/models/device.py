@@ -5,6 +5,9 @@ from pydantic import ConfigDict, Field
 
 from models.base import WireModel
 
+# Robot-reported operational_state values that rule out autonomy.
+ROBOT_UNAVAILABLE_STATES = ("notready", "failure", "manual")
+
 
 class DeviceType(str, Enum):
     ROBOT = "robot"
@@ -47,3 +50,11 @@ class DeviceState(WireModel):
 class DeviceView(DeviceState):
     connected: bool
     last_seen: float
+
+    @property
+    def operational_state(self) -> str | None:
+        return self.status.get("operational_state")
+
+    @property
+    def unavailable(self) -> bool:
+        return self.operational_state in ROBOT_UNAVAILABLE_STATES

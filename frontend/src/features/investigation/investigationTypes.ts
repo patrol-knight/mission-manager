@@ -53,6 +53,9 @@ export interface RawAutonomyAborted {
 
 const ABORT_REASONS: Record<string, string> = {
   robot_disconnected: "The robot was lost",
+  robot_failure: "The robot reported a failure",
+  robot_manual: "The robot was taken over manually",
+  robot_notready: "The robot is not ready",
 };
 
 export function describeAbort(raw: RawAutonomyAborted): string {

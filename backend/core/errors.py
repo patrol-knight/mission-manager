@@ -34,6 +34,10 @@ class NoConnectedRobotError(Exception):
     pass
 
 
+class RobotNotReadyError(Exception):
+    pass
+
+
 class MissionExecutionLockedError(Exception):
     pass
 

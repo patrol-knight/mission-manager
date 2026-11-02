@@ -11,6 +11,7 @@ import { Collapse } from "../../components/ui/Collapse";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { startMission, pauseMission, resumeMission, cancelMission } from "../../api/missionApi";
 import { useConnectedRobot } from "../devices/useConnectedRobot";
+import { robotUnavailableHint } from "../devices/robotStatus";
 import { ProgressTrack } from "./ProgressTrack";
 import { ButtonRow } from "../../components/ui/ButtonRow";
 import { missionProgress, missionStatus } from "./missionStatus";
@@ -108,6 +109,7 @@ function MissionProgress({
 function MissionActions({ execution, onEdit }: { execution: MissionExecutionState | null; onEdit: () => void }) {
   const setExecution = useMissionStore((s) => s.setExecution);
   const robot = useConnectedRobot();
+  const unavailable = robotUnavailableHint(robot);
   const { show } = useToast();
   const [pending, setPending] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
@@ -166,19 +168,21 @@ function MissionActions({ execution, onEdit }: { execution: MissionExecutionStat
     case "paused":
       return (
         <ButtonRow>
-          <Button variant="primary" block disabled={pending} onClick={() => run(resumeMission, "Resume")}>
-            Resume
-          </Button>
+          <span style={{ display: "flex", flex: 1 }} data-hint={unavailable ?? undefined}>
+            <Button variant="primary" block disabled={pending || unavailable !== null} onClick={() => run(resumeMission, "Resume")}>
+              Resume
+            </Button>
+          </span>
           {cancelButton}
           {cancelDialog}
         </ButtonRow>
       );
     default: {
       // "completed" is only broadcast for a moment before the backend resets to idle.
-      const ready = execution?.status === "ready" && robot !== null;
+      const ready = execution?.status === "ready" && unavailable === null;
       return (
         <ButtonRow>
-          <span style={{ display: "flex", flex: 1 }} data-hint={ready ? undefined : "The robot is offline"}>
+          <span style={{ display: "flex", flex: 1 }} data-hint={ready ? undefined : (unavailable ?? "The robot is not ready")}>
             <Button variant="primary" block disabled={pending || !ready} onClick={() => void start()}>
               Start
             </Button>

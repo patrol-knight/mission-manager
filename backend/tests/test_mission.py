@@ -2,6 +2,7 @@
 
 import time
 
+import pytest
 from fastapi.testclient import TestClient
 
 from models.mission import Mission
@@ -200,6 +201,41 @@ def test_losing_an_idle_robot_aborts_nothing(sim: Sim):
     sim.services.mission_service.abort_if_robot_lost(grace_sec=-1)
     assert sim.commands == []  # nothing to cancel
     assert sim.mission_status() == "not_ready"
+
+
+@pytest.mark.parametrize("state", ["notready", "failure", "manual"])
+def test_the_mission_cannot_start_while_the_robot_cannot_drive(sim: Sim, state: str):
+    sim.robot(*sim.waypoints[0], state)
+    assert sim.mission_status() == "not_ready"
+    assert sim.client.post("/api/missions/current/start").status_code == 409
+    sim.robot(*sim.waypoints[0], "idle")
+    assert sim.mission_status() == "ready"
+
+
+@pytest.mark.parametrize(("state", "cancels"), [("failure", False), ("manual", False), ("notready", True)])
+def test_a_robot_that_cannot_drive_stops_a_running_mission(sim: Sim, state: str, cancels: bool):
+    sim.robot(*sim.waypoints[0])
+    sim.client.post("/api/missions/current/start")
+    sent_before = len(sim.commands)
+
+    sim.robot(*sim.waypoints[0], state)
+    sim.services.mission_service.abort_if_robot_unavailable()
+    assert sim.mission_status() == "not_ready"
+    assert (sim.commands[sent_before:] == [("cancel_navigation", None)]) is cancels
+
+
+def test_a_paused_mission_waits_for_the_robot_to_resume(sim: Sim):
+    sim.robot(*sim.waypoints[0])
+    sim.client.post("/api/missions/current/start")
+    sim.client.post("/api/missions/current/pause")
+
+    sim.robot(*sim.waypoints[0], "manual")
+    sim.services.mission_service.abort_if_robot_unavailable()
+    assert sim.mission_status() == "paused"
+    assert sim.client.post("/api/missions/current/resume").status_code == 409
+
+    sim.robot(*sim.waypoints[0], "idle")
+    assert sim.client.post("/api/missions/current/resume").json()["status"] == "running"
 
 
 def test_mission_files_from_before_time_slots_were_removed_still_load():

@@ -23,6 +23,7 @@ async def run_monitor(
         for device in device_registry.mark_offline_devices(offline_timeout_sec):
             await websocket_manager.broadcast({"type": "device.updated", "data": device.model_dump(mode="json")})
         mission_service.abort_if_robot_lost(robot_lost_grace_sec)
+        mission_service.abort_if_robot_unavailable()
         # Off the event loop: expire() writes expired anomalies to Postgres,
         # which can block on an unreachable database.
         for anomaly_id in await asyncio.to_thread(anomaly_registry.expire):

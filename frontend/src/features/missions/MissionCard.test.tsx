@@ -78,6 +78,22 @@ describe("MissionCard controls", () => {
     expect(screen.getByRole("button", { name: "Start" })).toBeDisabled();
   });
 
+  it("tells the operator to adjust a failed robot", () => {
+    useDeviceStore.setState({ devices: { "robot-1": { ...robot, status: { operational_state: "failure" } } } });
+    useMissionStore.setState({ definition, execution: execution("not_ready") });
+    renderCard();
+    const start = screen.getByRole("button", { name: "Start" });
+    expect(start).toBeDisabled();
+    expect(start.parentElement).toHaveAttribute("data-hint", "Please adjust the robot");
+  });
+
+  it("can't resume until the robot is back from manual", () => {
+    useDeviceStore.setState({ devices: { "robot-1": { ...robot, status: { operational_state: "manual" } } } });
+    useMissionStore.setState({ definition, execution: execution("paused", 1) });
+    renderCard();
+    expect(screen.getByRole("button", { name: "Resume" })).toBeDisabled();
+  });
+
   it("says which waypoint the mission starts from", async () => {
     useMissionStore.setState({ definition, execution: execution("ready") });
     vi.mocked(missionApi.startMission).mockResolvedValue(execution("running", 2));

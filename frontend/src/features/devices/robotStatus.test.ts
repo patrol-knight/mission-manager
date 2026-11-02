@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { robotStatus } from "./robotStatus";
+import { robotStatus, robotUnavailableHint } from "./robotStatus";
+import type { Device } from "../../types/domain";
 import { missionProgress, missionStatus, targetWaypointIndex } from "../missions/missionStatus";
 import type { MissionExecutionState, MissionStatus } from "../missions/missionTypes";
 import type { Investigation } from "../investigation/investigationTypes";
@@ -29,11 +30,41 @@ describe("robotStatus", () => {
     expect(robotStatus(true, { ...investigation, phase: "on_site" }, null).label).toBe("On site");
   });
 
+  it("shows the robot's own trouble over the investigation and mission", () => {
+    expect(robotStatus(true, investigation, execution("running"), "failure").label).toBe("Failure");
+    expect(robotStatus(true, null, execution("paused"), "manual").label).toBe("Manual");
+    expect(robotStatus(true, null, null, "notready").label).toBe("Not ready");
+  });
+
+  it("is patrolling while the robot drives, mission or not", () => {
+    expect(robotStatus(true, null, null, "navigating").label).toBe("Patrolling");
+    expect(robotStatus(true, null, execution("running"), "arrived").label).toBe("Patrolling");
+    expect(robotStatus(true, null, execution("ready"), "arrived").label).toBe("Idle");
+  });
+
   it("follows the mission otherwise", () => {
     expect(robotStatus(true, null, execution("running")).label).toBe("Patrolling");
     expect(robotStatus(true, null, execution("paused")).label).toBe("Holding");
     expect(robotStatus(true, null, execution("ready")).label).toBe("Idle");
     expect(robotStatus(true, null, null).label).toBe("Idle");
+  });
+});
+
+describe("robotUnavailableHint", () => {
+  const robot = (state?: string) =>
+    ({ deviceId: "r", status: state ? { operational_state: state } : {} }) as unknown as Device;
+
+  it("explains why the robot can't take a mission", () => {
+    expect(robotUnavailableHint(null)).toBe("The robot is offline");
+    expect(robotUnavailableHint(robot("failure"))).toBe("Please adjust the robot");
+    expect(robotUnavailableHint(robot("manual"))).toBe("The robot is in manual mode");
+    expect(robotUnavailableHint(robot("notready"))).toBe("The robot is not ready");
+  });
+
+  it("is null when the robot can drive", () => {
+    expect(robotUnavailableHint(robot("idle"))).toBeNull();
+    expect(robotUnavailableHint(robot("arrived"))).toBeNull();
+    expect(robotUnavailableHint(robot())).toBeNull();
   });
 });
 

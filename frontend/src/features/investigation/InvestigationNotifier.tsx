@@ -3,6 +3,7 @@ import { getRealtimeClient } from "../../api/realtimeClient";
 import { useInvestigationStore } from "../../stores/investigationStore";
 import { useToast } from "../../components/useToast";
 import { describeAbort } from "./investigationTypes";
+import { FAILURE_HINT } from "../devices/robotStatus";
 
 /**
  * Renderless. Announces the transitions the system makes on its own, so a
@@ -37,7 +38,9 @@ export function InvestigationNotifier() {
         show(
           "error",
           `${describeAbort(aborted)}. Mission and investigation stopped.`,
-          "Start the mission or investigate again when you're ready.",
+          aborted.reason === "robot_failure"
+            ? `${FAILURE_HINT} until it's ready, then start the mission again.`
+            : "Start the mission or investigate again when you're ready.",
         );
       }),
     [show],

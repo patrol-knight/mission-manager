@@ -16,7 +16,7 @@ from core.mission_execution import ACTIVE_STATUSES, MissionExecutionManager
 from core.mission_server import MissionServer
 from core.websocket_manager import WebSocketManager
 from models.mission import Mission, MissionGeo, MissionSummary, WaypointGeo
-from models.mission_execution import MissionExecutionState
+from models.mission_execution import MissionExecutionState, MissionStatus
 from transport.zenoh_gateway import ZenohGateway
 
 if TYPE_CHECKING:
@@ -159,12 +159,12 @@ class MissionService:
 
     # -- Aborting autonomy ------------------------------------------------------
 
-    def abort_autonomy(self, reason: str) -> bool:
+    def abort_autonomy(self, reason: str, send_cancel: bool = True) -> bool:
         """Stops everything the robot does on its own: cancels the
         investigation (no verdict) and drops the mission to READY. Nothing
         resumes by itself -- the operator has to Start or Investigate again.
-        Used when the robot is lost (abort_if_robot_lost) and, later, when the
-        joystick takes over. Returns whether anything was running."""
+        Used when the robot is lost (abort_if_robot_lost) or reports it can't
+        drive (abort_if_robot_unavailable). Returns whether anything was running."""
         cancelled = self._investigation.abort()
         aborted = self._execution.abort()
         if cancelled is None and not aborted:
@@ -172,7 +172,7 @@ class MissionService:
         self._drive.abort()
 
         robot = self._devices.get_robot()
-        if robot is not None:
+        if robot is not None and send_cancel:
             if robot.connected:
                 self._gateway.publish_command(
                     robot.device_id, "cancel_navigation", request_id=f"abort-{uuid.uuid4().hex[:8]}"
@@ -201,6 +201,19 @@ class MissionService:
         mission_active = execution is not None and execution.status in ACTIVE_STATUSES
         if mission_active or self._investigation.is_active():
             self.abort_autonomy("robot_disconnected")
+
+    def abort_if_robot_unavailable(self) -> None:
+        """Call on every monitor tick. A paused mission is left alone: Resume
+        waits for the robot to be ready again."""
+        robot = self._devices.get_connected_robot()
+        if robot is None or not robot.unavailable:
+            return
+        execution = self._execution.get_state()
+        running = execution is not None and execution.status == MissionStatus.RUNNING
+        if running or self._investigation.is_active():
+            # failure and manual have already dropped the route; a cancel would
+            # clear Autoware's failure before the operator has moved the robot.
+            self.abort_autonomy(f"robot_{robot.operational_state}", send_cancel=robot.operational_state == "notready")
 
     # -- Helpers -------------------------------------------------------------
 
