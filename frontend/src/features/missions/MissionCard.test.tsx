@@ -25,7 +25,7 @@ const definition = {
   waypoints: [{ waypointId: "a" }, { waypointId: "b" }, { waypointId: "c" }],
 } as unknown as MissionDefinition;
 
-const robot = { deviceId: "robot-1", type: "robot", connected: true } as Device;
+const robot = { deviceId: "robot-1", type: "robot", connected: true, status: { operational_state: "idle" } } as unknown as Device;
 
 function execution(status: MissionStatus, targetWaypointIndex: number | null = null): MissionExecutionState {
   return {

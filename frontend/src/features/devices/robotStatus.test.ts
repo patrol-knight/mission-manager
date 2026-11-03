@@ -22,12 +22,12 @@ const investigation = { anomalyId: "a1", phase: "en_route" } as Investigation;
 
 describe("robotStatus", () => {
   it("reports an offline robot before anything else", () => {
-    expect(robotStatus(false, investigation, execution("running")).label).toBe("Offline");
+    expect(robotStatus(false, investigation, execution("running"), "navigating").label).toBe("Offline");
   });
 
   it("shows the investigation phase over the mission", () => {
-    expect(robotStatus(true, investigation, execution("running")).label).toBe("En route");
-    expect(robotStatus(true, { ...investigation, phase: "on_site" }, null).label).toBe("On site");
+    expect(robotStatus(true, investigation, execution("running"), "navigating").label).toBe("En route");
+    expect(robotStatus(true, { ...investigation, phase: "on_site" }, null, "arrived").label).toBe("On site");
   });
 
   it("shows the robot's own trouble over the investigation and mission", () => {
@@ -43,10 +43,16 @@ describe("robotStatus", () => {
   });
 
   it("follows the mission otherwise", () => {
-    expect(robotStatus(true, null, execution("running")).label).toBe("Patrolling");
-    expect(robotStatus(true, null, execution("paused")).label).toBe("Holding");
-    expect(robotStatus(true, null, execution("ready")).label).toBe("Idle");
-    expect(robotStatus(true, null, null).label).toBe("Idle");
+    expect(robotStatus(true, null, execution("running"), "idle").label).toBe("Patrolling");
+    expect(robotStatus(true, null, execution("paused"), "idle").label).toBe("Holding");
+    expect(robotStatus(true, null, execution("ready"), "idle").label).toBe("Idle");
+    expect(robotStatus(true, null, null, "idle").label).toBe("Idle");
+  });
+
+  it("is not ready when the robot reports no state or an unknown one", () => {
+    expect(robotStatus(true, null, null, null).label).toBe("Not ready");
+    expect(robotStatus(true, null, execution("running"), "").label).toBe("Not ready");
+    expect(robotStatus(true, investigation, null, "charging").label).toBe("Not ready");
   });
 });
 
@@ -64,7 +70,12 @@ describe("robotUnavailableHint", () => {
   it("is null when the robot can drive", () => {
     expect(robotUnavailableHint(robot("idle"))).toBeNull();
     expect(robotUnavailableHint(robot("arrived"))).toBeNull();
-    expect(robotUnavailableHint(robot())).toBeNull();
+    expect(robotUnavailableHint(robot("navigating"))).toBeNull();
+  });
+
+  it("is not ready without a known state", () => {
+    expect(robotUnavailableHint(robot())).toBe("The robot is not ready");
+    expect(robotUnavailableHint(robot("charging"))).toBe("The robot is not ready");
   });
 });
 

@@ -18,19 +18,17 @@ export function operationalState(robot: Device | null): string | null {
   return typeof state === "string" ? state : null;
 }
 
+/** The only states the robot can take a mission in; anything else, a
+ * missing state included, is treated as not ready. */
+const AVAILABLE_STATES = ["idle", "navigating", "arrived"];
+
 /** Why the robot can't take a mission right now; null when it can. */
 export function robotUnavailableHint(robot: Device | null): string | null {
   if (!robot) return "The robot is offline";
-  switch (operationalState(robot)) {
-    case "failure":
-      return FAILURE_HINT;
-    case "manual":
-      return "The robot is in manual mode";
-    case "notready":
-      return "The robot is not ready";
-    default:
-      return null;
-  }
+  const state = operationalState(robot);
+  if (state === "failure") return FAILURE_HINT;
+  if (state === "manual") return "The robot is in manual mode";
+  return state !== null && AVAILABLE_STATES.includes(state) ? null : "The robot is not ready";
 }
 
 /** What the robot is doing right now, for its status pill -- colored by
@@ -39,7 +37,7 @@ export function robotStatus(
   robotConnected: boolean,
   investigation: Investigation | null,
   execution: MissionExecutionState | null,
-  state: string | null = null,
+  state: string | null,
 ): StatusLabel {
   if (!robotConnected) return { label: "Offline", tone: "danger", live: false };
   switch (state) {
@@ -47,8 +45,9 @@ export function robotStatus(
       return { label: "Failure", tone: "danger", live: false };
     case "manual":
       return { label: "Manual", tone: "warning", live: false };
-    case "notready":
-      return { label: "Not ready", tone: "muted", live: false };
+  }
+  if (state === null || !AVAILABLE_STATES.includes(state)) {
+    return { label: "Not ready", tone: "muted", live: false };
   }
   if (investigation) {
     return investigation.phase === "en_route"
