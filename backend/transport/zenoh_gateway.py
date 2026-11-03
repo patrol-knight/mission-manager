@@ -182,14 +182,16 @@ class ZenohGateway:
         # truth for this projection -- so every later consumer (REST reads
         # via DeviceRegistry, and the broadcast below) gets it for free,
         # with no separate xy-to-lnglat round trip needed.
-        at = (state.pose.x, state.pose.y, state.pose.frame_id)
-        last = self._last_projection.get(state.device_id)
-        if last is not None and last[0] == at:
-            latlon = last[1]
-        else:
-            latlon = self._project_latlon(*at)
-            if latlon is not None:
-                self._last_projection[state.device_id] = (at, latlon)
+        latlon = None
+        if state.pose is not None:  # None: the robot isn't localized
+            at = (state.pose.x, state.pose.y, state.pose.frame_id)
+            last = self._last_projection.get(state.device_id)
+            if last is not None and last[0] == at:
+                latlon = last[1]
+            else:
+                latlon = self._project_latlon(*at)
+                if latlon is not None:
+                    self._last_projection[state.device_id] = (at, latlon)
         if latlon is not None:
             lat, lon = latlon
             state = state.model_copy(update={"pose": state.pose.model_copy(update={"lat": lat, "lon": lon})})

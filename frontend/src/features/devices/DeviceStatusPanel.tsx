@@ -35,7 +35,8 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
  * window header.
  */
 export function DeviceStatusPanel({ device, camera, alerts }: DeviceStatusPanelProps) {
-  const headingDeg = ((((device.pose.yaw * 180) / Math.PI) % 360) + 360) % 360;
+  const pose = device.pose;
+  const headingDeg = pose && ((((pose.yaw * 180) / Math.PI) % 360) + 360) % 360;
 
   return (
     <>
@@ -49,9 +50,15 @@ export function DeviceStatusPanel({ device, camera, alerts }: DeviceStatusPanelP
       </Section>
 
       <Section title="Position">
-        <InfoRow label="X" value={`${device.pose.x.toFixed(2)} m`} />
-        <InfoRow label="Y" value={`${device.pose.y.toFixed(2)} m`} />
-        <InfoRow label="Heading" value={`${headingDeg.toFixed(0)}°`} />
+        {pose && headingDeg !== null ? (
+          <>
+            <InfoRow label="X" value={`${pose.x.toFixed(2)} m`} />
+            <InfoRow label="Y" value={`${pose.y.toFixed(2)} m`} />
+            <InfoRow label="Heading" value={`${headingDeg.toFixed(0)}°`} />
+          </>
+        ) : (
+          <InfoRow label="Localization" value="Not initialized" />
+        )}
       </Section>
     </>
   );

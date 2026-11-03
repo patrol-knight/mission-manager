@@ -26,9 +26,22 @@ Set these in the root `.env`. Every one is optional.
 If you open the UI from another machine, point `API_BASE_URL` / `WS_URL` at the host running Docker instead of `localhost`. 
 Data lives in `backend/storage/` on the host, so it survives container rebuilds:
 
-- `maps/`: `lanelet2_map.osm` and `map_projector_info.yaml`. Swap these files to change the map.
-- `missions/`: saved missions (YAML)
+- `maps/<site>/`: one folder per site (currently `ks` and `nsh`), each holding `lanelet2_map.osm` and `map_projector_info.yaml`. The folder name is the map's name.
+- `missions/`: saved missions (YAML). Each one records the map it was made on, and only missions for the loaded map are shown. Missions for other maps stay on disk and come back when you switch to their map.
 - `app_state.yaml`: the active mission and its progress
+
+To change the map, point `MAP_OSM_PATH` and `MAP_PROJECTOR_PATH` in `docker-compose.yml` at another site's folder, then recreate the backend. The map is only read at startup.
+
+```yaml
+      - MAP_OSM_PATH=storage/maps/nsh/lanelet2_map.osm
+      - MAP_PROJECTOR_PATH=storage/maps/nsh/map_projector_info.yaml
+```
+
+```bash
+docker compose up -d --force-recreate backend
+```
+
+If the current mission belongs to a different map, it is cleared on the switch. If the map fails to load, the backend still starts, but with no map and with every mission shown, so check the startup log.
 
 ## Architecture
 

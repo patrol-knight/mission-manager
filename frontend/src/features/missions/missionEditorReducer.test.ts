@@ -40,8 +40,8 @@ describe("missionEditorReducer", () => {
       description: null,
       infiniteLoop: false,
       waypoints: [
-        { waypointId: "wp1", x: 0, y: 0, yaw: null, label: null, type: "patrol" },
-        { waypointId: "wp2", x: 1, y: 1, yaw: null, label: null, type: "patrol" },
+        { waypointId: "wp1", x: 0, y: 0, yaw: null, type: "patrol" },
+        { waypointId: "wp2", x: 1, y: 1, yaw: null, type: "patrol" },
       ],
       loopCount: 3,
       createdAt: null,

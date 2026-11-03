@@ -104,12 +104,14 @@ function applyTowerHighlight(el: HTMLElement, highlighted: boolean): void {
 /** Which corner of a tower faces away from the investigated anomaly --
  * screen y grows downward. Top right when there's no target. */
 function cornerAwayFrom(tower: Device, target: { lat: number | null; lon: number | null } | undefined): { x: "left" | "right"; y: "top" | "bottom" } {
-  if (!target || target.lat == null || target.lon == null || tower.pose.lat == null || tower.pose.lon == null) {
+  const lat = tower.pose?.lat;
+  const lon = tower.pose?.lon;
+  if (!target || target.lat == null || target.lon == null || lat == null || lon == null) {
     return { x: "right", y: "top" };
   }
   return {
-    x: tower.pose.lon >= target.lon ? "right" : "left",
-    y: tower.pose.lat >= target.lat ? "top" : "bottom",
+    x: lon >= target.lon ? "right" : "left",
+    y: lat >= target.lat ? "top" : "bottom",
   };
 }
 
@@ -190,10 +192,11 @@ export function DeviceMarkerLayer() {
   const options = useMemo<UseMarkerListOptions<Device>>(
     () => ({
       keyOf: (d) => d.deviceId,
-      dependsOn: (d) => [d.pose.lat, d.pose.lon],
+      dependsOn: (d) => [d.pose?.lat, d.pose?.lon],
       // lat/lon are computed server-side at Zenoh ingest (see
       // backend/models/device.py::Pose2D), so no projection call is needed.
-      project: async (d) => (d.pose.lat != null && d.pose.lon != null ? { lng: d.pose.lon, lat: d.pose.lat } : null),
+      // No pose (robot not localized): no marker, rather than one at (0, 0).
+      project: async (d) => (d.pose?.lat != null && d.pose.lon != null ? { lng: d.pose.lon, lat: d.pose.lat } : null),
       buildElement: (d) => (d.type === "robot" ? buildRobotElement() : buildTowerElement()),
       updateElement: (el, d) => {
         applyConnectivityStyle(el, d, backendConnected);
@@ -209,7 +212,7 @@ export function DeviceMarkerLayer() {
         el.style.zIndex = String(hidden.length > 0 ? DEVICE_Z_INDEX_WITH_BADGE : DEVICE_Z_INDEX.iot);
       },
       // Towers don't rotate; their facing is drawn by TowerFovLayer.
-      rotationOf: (d) => (d.type === "robot" ? headingDegrees(d.pose.yaw) : 0),
+      rotationOf: (d) => (d.type === "robot" ? headingDegrees(d.pose?.yaw ?? 0) : 0),
       onClick: (d) => openInspector(d.deviceId),
     }),
     [openInspector, backendConnected, hoveredDeviceId, hiddenByTower, target, zoomToHidden],

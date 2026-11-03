@@ -213,7 +213,8 @@ class MissionService:
         if running or self._investigation.is_active():
             # failure and manual have already dropped the route; a cancel would
             # clear Autoware's failure before the operator has moved the robot.
-            self.abort_autonomy(f"robot_{robot.operational_state}", send_cancel=robot.operational_state == "notready")
+            state = robot.operational_state if robot.operational_state in ("failure", "manual") else "notready"
+            self.abort_autonomy(f"robot_{state}", send_cancel=state == "notready")
 
     # -- Helpers -------------------------------------------------------------
 
@@ -227,6 +228,15 @@ class MissionService:
             self._assert_not_investigating()
 
     def _with_map_name(self, mission: Mission) -> Mission:
+        """Fills in what the map decides: the map's name, and each waypoint's
+        yaw -- the lane's driving direction there, sent as the goal heading.
+        Recomputed on every save, so a moved waypoint gets its new lane's."""
+        if self._map.is_available():
+            waypoints = [
+                wp.model_copy(update={"yaw": yaw}) if (yaw := self._map.lane_yaw(wp.x, wp.y)) is not None else wp
+                for wp in mission.waypoints
+            ]
+            mission = mission.model_copy(update={"waypoints": waypoints})
         if mission.map_name:
             return mission
         map_name = self._map.get_info().map_name if self._map.is_available() else "default"

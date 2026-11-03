@@ -1,4 +1,4 @@
-"""The real lanelet2 map in storage/maps. Skipped where lanelet2 isn't installed
+"""The real KS lanelet2 map in storage/maps/ks. Skipped where lanelet2 isn't installed
 (it is in CI, from requirements.txt)."""
 
 from pathlib import Path
@@ -11,18 +11,19 @@ from core.map_server import MapServer  # noqa: E402
 from core.mission_server import MissionServer  # noqa: E402
 
 STORAGE = Path(__file__).resolve().parent.parent / "storage"
+FIXTURE_MISSIONS = Path(__file__).resolve().parent / "fixtures" / "missions"
 
 
 @pytest.fixture(scope="module")
 def map_server() -> MapServer:
     server = MapServer()
-    server.load(str(STORAGE / "maps" / "lanelet2_map.osm"), str(STORAGE / "maps" / "map_projector_info.yaml"))
+    server.load(str(STORAGE / "maps" / "ks" / "lanelet2_map.osm"), str(STORAGE / "maps" / "ks" / "map_projector_info.yaml"))
     return server
 
 
 @pytest.fixture(scope="module")
-def waypoints():
-    missions = MissionServer(str(STORAGE / "missions"), str(STORAGE / "app_state.yaml"))
+def waypoints(tmp_path_factory):
+    missions = MissionServer(str(FIXTURE_MISSIONS), str(tmp_path_factory.mktemp("state") / "app_state.yaml"))
     missions.load()
     return missions.get_mission("mission-2-tdpjxe").waypoints
 

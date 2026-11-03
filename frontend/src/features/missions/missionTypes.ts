@@ -8,8 +8,8 @@ export interface Waypoint {
   waypointId: string;
   x: number;
   y: number;
+  /** Goal heading; null = along the lane (the backend fills it in). */
   yaw: number | null;
-  label: string | null;
   type: WaypointType;
   /** From the backend (never saved back); null when the map was unavailable. */
   lat?: number | null;
@@ -98,7 +98,6 @@ export function missionDefinitionFromRaw(raw: RawMission): MissionDefinition {
       x: wp.x,
       y: wp.y,
       yaw: wp.yaw,
-      label: wp.label,
       type: wp.type,
       lat: wp.lat,
       lon: wp.lon,
@@ -173,7 +172,6 @@ export function missionDraftToRawPayload(draft: ResolvedMissionDraft): Schemas["
       x: wp.x,
       y: wp.y,
       yaw: wp.yaw,
-      label: wp.label,
       type: wp.type,
     })),
     loop_count: draft.loopCount,

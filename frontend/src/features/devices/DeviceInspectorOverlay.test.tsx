@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { act, render, screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { DeviceInspectorProvider } from "./DeviceInspectorProvider";
@@ -7,6 +7,8 @@ import { useDeviceInspector } from "./useDeviceInspector";
 import { useDeviceStore } from "../../stores/deviceStore";
 import { useInvestigationStore } from "../../stores/investigationStore";
 import type { Device } from "../../types/domain";
+
+vi.mock("../../hooks/useApiConnection", () => ({ useApiConnection: () => ({ status: "connected" }) }));
 
 const fakeDevice: Device = {
   deviceId: "sim-robot-01",
@@ -70,5 +72,21 @@ describe("DeviceInspectorOverlay", () => {
     render(<Harness />);
     await userEvent.click(screen.getByText("Open"));
     expect(await screen.findByText(/no camera available/i)).toBeInTheDocument();
+  });
+
+  it("shows the robot's own state, e.g. Manual, instead of Idle", async () => {
+    useDeviceStore.getState().setDevices([{ ...fakeDevice, status: { operational_state: "manual" } }]);
+    render(<Harness />);
+    await userEvent.click(screen.getByText("Open"));
+    expect(screen.getByText("Manual")).toBeInTheDocument();
+    expect(screen.queryByText("Idle")).not.toBeInTheDocument();
+  });
+
+  it("shows the position as not initialized while the robot isn't localized", async () => {
+    useDeviceStore.getState().setDevices([{ ...fakeDevice, pose: null }]);
+    render(<Harness />);
+    await userEvent.click(screen.getByText("Open"));
+    expect(screen.getByText("Not initialized")).toBeInTheDocument();
+    expect(screen.queryByText("Heading")).not.toBeInTheDocument();
   });
 });

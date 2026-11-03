@@ -546,7 +546,7 @@ export interface components {
             last_seen: number;
             /** Name */
             name: string | null;
-            pose: components["schemas"]["Pose2D"];
+            pose: components["schemas"]["Pose2D"] | null;
             /** Speed */
             speed: number | null;
             /** Status */
@@ -875,8 +875,6 @@ export interface components {
         };
         /** Waypoint */
         Waypoint: {
-            /** Label */
-            label?: string | null;
             /**
              * Type
              * @default patrol
@@ -901,8 +899,6 @@ export interface components {
          *     round trip.
          */
         WaypointGeo: {
-            /** Label */
-            label: string | null;
             /** Lat */
             lat: number | null;
             /** Lon */

@@ -17,14 +17,17 @@ from bootstrap import Services
 from config import Settings
 from models.map import LatLon, MapPoint
 
-STORAGE = Path(__file__).resolve().parent.parent / "storage"
-MISSION_ID = "mission-2-tdpjxe"  # the current mission in storage/app_state.yaml (3 waypoints, 1 loop)
+# Two KS-map missions, kept here so the tests never depend on (or touch)
+# the missions saved in storage/.
+FIXTURE_MISSIONS = Path(__file__).resolve().parent / "fixtures" / "missions"
+MISSION_ID = "mission-2-tdpjxe"  # the tests' current mission (3 waypoints, 1 loop)
 
 
 @pytest.fixture
 def settings(tmp_path: Path) -> Settings:
-    shutil.copytree(STORAGE / "missions", tmp_path / "missions")
-    shutil.copy(STORAGE / "app_state.yaml", tmp_path / "app_state.yaml")
+    shutil.copytree(FIXTURE_MISSIONS, tmp_path / "missions")
+    # Not a copy of the live app_state.yaml: a running backend changes it.
+    (tmp_path / "app_state.yaml").write_text(f"current_mission_id: {MISSION_ID}\n")
     return Settings(
         _env_file=None,
         mission_folder=str(tmp_path / "missions"),
@@ -56,6 +59,9 @@ def _straight_route(points: list[dict]) -> dict:
     }
 
 
+LANE_YAW = 0.5  # every lane of the fake map runs this way
+
+
 @pytest.fixture
 def fake_map(services: Services, monkeypatch: pytest.MonkeyPatch) -> None:
     """Straight lines instead of lanelet2: every point is on the network and
@@ -67,6 +73,7 @@ def fake_map(services: Services, monkeypatch: pytest.MonkeyPatch) -> None:
     )
     monkeypatch.setattr(m, "xy_to_latlon", lambda x, y, frame_id="map": LatLon(lat=1.0, lon=2.0))
     monkeypatch.setattr(m, "get_route", _straight_route)
+    monkeypatch.setattr(m, "lane_yaw", lambda x, y: LANE_YAW)
 
 
 @dataclass
@@ -83,14 +90,15 @@ class Sim:
     def waypoints(self) -> list[tuple[float, float]]:
         return [(w["x"], w["y"]) for w in self.client.get("/api/missions/current").json()["waypoints"]]
 
-    def robot(self, x: float, y: float, state: str = "idle") -> None:
-        """One state sample from the robot; each one is newer than the last."""
+    def robot(self, x: float | None, y: float | None, state: str = "idle") -> None:
+        """One state sample from the robot; each one is newer than the last.
+        x/y None: not localized, sent as pose null like zenoh_bridge does."""
         self._clock += 1
         self.services.zenoh_gateway.ingest_device_payload(
             {
                 "device_id": "robot-1",
                 "type": "robot",
-                "pose": {"x": x, "y": y},
+                "pose": {"x": x, "y": y} if x is not None and y is not None else None,
                 "timestamp": self._clock,
                 "status": {"operational_state": state},
             }

@@ -33,7 +33,7 @@ function useTowers() {
   useEffect(() => () => setHoveredDevice(null), [setHoveredDevice]);
 
   const flyTo = (tower: Device) => {
-    if (!map || tower.pose.lat == null || tower.pose.lon == null) return;
+    if (!map || tower.pose?.lat == null || tower.pose.lon == null) return;
     map.flyTo({ center: [tower.pose.lon, tower.pose.lat], zoom: TOWER_ZOOM, duration: 800 });
   };
 

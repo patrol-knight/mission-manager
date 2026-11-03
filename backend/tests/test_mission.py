@@ -6,7 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from models.mission import Mission
-from tests.conftest import MISSION_ID, Sim
+from tests.conftest import LANE_YAW, MISSION_ID, Sim
 
 NEW_MISSION = {
     "mission_id": "test-m",
@@ -263,3 +263,51 @@ def test_mission_list_routes_each_version_once(client: TestClient, services, fak
     client.put("/api/missions/test-m", json=moved)
     list_missions()
     assert len(calls) == routed + 1  # edited: routed again
+
+
+def test_only_missions_made_on_the_loaded_map_are_loaded(tmp_path):
+    """Switching maps hides the other map's missions without deleting them."""
+    from core.errors import MissionAlreadyExistsError
+    from core.mission_server import MissionServer
+
+    folder = tmp_path / "missions"
+    folder.mkdir()
+    for mission_id, map_name in (("on-ks", "ks"), ("on-nsh", "nsh")):
+        (folder / f"{mission_id}.yaml").write_text(f"mission_id: {mission_id}\nname: n\nmap_name: {map_name}\n")
+    (tmp_path / "app_state.yaml").write_text("current_mission_id: on-ks\n")
+
+    nsh = MissionServer(str(folder), str(tmp_path / "app_state.yaml"), "nsh")
+    nsh.load()
+    assert [m.mission_id for m in nsh.list_missions()] == ["on-nsh"]
+    assert nsh.get_current() is None  # the KS mission was current
+    assert (folder / "on-ks.yaml").exists()
+    with pytest.raises(MissionAlreadyExistsError):  # a hidden mission's id is still taken
+        nsh.create_mission(Mission(mission_id="on-ks", name="n", map_name="nsh"))
+
+
+def test_saving_heads_every_waypoint_along_its_lane_and_goals_use_it(sim: Sim):
+    current = sim.client.get("/api/missions/current").json()
+    assert all(wp["yaw"] is None for wp in current["waypoints"])  # fixture saved without a map
+    saved = sim.client.put(f"/api/missions/{MISSION_ID}", json=current).json()
+    assert all(wp["yaw"] == LANE_YAW for wp in saved["waypoints"])
+
+    w = sim.waypoints
+    sim.robot(*w[0])
+    sim.client.post("/api/missions/current/start")
+    sim.drive_to(*w[0])
+    goals = [f for c, f in sim.commands if c == "navigate_to_goal"]
+    assert goals and all(g["yaw"] == LANE_YAW for g in goals)
+
+
+def test_an_unlocalized_robot_has_no_pose(sim: Sim):
+    sim.robot(None, None, "notready")
+    robot = sim.client.get("/api/devices/robot-1").json()
+    assert robot["pose"] is None and robot["status"]["operational_state"] == "notready"
+    assert sim.client.post("/api/missions/current/start").status_code == 409
+
+
+@pytest.mark.parametrize("state", ["", "charging"])
+def test_a_robot_without_a_known_state_is_not_ready(sim: Sim, state: str):
+    sim.robot(*sim.waypoints[0], state)
+    assert sim.mission_status() == "not_ready"
+    assert sim.client.post("/api/missions/current/start").status_code == 409

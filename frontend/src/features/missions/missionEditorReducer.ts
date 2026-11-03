@@ -104,7 +104,6 @@ export function missionEditorReducer(
         x: action.x,
         y: action.y,
         yaw: null,
-        label: null,
         type: "patrol",
         lat: action.lat,
         lon: action.lon,

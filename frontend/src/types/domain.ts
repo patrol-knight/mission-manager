@@ -18,7 +18,8 @@ export interface Device {
   deviceId: string;
   name: string | null;
   type: DeviceType;
-  pose: Pose2D;
+  /** Null while the robot isn't localized: no position, so no map marker. */
+  pose: Pose2D | null;
   timestamp: number;
   battery: number | null;
   speed: number | null;
@@ -35,7 +36,7 @@ export function deviceFromRaw(raw: RawDevice): Device {
     deviceId: raw.device_id,
     name: raw.name,
     type: raw.type,
-    pose: {
+    pose: raw.pose && {
       frameId: raw.pose.frame_id,
       x: raw.pose.x,
       y: raw.pose.y,

@@ -7,8 +7,8 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 const waypoints: Waypoint[] = [
-  { waypointId: "wp1", x: 0, y: 0, yaw: null, label: null, type: "patrol" },
-  { waypointId: "wp2", x: 1, y: 1, yaw: null, label: null, type: "patrol" },
+  { waypointId: "wp1", x: 0, y: 0, yaw: null, type: "patrol" },
+  { waypointId: "wp2", x: 1, y: 1, yaw: null, type: "patrol" },
 ];
 
 const rawMission = {
@@ -19,8 +19,8 @@ const rawMission = {
   description: null,
   infinite_loop: false,
   waypoints: [
-    { waypoint_id: "wp1", x: 0, y: 0, yaw: null, label: null, type: "patrol" },
-    { waypoint_id: "wp2", x: 1, y: 1, yaw: null, label: null, type: "patrol" },
+    { waypoint_id: "wp1", x: 0, y: 0, yaw: null, type: "patrol" },
+    { waypoint_id: "wp2", x: 1, y: 1, yaw: null, type: "patrol" },
   ],
   loop_count: 2,
   created_at: null,

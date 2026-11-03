@@ -49,7 +49,8 @@ def build_services(settings: Settings) -> Services:
     except MapUnavailableError as exc:
         logger.warning("%s; map endpoints will return 503", exc)
 
-    mission_server = MissionServer(settings.mission_folder, settings.app_state_path)
+    map_name = map_server.get_info().map_name if map_server.is_available() else None
+    mission_server = MissionServer(settings.mission_folder, settings.app_state_path, map_name)
     mission_server.load()
 
     device_registry = DeviceRegistry()

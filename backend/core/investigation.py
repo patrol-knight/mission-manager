@@ -15,6 +15,7 @@ from core.errors import (
     NoConnectedRobotError,
     NoRouteError,
     NotOnSiteError,
+    RobotNotReadyError,
     VerdictRequiredError,
 )
 from core.goal_arrival import arrived_at
@@ -31,6 +32,16 @@ if TYPE_CHECKING:
     from core.mission_drive import MissionDriveCoordinator
 
 logger = logging.getLogger(__name__)
+
+
+def _goal_fields(map_server: MapServer, x: float, y: float, frame_id: str) -> dict:
+    """A navigate_to_goal heading along the lane, so the robot arrives
+    facing down the road rather than at yaw 0."""
+    fields = {"x": x, "y": y, "frame_id": frame_id}
+    yaw = map_server.lane_yaw(x, y)
+    if yaw is not None:
+        fields["yaw"] = yaw
+    return fields
 
 
 class InvestigationCoordinator:
@@ -114,6 +125,8 @@ class InvestigationCoordinator:
             raise InvalidAnomalyTransitionError(f"Anomaly already resolved: {anomaly_id}")
         if not self._map.is_available():
             raise MapUnavailableError("Map service is unavailable: cannot route to the anomaly")
+        if robot.pose is None:
+            raise RobotNotReadyError("The robot is not localized")
 
         target = self._map.snap_to_lanelet(anomaly.x, anomaly.y, anomaly.frame_id)
         route = self._map.get_route([{"x": robot.pose.x, "y": robot.pose.y}, {"x": target.x, "y": target.y}])
@@ -155,7 +168,7 @@ class InvestigationCoordinator:
             robot.device_id,
             "navigate_to_goal",
             request_id=f"investigate-{anomaly_id}-{goal_count}",
-            fields={"x": target.x, "y": target.y, "frame_id": target.frame_id},
+            fields=_goal_fields(self._map, target.x, target.y, target.frame_id),
         )
         logger.info("Investigation: robot %s heading to anomaly %s", robot.device_id, anomaly_id)
         return state

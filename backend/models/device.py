@@ -5,8 +5,9 @@ from pydantic import ConfigDict, Field
 
 from models.base import WireModel
 
-# Robot-reported operational_state values that rule out autonomy.
-ROBOT_UNAVAILABLE_STATES = ("notready", "failure", "manual")
+# The only operational_state values a robot can take a mission in; anything
+# else, including a missing state, counts as not ready.
+ROBOT_AVAILABLE_STATES = ("idle", "navigating", "arrived")
 
 
 class DeviceType(str, Enum):
@@ -37,7 +38,8 @@ class DeviceState(WireModel):
     name: str | None = None
     type: DeviceType
 
-    pose: Pose2D
+    # None while the robot isn't localized (zenoh_bridge sends "pose": null).
+    pose: Pose2D | None = None
     timestamp: float
 
     battery: float | None = Field(default=None, ge=0.0, le=100.0)
@@ -57,4 +59,4 @@ class DeviceView(DeviceState):
 
     @property
     def unavailable(self) -> bool:
-        return self.operational_state in ROBOT_UNAVAILABLE_STATES
+        return self.operational_state not in ROBOT_AVAILABLE_STATES

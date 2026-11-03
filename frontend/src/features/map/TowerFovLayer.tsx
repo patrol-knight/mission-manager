@@ -24,7 +24,7 @@ export function TowerFovLayer() {
       type: "FeatureCollection",
       features: devices.flatMap((d) => {
         const fov = isLiveTower(d) ? towerFov(d) : null;
-        if (!fov || d.pose.lat == null || d.pose.lon == null) return [];
+        if (!fov || d.pose?.lat == null || d.pose.lon == null) return [];
         return [
           {
             type: "Feature" as const,

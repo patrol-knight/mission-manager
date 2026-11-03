@@ -22,6 +22,8 @@ def arrived_at(view: DeviceView, target_x: float, target_y: float, issued_after_
         return False
     if view.timestamp <= issued_after_timestamp:
         return False
+    if view.pose is None:
+        return False
     distance = math.hypot(view.pose.x - target_x, view.pose.y - target_y)
     if distance > ARRIVAL_POSITION_TOLERANCE_M:
         # Debug, not warning: a robot parked elsewhere reports this on every sample.

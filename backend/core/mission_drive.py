@@ -156,7 +156,7 @@ class MissionDriveCoordinator:
         """By lanelet route length, not straight-line distance: lanelets are
         one-way, so a waypoint just behind the robot can be a full lap away."""
         robot = self._device_registry.get_connected_robot()
-        if robot is None or not self._map_server.is_available():
+        if robot is None or robot.pose is None or not self._map_server.is_available():
             return None
         fx, fy = robot.pose.x, robot.pose.y
         best: tuple[float, int] | None = None

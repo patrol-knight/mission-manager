@@ -4,7 +4,7 @@ Investigation State Machines")."""
 import math
 from datetime import datetime, timedelta, timezone
 
-from tests.conftest import MISSION_ID, Sim
+from tests.conftest import LANE_YAW, MISSION_ID, Sim
 
 
 def arrive_on_site(sim: Sim, x: float, y: float) -> None:
@@ -15,6 +15,13 @@ def arrive_on_site(sim: Sim, x: float, y: float) -> None:
 def test_needs_a_connected_robot(sim: Sim):
     sim.anomaly("a", 0, 0)
     assert sim.investigate("a").status_code == 409
+
+
+def test_an_unlocalized_robot_cannot_investigate(sim: Sim):
+    sim.robot(None, None)
+    sim.anomaly("a", 0, 0)
+    assert sim.investigate("a").status_code == 409
+    assert sim.commands == []
 
 
 def test_unknown_anomaly_is_404(sim: Sim):
@@ -37,7 +44,7 @@ def test_full_flow_from_an_idle_robot(sim: Sim):
 
     started = sim.investigate("a")
     assert started.status_code == 200 and started.json()["phase"] == "en_route"
-    assert sim.last_command() == ("navigate_to_goal", {"x": 0.0, "y": 0.0, "frame_id": "map"})
+    assert sim.last_command() == ("navigate_to_goal", {"x": 0.0, "y": 0.0, "frame_id": "map", "yaw": LANE_YAW})
     assert sim.investigate("a").json()["phase"] == "en_route"  # same target again is a no-op
 
     sim.robot(50, 50, "arrived")

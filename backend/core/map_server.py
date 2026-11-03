@@ -79,7 +79,9 @@ class MapServer:
             self._geojson = None
             self._centerlines = {}
             self._route.cache_clear()
-            self._map_name = Path(osm_path).stem
+            # Maps live in storage/maps/<name>/, so the folder names the map
+            # (the .osm file itself is always lanelet2_map.osm).
+            self._map_name = Path(osm_path).resolve().parent.name
             self._available = True
             logger.info(
                 "MapServer loaded %d lanelets from %s", len(self._lanelet_layer), osm_path
@@ -169,6 +171,15 @@ class MapServer:
         sx, sy = self._interp_centerline_xy_at(ll, t)
         lon, lat = self._to_latlon(sx, sy)
         return MapPoint(x=sx, y=sy, frame_id=frame_id, lanelet_id=ll.id, lat=lat, lon=lon)
+
+    def lane_yaw(self, x: float, y: float) -> float | None:
+        """The driving direction of the lane at (x, y), in the map frame, or
+        None without a map or a nearby lanelet. Sent as the goal heading so
+        the robot arrives facing along the road."""
+        if not self._available:
+            return None
+        ll = self._nearest_lanelet(x, y)
+        return self._get_lanelet_yaw(ll, x, y) if ll is not None else None
 
     def place_waypoint(self, lat: float, lon: float) -> MapPoint | None:
         """A clicked point snapped onto its lanelet, or None if it's off the road."""

@@ -39,14 +39,17 @@ class BaseDevice:
 
         if old.name != new.name:
             return True
-        if old.pose.frame_id != new.pose.frame_id:
+        if (old.pose is None) != (new.pose is None):
             return True
-        if abs(old.pose.x - new.pose.x) > POSITION_EPSILON:
-            return True
-        if abs(old.pose.y - new.pose.y) > POSITION_EPSILON:
-            return True
-        if abs(old.pose.yaw - new.pose.yaw) > YAW_EPSILON:
-            return True
+        if old.pose is not None and new.pose is not None:
+            if old.pose.frame_id != new.pose.frame_id:
+                return True
+            if abs(old.pose.x - new.pose.x) > POSITION_EPSILON:
+                return True
+            if abs(old.pose.y - new.pose.y) > POSITION_EPSILON:
+                return True
+            if abs(old.pose.yaw - new.pose.yaw) > YAW_EPSILON:
+                return True
         if _optional_differs(old.battery, new.battery, BATTERY_EPSILON):
             return True
         if _optional_differs(old.speed, new.speed, SPEED_EPSILON):
