@@ -28,13 +28,11 @@ export function isManual(robot: Device | null): boolean {
   return robot?.status?.mode === "manual" || operationalState(robot) === "manual";
 }
 
-/** Who drives the robot, for its mode pill: Auto or Manual. */
-export function robotMode(robot: Device | null): StatusLabel {
+/** Who drives the robot, for its mode pill: Auto (autonomy driving) or
+ * Manual (joystick); null, so no pill, while nobody does. */
+export function robotMode(robot: Device | null): StatusLabel | null {
   if (isManual(robot)) return { label: "Manual", tone: "warning", live: false };
-  const mode = robot?.status?.mode;
-  return mode === "auto" || mode === "none"
-    ? { label: "Auto", tone: "accent", live: false }
-    : { label: "No mode", tone: "muted", live: false };
+  return robot?.status?.mode === "auto" ? { label: "Auto", tone: "accent", live: false } : null;
 }
 
 /** Why the robot can't take a mission right now; null when it can. */

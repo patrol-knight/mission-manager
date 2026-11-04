@@ -46,6 +46,7 @@ export function DeviceInspectorOverlay() {
 
   const connectivity = deviceConnectivity(device, wsStatus === "connected");
   const name = device.name ?? device.deviceId;
+  const mode = device.type === "robot" ? robotMode(device) : null;
   const activity = device.type === "robot" ? robotStatus(connectivity.status === "online", investigation, execution, operationalState(device)) : null;
 
   return (
@@ -58,7 +59,7 @@ export function DeviceInspectorOverlay() {
           </Pill>
           {activity && activity.label !== "Offline" && (
             <>
-              <Pill tone={robotMode(device).tone}>{robotMode(device).label}</Pill>
+              {mode && <Pill tone={mode.tone}>{mode.label}</Pill>}
               <Pill tone={activity.tone} dot={activity.live}>
                 {activity.label}
               </Pill>

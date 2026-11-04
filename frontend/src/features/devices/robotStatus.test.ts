@@ -146,18 +146,18 @@ describe("missionProgress", () => {
 describe("robotMode", () => {
   const robot = (status: Record<string, string>) => ({ deviceId: "r", status }) as unknown as Device;
 
-  it("is Auto while autonomy has control or nobody drives", () => {
-    expect(robotMode(robot({ mode: "auto" })).label).toBe("Auto");
-    expect(robotMode(robot({ mode: "none" })).label).toBe("Auto");
+  it("is Auto while autonomy drives", () => {
+    expect(robotMode(robot({ mode: "auto" }))?.label).toBe("Auto");
   });
 
   it("is Manual from state_machine or from Autoware", () => {
-    expect(robotMode(robot({ mode: "manual" })).label).toBe("Manual");
-    expect(robotMode(robot({ operational_state: "manual" })).label).toBe("Manual");
+    expect(robotMode(robot({ mode: "manual" }))?.label).toBe("Manual");
+    expect(robotMode(robot({ operational_state: "manual" }))?.label).toBe("Manual");
   });
 
-  it("says so when no mode is reported", () => {
-    expect(robotMode(robot({})).label).toBe("No mode");
-    expect(robotMode(null).label).toBe("No mode");
+  it("shows no pill while nobody drives or no mode is reported", () => {
+    expect(robotMode(robot({ mode: "none" }))).toBeNull();
+    expect(robotMode(robot({}))).toBeNull();
+    expect(robotMode(null)).toBeNull();
   });
 });

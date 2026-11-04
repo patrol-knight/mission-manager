@@ -38,7 +38,7 @@ export function RobotCard() {
       title="Robot"
       aside={
         <span style={{ display: "flex", gap: 6 }}>
-          {connected && <Pill tone={mode.tone}>{mode.label}</Pill>}
+          {connected && mode && <Pill tone={mode.tone}>{mode.label}</Pill>}
           <Pill tone={status.tone} dot={status.live}>
             {status.label}
           </Pill>
@@ -47,7 +47,7 @@ export function RobotCard() {
       onClick={() => openInspector(robot.deviceId)}
       onMouseEnter={() => setHoveredDevice(robot.deviceId)}
       onMouseLeave={() => setHoveredDevice(null)}
-      aria-label={`${name}: ${connected ? `${mode.label}, ` : ""}${status.label}. Open camera and status`}
+      aria-label={`${name}: ${connected && mode ? `${mode.label}, ` : ""}${status.label}. Open camera and status`}
     >
       <div style={{ marginTop: -6, fontSize: "var(--text-sm)", color: "var(--color-text-muted)" }}>{name}</div>
       <div style={{ display: "flex", gap: 20, marginTop: 10 }}>
