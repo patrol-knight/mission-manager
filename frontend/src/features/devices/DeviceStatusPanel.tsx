@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import type { CameraInfo, Device } from "../../types/domain";
 import { InfoList, InfoRow } from "../../components/ui/InfoRow";
 import layout from "../cameras/CameraWindow.module.css";
+import { Speed } from "./Speed";
 
 const CAMERA_TEXT: Record<CameraInfo["status"], string> = {
   idle: "Idle",
@@ -43,7 +44,7 @@ export function DeviceStatusPanel({ device, camera, alerts }: DeviceStatusPanelP
       <Section title="Status">
         {device.battery !== null && <InfoRow label="Battery" value={`${Math.round(device.battery)}%`} />}
         {device.type === "robot" && (
-          <InfoRow label="Speed" value={device.speed !== null ? `${device.speed.toFixed(2)} m/s` : "—"} />
+          <InfoRow label="Speed" value={<Speed value={device.speed} digits={2} />} />
         )}
         {device.type === "iot" && <InfoRow label="Open alerts" value={alerts} />}
         <InfoRow label="Camera" value={camera ? CAMERA_TEXT[camera.status] : "—"} />

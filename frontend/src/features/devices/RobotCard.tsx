@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, type ReactNode } from "react";
 import { useDeviceStore, selectRobot } from "../../stores/deviceStore";
 import { useMapHighlightStore } from "../../stores/mapHighlightStore";
 import { useMissionStore } from "../../stores/missionStore";
@@ -8,6 +8,7 @@ import { Pill } from "../../components/ui/Pill";
 import { useConnectedRobot } from "./useConnectedRobot";
 import { useDeviceInspector } from "./useDeviceInspector";
 import { robotState, robotMode, robotStatus } from "./robotStatus";
+import { Speed } from "./Speed";
 
 /** The robot: what it's doing, its name, then the two live readings an
  * operator acts on -- battery (when to stop) and speed (moving, stuck, or
@@ -52,14 +53,14 @@ export function RobotCard() {
       <div style={{ marginTop: -6, fontSize: "var(--text-sm)", color: "var(--color-text-muted)" }}>{name}</div>
       <div style={{ display: "flex", gap: 20, marginTop: 10 }}>
         <Reading label="Battery" value={robot.battery !== null ? `${Math.round(robot.battery)}%` : "—"} />
-        <Reading label="Speed" value={robot.speed !== null ? `${robot.speed.toFixed(1)} m/s` : "—"} />
+        <Reading label="Speed" value={<Speed value={robot.speed} digits={1} />} />
       </div>
     </Card>
   );
 }
 
 /** A small uppercase label over its value. */
-function Reading({ label, value }: { label: string; value: string }) {
+function Reading({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
       <span style={{ fontSize: "var(--text-2xs)", letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--color-text-faint)" }}>
