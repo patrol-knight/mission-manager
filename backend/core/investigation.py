@@ -1,6 +1,7 @@
 import logging
 import threading
 import uuid
+from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
@@ -18,12 +19,12 @@ from core.errors import (
     RobotNotReadyError,
     VerdictRequiredError,
 )
-from core.goal_arrival import arrived_at
+from core.goal_result import GoalOutcome, classify
 from core.map_server import MapServer
 from core.mission_execution import MissionExecutionManager
 from core.websocket_manager import WebSocketManager
 from models.anomaly import FINAL_VERDICTS, AnomalyVerdict
-from models.device import DeviceView
+from models.camera import CommandResult
 from models.investigation import InvestigationPhase, InvestigationState
 from models.mission_execution import MissionStatus
 from transport.zenoh_gateway import ZenohGateway
@@ -52,7 +53,7 @@ class InvestigationCoordinator:
     transitions.
 
     - start(): send the robot to an anomaly, or switch to another one.
-    - on_device_state(): EN_ROUTE -> ON_SITE when the robot reports arrival.
+    - on_command_result(): EN_ROUTE -> ON_SITE when the goal to the anomaly succeeds.
     - set_verdict(): the operator's draft verdict while ON_SITE.
     - cancel() (EN_ROUTE, nothing to commit) / finish() (ON_SITE, commits
       the verdict): leave investigate mode and hand the robot back to the
@@ -84,16 +85,17 @@ class InvestigationCoordinator:
 
         self._lock = threading.RLock()
         self._state: InvestigationState | None = None
-        # The robot's DeviceState.timestamp when the current goal was sent --
-        # an "arrived" sample only counts if it is strictly newer, so a stale
-        # "arrived" from before (e.g. the robot was parked at a waypoint)
-        # can't complete a goal it never acted on.
-        self._issued_after_timestamp = 0.0
+        self._request_id: str | None = None
         self._goal_count = 0
+        self._on_goal_failed: Callable[[str], None] | None = None
 
     def bind_mission_drive(self, mission_drive: "MissionDriveCoordinator") -> None:
         """Late-bound: mission drive needs this class too (see bootstrap.py)."""
         self._drive = mission_drive
+
+    def bind_goal_failed(self, on_goal_failed: Callable[[str], None]) -> None:
+        """Called with state_machine's reason when the goal to the anomaly fails."""
+        self._on_goal_failed = on_goal_failed
 
     # -- Queries ---------------------------------------------------------------
 
@@ -143,7 +145,7 @@ class InvestigationCoordinator:
             if self._anomalies.set_target(anomaly_id) is None:
                 raise AnomalyNotFoundError(f"Anomaly not found: {anomaly_id}")
             self._goal_count += 1
-            self._issued_after_timestamp = robot.timestamp
+            self._request_id = f"investigate-{anomaly_id}-{self._goal_count}"
             self._state = InvestigationState(
                 anomaly_id=anomaly_id,
                 robot_device_id=robot.device_id,
@@ -153,7 +155,7 @@ class InvestigationCoordinator:
                 started_at=datetime.now(timezone.utc),
             )
             state = self._state.model_copy(deep=True)
-            goal_count = self._goal_count
+            request_id = self._request_id
 
         if previous is None:
             # The investigation now owns the robot: drop mission drive's
@@ -167,7 +169,7 @@ class InvestigationCoordinator:
         self._gateway.publish_command(
             robot.device_id,
             "navigate_to_goal",
-            request_id=f"investigate-{anomaly_id}-{goal_count}",
+            request_id=request_id,
             fields=_goal_fields(self._map, target.x, target.y, target.frame_id),
         )
         logger.info("Investigation: robot %s heading to anomaly %s", robot.device_id, anomaly_id)
@@ -212,23 +214,36 @@ class InvestigationCoordinator:
 
     # -- Robot events --------------------------------------------------------------
 
-    def on_device_state(self, view: DeviceView) -> None:
-        """Called by ZenohGateway for every meaningfully-changed device state.
-        A cheap no-op unless it is the robot reporting arrival while
-        EN_ROUTE."""
+    def on_command_result(self, result: CommandResult) -> None:
+        """The result of the goal to the anomaly: arrival puts the robot ON_SITE."""
+        if result.command != "navigate_to_goal":
+            return
+        outcome, reason = classify(result)
+        if outcome not in (GoalOutcome.ARRIVED, GoalOutcome.RESEND, GoalOutcome.FAILED):
+            return
         with self._lock:
             state = self._state
-            if state is None or state.phase != InvestigationPhase.EN_ROUTE:
+            if state is None or state.phase != InvestigationPhase.EN_ROUTE or result.request_id != self._request_id:
                 return
-            if view.device_id != state.robot_device_id:
-                return
-            if not arrived_at(view, state.target.x, state.target.y, self._issued_after_timestamp):
-                return
-            self._state = state.model_copy(
-                update={"phase": InvestigationPhase.ON_SITE, "arrived_at": datetime.now(timezone.utc)}
+            if outcome == GoalOutcome.ARRIVED:
+                self._state = state.model_copy(
+                    update={"phase": InvestigationPhase.ON_SITE, "arrived_at": datetime.now(timezone.utc)}
+                )
+        if outcome == GoalOutcome.ARRIVED:
+            self._broadcast_state()
+            logger.info("Investigation: robot arrived at anomaly %s", state.anomaly_id)
+        elif outcome == GoalOutcome.RESEND:
+            logger.warning("Investigation: goal not taken (%s); sending it again", reason)
+            self._gateway.publish_command(
+                state.robot_device_id,
+                "navigate_to_goal",
+                request_id=result.request_id,
+                fields=_goal_fields(self._map, state.target.x, state.target.y, state.target.frame_id),
             )
-        self._broadcast_state()
-        logger.info("Investigation: robot arrived at anomaly %s", state.anomaly_id)
+        else:
+            logger.warning("Investigation: goal to anomaly %s failed: %s", state.anomaly_id, reason)
+            if self._on_goal_failed is not None:
+                self._on_goal_failed(reason or "failed")
 
     def abort(self) -> InvestigationState | None:
         """Ends the investigation without a verdict and without handing the

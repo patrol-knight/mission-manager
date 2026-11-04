@@ -111,6 +111,12 @@ def build_services(settings: Settings) -> Services:
         websocket_manager=websocket_manager,
     )
 
+    def on_goal_failed(reason: str) -> None:
+        mission_service.abort_autonomy(f"goal_{reason}", send_cancel=False)
+
+    mission_drive_coordinator.bind_goal_failed(on_goal_failed)
+    investigation.bind_goal_failed(on_goal_failed)
+
     return Services(
         map_server=map_server,
         mission_server=mission_server,

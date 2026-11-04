@@ -5,9 +5,9 @@ from pydantic import ConfigDict, Field
 
 from models.base import WireModel
 
-# The only operational_state values a robot can take a mission in; anything
-# else, including a missing state, counts as not ready.
-ROBOT_AVAILABLE_STATES = ("idle", "navigating", "arrived")
+# The only states a robot can take a mission in; anything else, including a
+# missing state, counts as not ready.
+ROBOT_AVAILABLE_STATES = ("ready", "navigating", "arrived")
 
 
 class DeviceType(str, Enum):
@@ -54,22 +54,23 @@ class DeviceView(DeviceState):
     last_seen: float
 
     @property
-    def operational_state(self) -> str | None:
-        return self.status.get("operational_state")
+    def state(self) -> str | None:
+        """notready / ready / navigating / arrived / failure (state_machine's /robot/status)."""
+        return self.status.get("state")
 
     @property
     def mode(self) -> str | None:
-        """Who drives: auto / manual / none (state_machine's /robot_mode)."""
+        """estop / manual / auto / none."""
         return self.status.get("mode")
 
     @property
     def unavailable_reason(self) -> str | None:
-        """manual / failure / notready, or None when the robot can take a mission."""
-        if self.mode == "manual":
-            return "manual"
-        if self.operational_state == "failure":
+        """estop / manual / failure / notready, or None when the robot can take a mission."""
+        if self.mode in ("estop", "manual"):
+            return self.mode
+        if self.state == "failure":
             return "failure"
-        return None if self.operational_state in ROBOT_AVAILABLE_STATES else "notready"
+        return None if self.state in ROBOT_AVAILABLE_STATES else "notready"
 
     @property
     def unavailable(self) -> bool:

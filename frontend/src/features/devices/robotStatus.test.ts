@@ -42,10 +42,10 @@ describe("robotStatus", () => {
   });
 
   it("follows the mission otherwise", () => {
-    expect(robotStatus(true, null, execution("running"), "idle").label).toBe("Patrolling");
-    expect(robotStatus(true, null, execution("paused"), "idle").label).toBe("Holding");
-    expect(robotStatus(true, null, execution("ready"), "idle").label).toBe("Ready");
-    expect(robotStatus(true, null, null, "idle").label).toBe("Ready");
+    expect(robotStatus(true, null, execution("running"), "ready").label).toBe("Patrolling");
+    expect(robotStatus(true, null, execution("paused"), "ready").label).toBe("Holding");
+    expect(robotStatus(true, null, execution("ready"), "ready").label).toBe("Ready");
+    expect(robotStatus(true, null, null, "ready").label).toBe("Ready");
   });
 
   it("is not ready when the robot reports no state or an unknown one", () => {
@@ -56,8 +56,8 @@ describe("robotStatus", () => {
 });
 
 describe("robotUnavailableHint", () => {
-  const robot = (state?: string) =>
-    ({ deviceId: "r", status: state ? { operational_state: state } : {} }) as unknown as Device;
+  const robot = (state?: string, extra: Record<string, string> = {}) =>
+    ({ deviceId: "r", status: state ? { state, ...extra } : {} }) as unknown as Device;
 
   it("explains why the robot can't take a mission", () => {
     expect(robotUnavailableHint(null)).toBe("The robot is offline");
@@ -66,14 +66,20 @@ describe("robotUnavailableHint", () => {
   });
 
   it("is null when the robot can drive", () => {
-    expect(robotUnavailableHint(robot("idle"))).toBeNull();
+    expect(robotUnavailableHint(robot("ready"))).toBeNull();
     expect(robotUnavailableHint(robot("arrived"))).toBeNull();
     expect(robotUnavailableHint(robot("navigating"))).toBeNull();
   });
 
-  it("is manual when state_machine says so, even if Autoware is ready", () => {
-    const manual = { deviceId: "r", status: { operational_state: "idle", mode: "manual" } } as unknown as Device;
-    expect(robotUnavailableHint(manual)).toBe("The robot is in manual mode");
+  it("is manual or e-stopped when state_machine says so, even if Autoware is ready", () => {
+    expect(robotUnavailableHint(robot("ready", { mode: "manual" }))).toBe("The robot is in manual mode");
+    expect(robotUnavailableHint(robot("ready", { mode: "estop" }))).toBe("The emergency stop is pressed");
+  });
+
+  it("says why the robot is not ready", () => {
+    expect(robotUnavailableHint(robot("notready", { reason: "autoware_unavailable" }))).toBe("Autoware is not running");
+    expect(robotUnavailableHint(robot("notready", { reason: "status_stale" }))).toBe("No status from the robot");
+    expect(robotUnavailableHint(robot("notready", { reason: "something_new" }))).toBe("The robot is not ready");
   });
 
   it("is not ready without a known state", () => {
@@ -147,6 +153,10 @@ describe("robotMode", () => {
 
   it("is Manual while someone drives", () => {
     expect(robotMode(robot({ mode: "manual" }))?.label).toBe("Manual");
+  });
+
+  it("is E-stop while the emergency stop is pressed", () => {
+    expect(robotMode(robot({ mode: "estop" }))?.label).toBe("E-stop");
   });
 
   it("shows no pill while nobody drives or no mode is reported", () => {

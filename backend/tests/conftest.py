@@ -83,6 +83,7 @@ class Sim:
     client: TestClient
     services: Services
     commands: list[tuple[str, dict | None]] = field(default_factory=list)
+    request_ids: list[str] = field(default_factory=list)
     feedback: list[tuple[str, str]] = field(default_factory=list)
     _clock: float = 100.0
 
@@ -90,7 +91,7 @@ class Sim:
     def waypoints(self) -> list[tuple[float, float]]:
         return [(w["x"], w["y"]) for w in self.client.get("/api/missions/current").json()["waypoints"]]
 
-    def robot(self, x: float | None, y: float | None, state: str = "idle", mode: str | None = None) -> None:
+    def robot(self, x: float | None, y: float | None, state: str = "ready", mode: str | None = None) -> None:
         """One state sample from the robot; each one is newer than the last.
         x/y None: not localized, sent as pose null like zenoh_bridge does."""
         self._clock += 1
@@ -100,14 +101,33 @@ class Sim:
                 "type": "robot",
                 "pose": {"x": x, "y": y} if x is not None and y is not None else None,
                 "timestamp": self._clock,
-                "status": {"operational_state": state, "mode": mode},
+                "status": {"state": state, "mode": mode},
             }
         )
 
     def drive_to(self, x: float, y: float) -> None:
-        """Move away, then report arrival at (x, y) -- a fresh 'arrived' sample."""
-        self.robot(x + 50, y + 50, "navigating")
+        """Drive to (x, y) and finish the last goal."""
+        self.goal_result("running")
+        self.robot(x + 50, y + 50, "navigating", "auto")
         self.robot(x, y, "arrived")
+        self.goal_result("succeeded")
+
+    def goal_result(self, status: str, code: str | None = None, request_id: str | None = None) -> None:
+        """A CommandResult for the last navigate_to_goal, as zenoh_bridge sends it."""
+        if request_id is None:
+            sent = zip(self.commands, self.request_ids, strict=True)
+            request_id = [r for (c, _), r in sent if c == "navigate_to_goal"][-1]
+        self.services.zenoh_gateway.ingest_command_result_payload(
+            {
+                "request_id": request_id,
+                "device_id": "robot-1",
+                "command": "navigate_to_goal",
+                "status": status,
+                "message": code,
+                "code": code,
+                "timestamp": "2026-11-04T00:00:00Z",
+            }
+        )
 
     def anomaly(self, anomaly_id: str, x: float, y: float, degrade_sec: float = 30) -> None:
         now = time.time()
@@ -162,11 +182,13 @@ class Sim:
 def sim(client: TestClient, services: Services, fake_map: None, monkeypatch: pytest.MonkeyPatch) -> Sim:
     s = Sim(client, services)
     gateway = services.zenoh_gateway
-    monkeypatch.setattr(
-        gateway,
-        "publish_command",
-        lambda device_id, command, request_id, fields=None: s.commands.append((command, fields)) or True,
-    )
+
+    def publish_command(device_id, command, request_id, fields=None):
+        s.commands.append((command, fields))
+        s.request_ids.append(request_id)
+        return True
+
+    monkeypatch.setattr(gateway, "publish_command", publish_command)
     monkeypatch.setattr(
         gateway,
         "publish_anomaly_feedback",

@@ -7,7 +7,7 @@ import { Card } from "../../components/ui/Card";
 import { Pill } from "../../components/ui/Pill";
 import { useConnectedRobot } from "./useConnectedRobot";
 import { useDeviceInspector } from "./useDeviceInspector";
-import { operationalState, robotMode, robotStatus } from "./robotStatus";
+import { robotState, robotMode, robotStatus } from "./robotStatus";
 
 /** The robot: what it's doing, its name, then the two live readings an
  * operator acts on -- battery (when to stop) and speed (moving, stuck, or
@@ -30,7 +30,7 @@ export function RobotCard() {
     );
   }
 
-  const status = robotStatus(connected, investigation, execution, operationalState(robot));
+  const status = robotStatus(connected, investigation, execution, robotState(robot));
   const mode = robotMode(robot);
   const name = robot.name ?? robot.deviceId;
   return (

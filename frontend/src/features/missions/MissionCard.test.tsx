@@ -25,7 +25,7 @@ const definition = {
   waypoints: [{ waypointId: "a" }, { waypointId: "b" }, { waypointId: "c" }],
 } as unknown as MissionDefinition;
 
-const robot = { deviceId: "robot-1", type: "robot", connected: true, status: { operational_state: "idle" } } as unknown as Device;
+const robot = { deviceId: "robot-1", type: "robot", connected: true, status: { state: "ready" } } as unknown as Device;
 
 function execution(status: MissionStatus, targetWaypointIndex: number | null = null): MissionExecutionState {
   return {
@@ -79,7 +79,7 @@ describe("MissionCard controls", () => {
   });
 
   it("tells the operator to adjust a failed robot", () => {
-    useDeviceStore.setState({ devices: { "robot-1": { ...robot, status: { operational_state: "failure" } } } });
+    useDeviceStore.setState({ devices: { "robot-1": { ...robot, status: { state: "failure" } } } });
     useMissionStore.setState({ definition, execution: execution("not_ready") });
     renderCard();
     const start = screen.getByRole("button", { name: "Start" });
@@ -88,7 +88,7 @@ describe("MissionCard controls", () => {
   });
 
   it("can't resume until the robot is back from manual", () => {
-    useDeviceStore.setState({ devices: { "robot-1": { ...robot, status: { operational_state: "idle", mode: "manual" } } } });
+    useDeviceStore.setState({ devices: { "robot-1": { ...robot, status: { state: "ready", mode: "manual" } } } });
     useMissionStore.setState({ definition, execution: execution("paused", 1) });
     renderCard();
     expect(screen.getByRole("button", { name: "Resume" })).toBeDisabled();

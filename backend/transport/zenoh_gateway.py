@@ -210,15 +210,8 @@ class ZenohGateway:
                     "data": view.model_dump(mode="json") if view else None,
                 }
             )
-            # Only a meaningful change (DeviceRegistry's own de-dupe) is
-            # forwarded -- both coordinators watch for an
-            # operational_state transition here rather than a separate
-            # Zenoh subscription of their own.
-            if view is not None:
-                if self._investigation is not None:
-                    self._investigation.on_device_state(view)
-                if self._mission_drive_coordinator is not None:
-                    self._mission_drive_coordinator.on_device_state(view)
+            if view is not None and self._mission_drive_coordinator is not None:
+                self._mission_drive_coordinator.on_device_state(view)
         return changed
 
     def ingest_anomaly_payload(
@@ -286,6 +279,10 @@ class ZenohGateway:
             return False
         if self._camera_sessions is not None:
             self._camera_sessions.on_command_result(result)
+        if self._investigation is not None:
+            self._investigation.on_command_result(result)
+        if self._mission_drive_coordinator is not None:
+            self._mission_drive_coordinator.on_command_result(result)
         return True
 
     def ingest_camera_signal_payload(self, payload: bytes | str | dict, key_expr: str) -> bool:

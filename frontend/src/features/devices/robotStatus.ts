@@ -12,35 +12,53 @@ export interface StatusLabel {
   live: boolean;
 }
 
-/** The robot's own `status.operational_state`, as mapped by its aggregator. */
-export function operationalState(robot: Device | null): string | null {
-  const state = robot?.status?.operational_state;
-  return typeof state === "string" ? state : null;
+function statusField(robot: Device | null, key: string): string | null {
+  const value = robot?.status?.[key];
+  return typeof value === "string" && value !== "" ? value : null;
+}
+
+/** state_machine's `status.state`: notready / ready / navigating / arrived / failure. */
+export function robotState(robot: Device | null): string | null {
+  return statusField(robot, "state");
 }
 
 /** The only states the robot can take a mission in; anything else, a
  * missing state included, is treated as not ready. */
-const AVAILABLE_STATES = ["idle", "navigating", "arrived"];
+const AVAILABLE_STATES = ["ready", "navigating", "arrived"];
 
-/** Whether a person is driving (state_machine's `status.mode`). */
-export function isManual(robot: Device | null): boolean {
-  return robot?.status?.mode === "manual";
-}
+const REASON_HINTS: Record<string, string> = {
+  autoware_unavailable: "Autoware is not running",
+  not_localized: "The robot is not localized",
+  lidar_stale: "No LiDAR data",
+  imu_stale: "No IMU data",
+  odom_stale: "No wheel odometry",
+  status_stale: "No status from the robot",
+};
 
-/** Who drives the robot, for its mode pill: Auto (autonomy driving) or
- * Manual (joystick); null, so no pill, while nobody does. */
+/** Who drives the robot, for its mode pill; null, so no pill, while nobody does. */
 export function robotMode(robot: Device | null): StatusLabel | null {
-  if (isManual(robot)) return { label: "Manual", tone: "warning", live: false };
-  return robot?.status?.mode === "auto" ? { label: "Auto", tone: "accent", live: false } : null;
+  switch (statusField(robot, "mode")) {
+    case "estop":
+      return { label: "E-stop", tone: "danger", live: false };
+    case "manual":
+      return { label: "Manual", tone: "warning", live: false };
+    case "auto":
+      return { label: "Auto", tone: "accent", live: false };
+  }
+  return null;
 }
 
 /** Why the robot can't take a mission right now; null when it can. */
 export function robotUnavailableHint(robot: Device | null): string | null {
   if (!robot) return "The robot is offline";
-  if (isManual(robot)) return "The robot is in manual mode";
-  const state = operationalState(robot);
+  const mode = statusField(robot, "mode");
+  if (mode === "estop") return "The emergency stop is pressed";
+  if (mode === "manual") return "The robot is in manual mode";
+  const state = robotState(robot);
   if (state === "failure") return FAILURE_HINT;
-  return state !== null && AVAILABLE_STATES.includes(state) ? null : "The robot is not ready";
+  if (state !== null && AVAILABLE_STATES.includes(state)) return null;
+  const reason = statusField(robot, "reason");
+  return (reason && REASON_HINTS[reason]) ?? "The robot is not ready";
 }
 
 /** What autonomy is doing right now, for its status pill -- colored by

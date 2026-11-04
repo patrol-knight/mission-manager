@@ -75,7 +75,7 @@ describe("DeviceInspectorOverlay", () => {
   });
 
   it("shows the mode and the status as separate pills", async () => {
-    useDeviceStore.getState().setDevices([{ ...fakeDevice, status: { operational_state: "idle", mode: "manual" } }]);
+    useDeviceStore.getState().setDevices([{ ...fakeDevice, status: { state: "ready", mode: "manual" } }]);
     render(<Harness />);
     await userEvent.click(screen.getByText("Open"));
     expect(screen.getByText("Manual")).toBeInTheDocument();

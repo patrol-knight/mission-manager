@@ -37,7 +37,7 @@ def test_unreachable_anomaly_is_409_and_sends_nothing(sim: Sim, monkeypatch):
     assert sim.investigation() is None and sim.commands == []
 
 
-def test_full_flow_from_an_idle_robot(sim: Sim):
+def test_full_flow_from_a_ready_robot(sim: Sim):
     w = sim.waypoints
     sim.robot(*w[1])
     sim.anomaly("a", 0, 0)
@@ -47,9 +47,9 @@ def test_full_flow_from_an_idle_robot(sim: Sim):
     assert sim.last_command() == ("navigate_to_goal", {"x": 0.0, "y": 0.0, "frame_id": "map", "yaw": LANE_YAW})
     assert sim.investigate("a").json()["phase"] == "en_route"  # same target again is a no-op
 
-    sim.robot(50, 50, "arrived")
-    assert sim.investigation()["phase"] == "en_route"  # "arrived" far from the target doesn't count
     sim.robot(0.5, 0, "arrived")
+    assert sim.investigation()["phase"] == "en_route"  # the goal's result decides, not the state
+    sim.goal_result("succeeded")
     assert sim.investigation()["phase"] == "on_site"
 
     assert sim.finish_investigation().status_code == 409  # Finish needs a verdict
@@ -191,3 +191,21 @@ def test_websocket_snapshot_includes_the_investigation(sim: Sim):
         events = [ws.receive_json() for _ in range(7)]
     assert events[-1]["type"] == "investigation.updated"
     assert events[-1]["data"]["anomaly_id"] == "a"
+
+
+def test_a_failed_goal_ends_the_investigation(sim: Sim):
+    sim.robot(*sim.waypoints[0])
+    sim.anomaly("a", 0, 0)
+    sim.investigate("a")
+    sim.goal_result("failed", "route_rejected")
+    assert sim.investigation() is None
+    assert sim.client.get("/api/anomalies/a").json()["resolution"] is None
+
+
+def test_a_dropped_goal_to_the_anomaly_is_sent_again(sim: Sim):
+    sim.robot(*sim.waypoints[0])
+    sim.anomaly("a", 0, 0)
+    sim.investigate("a")
+    sim.goal_result("failed", "goal_dropped")
+    assert [c for c, _ in sim.commands].count("navigate_to_goal") == 2
+    assert sim.investigation()["phase"] == "en_route"

@@ -73,9 +73,7 @@ class Settings(BaseSettings):
     # autonomously driving the current mission's waypoints.
     mission_drive_enabled: bool = True
 
-    # MissionDriveCoordinator: how long to wait for the robot to report
-    # "arrived" after a waypoint navigate_to_goal before re-sending it. The
-    # robot is the source of truth for arrival -- this is only a safety net
-    # for a lost command, not a simulated travel time. (Investigations
-    # deliberately have no timeout; the operator decides when to Cancel.)
-    navigation_timeout_sec: float = 60.0
+    # MissionDriveCoordinator: how long to wait for state_machine to take a
+    # waypoint goal (a "running" result) before sending it again. Once it has
+    # it, only the goal's own result ends it.
+    navigation_timeout_sec: float = 10.0

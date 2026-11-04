@@ -156,16 +156,51 @@ def test_a_goal_that_times_out_is_sent_again(sim: Sim, settings):
     assert sim.execution()["joining"] is True
 
 
-def test_a_robot_that_ignores_its_goal_never_reaches_a_waypoint(sim: Sim):
-    """A robot that never acted on its goal keeps reporting "arrived" where it
-    is parked; only an arrival within 2 m of the waypoint counts."""
-    sim.robot(500, 500, "arrived")
+def test_only_the_goals_own_result_reaches_a_waypoint(sim: Sim):
+    w = sim.waypoints
+    sim.robot(*w[0], "arrived")
     target = sim.client.post("/api/missions/current/start").json()["target_waypoint_index"]
-    for _ in range(3):
-        sim.robot(500, 500, "arrived")
+    sim.robot(*w[target], "arrived")
+    sim.goal_result("succeeded", request_id="someone-elses-goal")
     execution = sim.execution()
-    assert execution["status"] == "running" and execution["target_waypoint_index"] == target
-    assert execution["current_waypoint_index"] == 0 and execution["completed_loops"] == 0
+    assert execution["target_waypoint_index"] == target and execution["current_waypoint_index"] == 0
+
+    sim.goal_result("succeeded")
+    assert sim.execution()["current_waypoint_index"] == target
+
+
+def test_a_goal_state_machine_has_is_not_sent_again(sim: Sim, settings):
+    settings.navigation_timeout_sec = 0.05
+    sim.robot(*sim.waypoints[2])
+    sim.client.post("/api/missions/current/start")
+    sim.goal_result("running")
+    time.sleep(0.3)
+    assert [c for c, _ in sim.commands].count("navigate_to_goal") == 1
+
+
+@pytest.mark.parametrize("code", ["goal_dropped", "state_machine_unavailable"])
+def test_a_goal_state_machine_never_got_is_sent_again(sim: Sim, code: str):
+    sim.robot(*sim.waypoints[2])
+    sim.client.post("/api/missions/current/start")
+    sim.goal_result("failed", code)
+    assert [c for c, _ in sim.commands].count("navigate_to_goal") == 2
+    assert sim.mission_status() == "running"
+
+
+def test_a_failed_goal_aborts_the_mission_without_a_cancel(sim: Sim):
+    sim.robot(*sim.waypoints[2])
+    sim.client.post("/api/missions/current/start")
+    sent_before = len(sim.commands)
+    sim.goal_result("failed", "route_rejected")
+    assert sim.mission_status() != "running"
+    assert sim.commands[sent_before:] == []
+
+
+def test_a_preempted_goal_is_ignored(sim: Sim):
+    sim.robot(*sim.waypoints[2])
+    sim.client.post("/api/missions/current/start")
+    sim.goal_result("failed", "preempted")
+    assert sim.mission_status() == "running"
 
 
 def lose_robot(sim: Sim) -> None:
@@ -203,22 +238,24 @@ def test_losing_an_idle_robot_aborts_nothing(sim: Sim):
     assert sim.mission_status() == "not_ready"
 
 
-@pytest.mark.parametrize("state", ["notready", "failure"])
-def test_the_mission_cannot_start_while_the_robot_cannot_drive(sim: Sim, state: str):
-    sim.robot(*sim.waypoints[0], state)
+@pytest.mark.parametrize(("state", "mode"), [("notready", None), ("failure", None), ("ready", "estop")])
+def test_the_mission_cannot_start_while_the_robot_cannot_drive(sim: Sim, state: str, mode: str | None):
+    sim.robot(*sim.waypoints[0], state, mode)
     assert sim.mission_status() == "not_ready"
     assert sim.client.post("/api/missions/current/start").status_code == 409
-    sim.robot(*sim.waypoints[0], "idle")
+    sim.robot(*sim.waypoints[0], "ready")
     assert sim.mission_status() == "ready"
 
 
-@pytest.mark.parametrize(("state", "cancels"), [("failure", False), ("notready", True)])
-def test_a_robot_that_cannot_drive_stops_a_running_mission(sim: Sim, state: str, cancels: bool):
+@pytest.mark.parametrize(
+    ("state", "mode", "cancels"), [("failure", None, False), ("notready", None, True), ("ready", "estop", True)]
+)
+def test_a_robot_that_cannot_drive_stops_a_running_mission(sim: Sim, state: str, mode: str | None, cancels: bool):
     sim.robot(*sim.waypoints[0])
     sim.client.post("/api/missions/current/start")
     sent_before = len(sim.commands)
 
-    sim.robot(*sim.waypoints[0], state)
+    sim.robot(*sim.waypoints[0], state, mode)
     sim.services.mission_service.abort_if_robot_unavailable()
     assert sim.mission_status() == "not_ready"
     assert (sim.commands[sent_before:] == [("cancel_navigation", None)]) is cancels
@@ -234,7 +271,7 @@ def test_a_paused_mission_waits_for_the_robot_to_resume(sim: Sim):
     assert sim.mission_status() == "paused"
     assert sim.client.post("/api/missions/current/resume").status_code == 409
 
-    sim.robot(*sim.waypoints[0], "idle")
+    sim.robot(*sim.waypoints[0], "ready")
     assert sim.client.post("/api/missions/current/resume").json()["status"] == "running"
 
 
@@ -302,7 +339,7 @@ def test_saving_heads_every_waypoint_along_its_lane_and_goals_use_it(sim: Sim):
 def test_an_unlocalized_robot_has_no_pose(sim: Sim):
     sim.robot(None, None, "notready")
     robot = sim.client.get("/api/devices/robot-1").json()
-    assert robot["pose"] is None and robot["status"]["operational_state"] == "notready"
+    assert robot["pose"] is None and robot["status"]["state"] == "notready"
     assert sim.client.post("/api/missions/current/start").status_code == 409
 
 
@@ -314,10 +351,10 @@ def test_a_robot_without_a_known_state_is_not_ready(sim: Sim, state: str):
 
 
 def test_manual_mode_blocks_a_mission_even_when_autoware_is_ready(sim: Sim):
-    sim.robot(*sim.waypoints[0], "idle", mode="manual")
+    sim.robot(*sim.waypoints[0], "ready", mode="manual")
     assert sim.mission_status() == "not_ready"
     assert sim.client.post("/api/missions/current/start").status_code == 409
-    sim.robot(*sim.waypoints[0], "idle", mode="none")
+    sim.robot(*sim.waypoints[0], "ready", mode="none")
     assert sim.mission_status() == "ready"
 
 
@@ -326,7 +363,7 @@ def test_taking_the_joystick_mid_mission_aborts_it_without_a_cancel(sim: Sim):
     sim.client.post("/api/missions/current/start")
     sent_before = len(sim.commands)
 
-    sim.robot(*sim.waypoints[0], "idle", mode="manual")
+    sim.robot(*sim.waypoints[0], "ready", mode="manual")
     sim.services.mission_service.abort_if_robot_unavailable()
     assert sim.mission_status() == "not_ready"
     assert sim.commands[sent_before:] == []
