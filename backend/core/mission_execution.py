@@ -53,7 +53,7 @@ class MissionExecutionManager:
         if robot is None:
             raise NoConnectedRobotError(f"Cannot {action} mission: no connected robot device")
         if robot.unavailable:
-            raise RobotNotReadyError(f"Cannot {action} mission: the robot is {robot.operational_state or 'notready'}")
+            raise RobotNotReadyError(f"Cannot {action} mission: the robot is {robot.unavailable_reason}")
 
     def _idle_state(self, mission_id: str) -> MissionExecutionState:
         return MissionExecutionState(

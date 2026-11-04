@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { robotStatus, robotUnavailableHint } from "./robotStatus";
+import { robotMode, robotStatus, robotUnavailableHint } from "./robotStatus";
 import type { Device } from "../../types/domain";
 import { missionProgress, missionStatus, targetWaypointIndex } from "../missions/missionStatus";
 import type { MissionExecutionState, MissionStatus } from "../missions/missionTypes";
@@ -32,21 +32,24 @@ describe("robotStatus", () => {
 
   it("shows the robot's own trouble over the investigation and mission", () => {
     expect(robotStatus(true, investigation, execution("running"), "failure").label).toBe("Failure");
-    expect(robotStatus(true, null, execution("paused"), "manual").label).toBe("Manual");
     expect(robotStatus(true, null, null, "notready").label).toBe("Not ready");
   });
 
   it("is patrolling while the robot drives, mission or not", () => {
     expect(robotStatus(true, null, null, "navigating").label).toBe("Patrolling");
     expect(robotStatus(true, null, execution("running"), "arrived").label).toBe("Patrolling");
-    expect(robotStatus(true, null, execution("ready"), "arrived").label).toBe("Idle");
+    expect(robotStatus(true, null, execution("ready"), "arrived").label).toBe("Ready");
   });
 
   it("follows the mission otherwise", () => {
     expect(robotStatus(true, null, execution("running"), "idle").label).toBe("Patrolling");
     expect(robotStatus(true, null, execution("paused"), "idle").label).toBe("Holding");
-    expect(robotStatus(true, null, execution("ready"), "idle").label).toBe("Idle");
-    expect(robotStatus(true, null, null, "idle").label).toBe("Idle");
+    expect(robotStatus(true, null, execution("ready"), "idle").label).toBe("Ready");
+    expect(robotStatus(true, null, null, "idle").label).toBe("Ready");
+  });
+
+  it("leaves manual to the mode pill", () => {
+    expect(robotStatus(true, null, execution("paused"), "manual").label).toBe("Not ready");
   });
 
   it("is not ready when the robot reports no state or an unknown one", () => {
@@ -71,6 +74,11 @@ describe("robotUnavailableHint", () => {
     expect(robotUnavailableHint(robot("idle"))).toBeNull();
     expect(robotUnavailableHint(robot("arrived"))).toBeNull();
     expect(robotUnavailableHint(robot("navigating"))).toBeNull();
+  });
+
+  it("is manual when state_machine says so, even if Autoware is ready", () => {
+    const manual = { deviceId: "r", status: { operational_state: "idle", mode: "manual" } } as unknown as Device;
+    expect(robotUnavailableHint(manual)).toBe("The robot is in manual mode");
   });
 
   it("is not ready without a known state", () => {
@@ -132,5 +140,24 @@ describe("missionProgress", () => {
   it("shows just the loop number for an infinite mission", () => {
     expect(missionProgress(3, infinite, execution("running")).loops).toMatchObject({ total: null, fraction: "2" });
     expect(missionProgress(3, infinite, execution("ready", null)).loops.fraction).toBe("1");
+  });
+});
+
+describe("robotMode", () => {
+  const robot = (status: Record<string, string>) => ({ deviceId: "r", status }) as unknown as Device;
+
+  it("is Auto while autonomy has control or nobody drives", () => {
+    expect(robotMode(robot({ mode: "auto" })).label).toBe("Auto");
+    expect(robotMode(robot({ mode: "none" })).label).toBe("Auto");
+  });
+
+  it("is Manual from state_machine or from Autoware", () => {
+    expect(robotMode(robot({ mode: "manual" })).label).toBe("Manual");
+    expect(robotMode(robot({ operational_state: "manual" })).label).toBe("Manual");
+  });
+
+  it("says so when no mode is reported", () => {
+    expect(robotMode(robot({})).label).toBe("No mode");
+    expect(robotMode(null).label).toBe("No mode");
   });
 });

@@ -90,7 +90,7 @@ class Sim:
     def waypoints(self) -> list[tuple[float, float]]:
         return [(w["x"], w["y"]) for w in self.client.get("/api/missions/current").json()["waypoints"]]
 
-    def robot(self, x: float | None, y: float | None, state: str = "idle") -> None:
+    def robot(self, x: float | None, y: float | None, state: str = "idle", mode: str | None = None) -> None:
         """One state sample from the robot; each one is newer than the last.
         x/y None: not localized, sent as pose null like zenoh_bridge does."""
         self._clock += 1
@@ -100,7 +100,7 @@ class Sim:
                 "type": "robot",
                 "pose": {"x": x, "y": y} if x is not None and y is not None else None,
                 "timestamp": self._clock,
-                "status": {"operational_state": state},
+                "status": {"operational_state": state, "mode": mode},
             }
         )
 

@@ -74,12 +74,12 @@ describe("DeviceInspectorOverlay", () => {
     expect(await screen.findByText(/no camera available/i)).toBeInTheDocument();
   });
 
-  it("shows the robot's own state, e.g. Manual, instead of Idle", async () => {
-    useDeviceStore.getState().setDevices([{ ...fakeDevice, status: { operational_state: "manual" } }]);
+  it("shows the mode and the status as separate pills", async () => {
+    useDeviceStore.getState().setDevices([{ ...fakeDevice, status: { operational_state: "idle", mode: "manual" } }]);
     render(<Harness />);
     await userEvent.click(screen.getByText("Open"));
     expect(screen.getByText("Manual")).toBeInTheDocument();
-    expect(screen.queryByText("Idle")).not.toBeInTheDocument();
+    expect(screen.getByText("Ready")).toBeInTheDocument();
   });
 
   it("shows the position as not initialized while the robot isn't localized", async () => {

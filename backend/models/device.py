@@ -58,5 +58,20 @@ class DeviceView(DeviceState):
         return self.status.get("operational_state")
 
     @property
+    def mode(self) -> str | None:
+        """Who drives: auto / manual / none (state_machine's /robot_mode)."""
+        return self.status.get("mode")
+
+    @property
+    def unavailable_reason(self) -> str | None:
+        """manual / failure / notready, or None when the robot can take a mission."""
+        # Autoware's own "manual" still arrives as an operational_state.
+        if self.mode == "manual" or self.operational_state == "manual":
+            return "manual"
+        if self.operational_state == "failure":
+            return "failure"
+        return None if self.operational_state in ROBOT_AVAILABLE_STATES else "notready"
+
+    @property
     def unavailable(self) -> bool:
-        return self.operational_state not in ROBOT_AVAILABLE_STATES
+        return self.unavailable_reason is not None

@@ -211,10 +211,11 @@ class MissionService:
         execution = self._execution.get_state()
         running = execution is not None and execution.status == MissionStatus.RUNNING
         if running or self._investigation.is_active():
-            # failure and manual have already dropped the route; a cancel would
-            # clear Autoware's failure before the operator has moved the robot.
-            state = robot.operational_state if robot.operational_state in ("failure", "manual") else "notready"
-            self.abort_autonomy(f"robot_{state}", send_cancel=state == "notready")
+            # failure has already dropped the route, and a cancel would clear it
+            # before the operator has moved the robot. A joystick takeover leaves
+            # the route in place: without a cancel Autoware drives on once released.
+            reason = robot.unavailable_reason
+            self.abort_autonomy(f"robot_{reason}", send_cancel=reason != "failure")
 
     # -- Helpers -------------------------------------------------------------
 
