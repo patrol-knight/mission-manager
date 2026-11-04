@@ -203,7 +203,7 @@ def test_losing_an_idle_robot_aborts_nothing(sim: Sim):
     assert sim.mission_status() == "not_ready"
 
 
-@pytest.mark.parametrize("state", ["notready", "failure", "manual"])
+@pytest.mark.parametrize("state", ["notready", "failure"])
 def test_the_mission_cannot_start_while_the_robot_cannot_drive(sim: Sim, state: str):
     sim.robot(*sim.waypoints[0], state)
     assert sim.mission_status() == "not_ready"
@@ -212,7 +212,7 @@ def test_the_mission_cannot_start_while_the_robot_cannot_drive(sim: Sim, state: 
     assert sim.mission_status() == "ready"
 
 
-@pytest.mark.parametrize(("state", "cancels"), [("failure", False), ("manual", True), ("notready", True)])
+@pytest.mark.parametrize(("state", "cancels"), [("failure", False), ("notready", True)])
 def test_a_robot_that_cannot_drive_stops_a_running_mission(sim: Sim, state: str, cancels: bool):
     sim.robot(*sim.waypoints[0])
     sim.client.post("/api/missions/current/start")
@@ -229,7 +229,7 @@ def test_a_paused_mission_waits_for_the_robot_to_resume(sim: Sim):
     sim.client.post("/api/missions/current/start")
     sim.client.post("/api/missions/current/pause")
 
-    sim.robot(*sim.waypoints[0], "manual")
+    sim.robot(*sim.waypoints[0], mode="manual")
     sim.services.mission_service.abort_if_robot_unavailable()
     assert sim.mission_status() == "paused"
     assert sim.client.post("/api/missions/current/resume").status_code == 409
@@ -321,12 +321,12 @@ def test_manual_mode_blocks_a_mission_even_when_autoware_is_ready(sim: Sim):
     assert sim.mission_status() == "ready"
 
 
-def test_taking_the_joystick_mid_mission_aborts_it_and_cancels_the_route(sim: Sim):
+def test_taking_the_joystick_mid_mission_aborts_it_without_a_cancel(sim: Sim):
     sim.robot(*sim.waypoints[0], mode="none")
     sim.client.post("/api/missions/current/start")
     sent_before = len(sim.commands)
 
-    sim.robot(*sim.waypoints[0], "navigating", mode="manual")
+    sim.robot(*sim.waypoints[0], "idle", mode="manual")
     sim.services.mission_service.abort_if_robot_unavailable()
     assert sim.mission_status() == "not_ready"
-    assert sim.commands[sent_before:] == [("cancel_navigation", None)]
+    assert sim.commands[sent_before:] == []

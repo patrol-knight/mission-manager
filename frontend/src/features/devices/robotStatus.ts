@@ -22,10 +22,9 @@ export function operationalState(robot: Device | null): string | null {
  * missing state included, is treated as not ready. */
 const AVAILABLE_STATES = ["idle", "navigating", "arrived"];
 
-/** Whether a person is driving: state_machine's `status.mode`, or Autoware's
- * own "manual" operational_state. */
+/** Whether a person is driving (state_machine's `status.mode`). */
 export function isManual(robot: Device | null): boolean {
-  return robot?.status?.mode === "manual" || operationalState(robot) === "manual";
+  return robot?.status?.mode === "manual";
 }
 
 /** Who drives the robot, for its mode pill: Auto (autonomy driving) or

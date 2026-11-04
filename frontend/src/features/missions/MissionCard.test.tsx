@@ -88,7 +88,7 @@ describe("MissionCard controls", () => {
   });
 
   it("can't resume until the robot is back from manual", () => {
-    useDeviceStore.setState({ devices: { "robot-1": { ...robot, status: { operational_state: "manual" } } } });
+    useDeviceStore.setState({ devices: { "robot-1": { ...robot, status: { operational_state: "idle", mode: "manual" } } } });
     useMissionStore.setState({ definition, execution: execution("paused", 1) });
     renderCard();
     expect(screen.getByRole("button", { name: "Resume" })).toBeDisabled();

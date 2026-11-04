@@ -65,8 +65,7 @@ class DeviceView(DeviceState):
     @property
     def unavailable_reason(self) -> str | None:
         """manual / failure / notready, or None when the robot can take a mission."""
-        # Autoware's own "manual" still arrives as an operational_state.
-        if self.mode == "manual" or self.operational_state == "manual":
+        if self.mode == "manual":
             return "manual"
         if self.operational_state == "failure":
             return "failure"
