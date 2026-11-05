@@ -5,11 +5,11 @@ import { useInvestigationStore } from "../../stores/investigationStore";
 import { useConnectedRobot } from "./useConnectedRobot";
 import { FAILURE_HINT, robotState } from "./robotStatus";
 
-/** Renderless. Toasts when the robot enters failure while nothing is running;
- * a failure mid-mission is announced by the autonomy abort instead. */
+/** Renderless. Toasts when the robot enters failure while no mission or
+ * investigation is active; those announce it with their own pause or abort. */
 export function RobotStateNotifier() {
   const state = robotState(useConnectedRobot());
-  const running = useMissionStore((s) => s.execution?.status === "running");
+  const running = useMissionStore((s) => s.execution?.status === "running" || s.execution?.status === "paused");
   const investigating = useInvestigationStore((s) => s.investigation !== null);
   const { show } = useToast();
   const previousRef = useRef(state);

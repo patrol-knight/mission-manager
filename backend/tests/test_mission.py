@@ -187,12 +187,47 @@ def test_a_goal_state_machine_never_got_is_sent_again(sim: Sim, code: str):
     assert sim.mission_status() == "running"
 
 
-def test_a_failed_goal_aborts_the_mission_without_a_cancel(sim: Sim):
+@pytest.mark.parametrize("code", ["route_rejected", "route_aborted"])
+def test_an_unroutable_goal_pauses_the_mission_without_a_cancel(sim: Sim, code: str):
+    sim.robot(*sim.waypoints[2])
+    target = sim.client.post("/api/missions/current/start").json()["target_waypoint_index"]
+    sent_before = len(sim.commands)
+    sim.goal_result("failed", code)
+    sim.robot(*sim.waypoints[2], "failure")
+    sim.services.mission_service.abort_if_robot_unavailable()
+    execution = sim.execution()
+    assert execution["status"] == "paused" and execution["target_waypoint_index"] == target
+    assert sim.commands[sent_before:] == []
+
+
+def test_after_a_failure_resume_sends_the_same_waypoint_again(sim: Sim):
+    w = sim.waypoints
+    sim.robot(*w[2])
+    target = sim.client.post("/api/missions/current/start").json()["target_waypoint_index"]
+    sim.goal_result("failed", "route_rejected")
+    sim.robot(50, 50, "failure", mode="manual")  # the operator drives it back onto the lanes
+    assert sim.client.post("/api/missions/current/resume").status_code == 409
+
+    sim.robot(*w[2], "ready", mode="none")  # Autoware's retry found a route
+    assert sim.client.post("/api/missions/current/resume").json()["status"] == "running"
+    assert sim.goal() == w[target]
+
+
+def test_after_a_failure_cancel_clears_it(sim: Sim):
+    sim.robot(*sim.waypoints[2])
+    sim.client.post("/api/missions/current/start")
+    sim.goal_result("failed", "route_rejected")
+    sim.robot(*sim.waypoints[2], "failure")
+    assert sim.client.post("/api/missions/current/cancel").status_code == 200
+    assert sim.last_command() == ("cancel_navigation", None)
+
+
+def test_other_failed_goals_abort_the_mission_without_a_cancel(sim: Sim):
     sim.robot(*sim.waypoints[2])
     sim.client.post("/api/missions/current/start")
     sent_before = len(sim.commands)
-    sim.goal_result("failed", "route_rejected")
-    assert sim.mission_status() != "running"
+    sim.goal_result("failed", "route_cleared")
+    assert sim.mission_status() == "ready"
     assert sim.commands[sent_before:] == []
 
 
@@ -247,9 +282,7 @@ def test_the_mission_cannot_start_while_the_robot_cannot_drive(sim: Sim, state: 
     assert sim.mission_status() == "ready"
 
 
-@pytest.mark.parametrize(
-    ("state", "mode", "cancels"), [("failure", None, False), ("notready", None, True), ("ready", "estop", True)]
-)
+@pytest.mark.parametrize(("state", "mode", "cancels"), [("notready", None, True), ("ready", "estop", True)])
 def test_a_robot_that_cannot_drive_stops_a_running_mission(sim: Sim, state: str, mode: str | None, cancels: bool):
     sim.robot(*sim.waypoints[0])
     sim.client.post("/api/missions/current/start")

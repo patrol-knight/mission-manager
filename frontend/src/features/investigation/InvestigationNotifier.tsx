@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { getRealtimeClient } from "../../api/realtimeClient";
 import { useInvestigationStore } from "../../stores/investigationStore";
 import { useToast } from "../../components/useToast";
-import { describeAbort } from "./investigationTypes";
+import { describeAbort, isFailureReason } from "./investigationTypes";
 import { FAILURE_HINT } from "../devices/robotStatus";
 
 /**
@@ -38,9 +38,21 @@ export function InvestigationNotifier() {
         show(
           "error",
           `${describeAbort(aborted)}. Mission and investigation stopped.`,
-          aborted.reason === "robot_failure"
+          isFailureReason(aborted.reason)
             ? `${FAILURE_HINT} until it's ready, then start the mission again.`
             : "Start the mission or investigate again when you're ready.",
+        );
+      }),
+    [show],
+  );
+
+  useEffect(
+    () =>
+      getRealtimeClient().on("autonomy.paused", () => {
+        show(
+          "warning",
+          "No route from where the robot is. Mission paused.",
+          "Drive the robot back onto the lanes with RC, then Resume once it's ready, or Cancel the mission.",
         );
       }),
     [show],

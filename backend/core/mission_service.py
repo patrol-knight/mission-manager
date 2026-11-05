@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 from core.device_registry import DeviceRegistry
 from core.errors import (
+    InvalidExecutionTransitionError,
     InvestigationActiveError,
     MapUnavailableError,
     MissionExecutionLockedError,
@@ -159,6 +160,22 @@ class MissionService:
 
     # -- Aborting autonomy ------------------------------------------------------
 
+    def pause_on_failure(self, reason: str) -> bool:
+        """The robot couldn't route its goal: a running mission pauses with its
+        progress kept, and no cancel, so Autoware keeps retrying while the
+        operator drives the robot back onto the lanes; Resume or Cancel then.
+        An investigation is aborted instead. Returns whether anything changed."""
+        if self._investigation.is_active():
+            return self.abort_autonomy(reason, send_cancel=False)
+        try:
+            self._execution.pause()
+        except InvalidExecutionTransitionError:
+            return False
+        self._drive.abort()
+        self._websocket.broadcast_threadsafe({"type": "autonomy.paused", "data": {"reason": reason}})
+        logger.warning("Mission paused (%s)", reason)
+        return True
+
     def abort_autonomy(self, reason: str, send_cancel: bool = True) -> bool:
         """Stops everything the robot does on its own: cancels the
         investigation (no verdict) and drops the mission to READY. Nothing
@@ -211,11 +228,13 @@ class MissionService:
         execution = self._execution.get_state()
         running = execution is not None and execution.status == MissionStatus.RUNNING
         if running or self._investigation.is_active():
-            # A takeover has already cleared the route, and a cancel during
-            # failure would clear it before the operator has moved the robot.
-            # An e-stop leaves the route set, so it must not resume on release.
+            # A takeover has already cleared the route. An e-stop leaves the
+            # route set, so it must not resume on release.
             reason = robot.unavailable_reason
-            self.abort_autonomy(f"robot_{reason}", send_cancel=reason in ("notready", "estop"))
+            if reason == "failure":
+                self.pause_on_failure("robot_failure")
+            else:
+                self.abort_autonomy(f"robot_{reason}", send_cancel=reason in ("notready", "estop"))
 
     # -- Helpers -------------------------------------------------------------
 

@@ -51,12 +51,30 @@ export interface RawAutonomyAborted {
   anomaly_id: string | null;
 }
 
+/** Wire shape of `autonomy.paused`: the mission was paused because the robot
+ * couldn't route its goal. */
+export interface RawAutonomyPaused {
+  reason: string;
+}
+
 const ABORT_REASONS: Record<string, string> = {
   robot_disconnected: "The robot was lost",
   robot_failure: "The robot reported a failure",
   robot_manual: "The robot was taken over manually",
+  robot_estop: "The emergency stop was pressed",
   robot_notready: "The robot is not ready",
+  goal_route_rejected: "No route to the goal",
+  goal_route_aborted: "The route was aborted",
+  goal_manual_takeover: "The robot was taken over manually",
+  goal_route_cleared: "The route was cleared",
+  goal_cancelled: "The goal was cancelled on the robot",
 };
+
+const FAILURE_REASONS = ["robot_failure", "goal_route_rejected", "goal_route_aborted"];
+
+export function isFailureReason(reason: string): boolean {
+  return FAILURE_REASONS.includes(reason);
+}
 
 export function describeAbort(raw: RawAutonomyAborted): string {
   return ABORT_REASONS[raw.reason] ?? `Stopped (${raw.reason})`;

@@ -112,7 +112,10 @@ def build_services(settings: Settings) -> Services:
     )
 
     def on_goal_failed(reason: str) -> None:
-        mission_service.abort_autonomy(f"goal_{reason}", send_cancel=False)
+        if reason in ("route_rejected", "route_aborted"):
+            mission_service.pause_on_failure(f"goal_{reason}")
+        else:
+            mission_service.abort_autonomy(f"goal_{reason}", send_cancel=False)
 
     mission_drive_coordinator.bind_goal_failed(on_goal_failed)
     investigation.bind_goal_failed(on_goal_failed)

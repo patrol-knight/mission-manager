@@ -40,4 +40,16 @@ describe("InvestigationNotifier", () => {
     act(() => handlers.get("autonomy.aborted")!({ reason: "robot_disconnected", anomaly_id: null }));
     expect(screen.getByText("The robot was lost. Mission and investigation stopped.")).toBeInTheDocument();
   });
+
+  it("says how to recover when a route failure ends an investigation", () => {
+    render(<ToastProvider><InvestigationNotifier /></ToastProvider>);
+    act(() => handlers.get("autonomy.aborted")!({ reason: "goal_route_rejected", anomaly_id: "a1" }));
+    expect(screen.getByText("No route to the goal. Mission and investigation stopped.")).toBeInTheDocument();
+  });
+
+  it("announces a mission paused for a route failure", () => {
+    render(<ToastProvider><InvestigationNotifier /></ToastProvider>);
+    act(() => handlers.get("autonomy.paused")!({ reason: "goal_route_rejected" }));
+    expect(screen.getByText("No route from where the robot is. Mission paused.")).toBeInTheDocument();
+  });
 });
