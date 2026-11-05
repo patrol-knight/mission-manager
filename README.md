@@ -23,7 +23,7 @@ Set these in the root `.env`. Every one is optional.
 | `CAMERA_MODE` | `mock` | `mock` or `real` camera streams |
 | `COMPOSE_PROFILES` + `DATABASE_URL` | unset | Set both to start Postgres and record anomaly history |
 
-If you open the UI from another machine, point `API_BASE_URL` / `WS_URL` at the host running Docker instead of `localhost`. 
+If you open the UI from another machine, point `API_BASE_URL` / `WS_URL` at the host running Docker instead of `localhost`, and add the page's origin to `CORS_ORIGINS`, e.g. `CORS_ORIGINS=["http://192.168.1.10:5050"]`.
 Data lives in `backend/storage/` on the host, so it survives container rebuilds:
 
 - `maps/<site>/`: one folder per site (currently `ks` and `nsh`), each holding `lanelet2_map.osm` and `map_projector_info.yaml`. The folder name is the map's name.
@@ -42,6 +42,17 @@ docker compose up -d --force-recreate backend
 ```
 
 If the current mission belongs to a different map, it is cleared on the switch. If the map fails to load, the backend still starts, but with no map and with every mission shown, so check the startup log.
+
+## Devtools
+
+`http://<host>:5050/dev` measures the device links live: per device, ping RTT and loss and the Zenoh session; per stream, rate, inter-arrival jitter, gaps and bandwidth; and WebRTC stats for one camera. **Record** saves everything to `data/runs/<YYYYMMDD_HHMMSS>/` until stopped. Turn a run into plots and `summary.md`:
+
+```bash
+pip install -r scripts/analyzer/requirements.txt
+python -m scripts.analyzer data/runs/<run>
+```
+
+Design and metrics: [docs/design.md](docs/design.md).
 
 ## Architecture
 

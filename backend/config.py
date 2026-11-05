@@ -35,6 +35,10 @@ class Settings(BaseSettings):
     # postgresql://mission_manager:mission_manager@localhost:5432/mission_manager
     database_url: str | None = None
 
+    # Devtools recordings, one folder per run.
+    runs_dir: str = "../data/runs"
+    runs_owner: str | None = None  # "uid:gid"
+
     zenoh_enabled: bool = False
     zenoh_router: str = "tcp/localhost:7447"
     zenoh_device_state_keyexpr: str = "devices/*/state"

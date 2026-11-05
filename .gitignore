@@ -26,3 +26,5 @@ srv_gen/
 msg/*.action
 msg/*.idl
 src/*/msg/lisp/
+
+/data/
