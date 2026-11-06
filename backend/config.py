@@ -14,8 +14,8 @@ class Settings(BaseSettings):
 
     cors_origins: list[str] = ["http://localhost:5173"]
 
-    map_osm_path: str = "storage/maps/lanelet2_map.osm"
-    map_projector_path: str = "storage/maps/map_projector_info.yaml"
+    map_osm_path: str = "storage/maps/nsh/lanelet2_map.osm"
+    map_projector_path: str = "storage/maps/nsh/map_projector_info.yaml"
 
     mission_folder: str = "storage/missions"
     app_state_path: str = "storage/app_state.yaml"

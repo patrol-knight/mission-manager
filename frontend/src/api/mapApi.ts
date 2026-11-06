@@ -65,6 +65,10 @@ export function routePreview(waypoints: RouteWaypoint[]): Promise<RoutePreviewRe
   });
 }
 
+export function lngLatToXy(lat: number, lon: number): Promise<{ x: number; y: number }> {
+  return http.post("/api/map/lnglat-to-xy", { lat, lon });
+}
+
 export async function xyToLngLat(x: number, y: number, frameId = "map"): Promise<LatLon> {
   return http.post<LatLon>("/api/map/xy-to-lnglat", { x, y, frame_id: frameId });
 }

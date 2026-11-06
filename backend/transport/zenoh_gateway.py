@@ -2,6 +2,8 @@ import json
 import logging
 import re
 import time
+from concurrent.futures import Future
+from concurrent.futures import TimeoutError as FutureTimeoutError
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
@@ -68,6 +70,7 @@ class ZenohGateway:
         # device_id -> ((x, y, frame_id), (lat, lon)): towers never move.
         self._last_projection: dict[str, tuple[tuple[float, float, str], tuple[float, float] | None]] = {}
         self._camera_sessions: CameraStreamService | None = None
+        self._awaited_results: dict[str, Future[CommandResult]] = {}
 
     def bind_camera_sessions(self, camera_sessions: "CameraStreamService") -> None:
         """Late-bound for the same reason as bind_coordinators: the service
@@ -277,6 +280,10 @@ class ZenohGateway:
         except Exception as exc:
             logger.warning("Discarding malformed command result payload: %s", exc)
             return False
+        if result.status not in ("accepted", "running"):
+            awaited = self._awaited_results.pop(result.request_id, None)
+            if awaited is not None:
+                awaited.set_result(result)
         if self._camera_sessions is not None:
             self._camera_sessions.on_command_result(result)
         if self._investigation is not None:
@@ -358,3 +365,19 @@ class ZenohGateway:
         payload = {"command": command, "request_id": request_id, **(fields or {})}
         key = self._settings.zenoh_device_commands_keyexpr.format(device_id=device_id)
         return self._put(key, json.dumps(payload).encode("utf-8"), f"command {command!r} to {device_id}")
+
+    def request_command(
+        self, device_id: str, command: str, request_id: str, fields: dict | None, timeout_sec: float
+    ) -> CommandResult | None:
+        """publish_command, then waits for its outcome. None if it couldn't be
+        sent or no outcome came in time. Blocks: not for the event loop."""
+        awaited: Future[CommandResult] = Future()
+        self._awaited_results[request_id] = awaited
+        try:
+            if not self.publish_command(device_id, command, request_id, fields):
+                return None
+            return awaited.result(timeout_sec)
+        except FutureTimeoutError:
+            return None
+        finally:
+            self._awaited_results.pop(request_id, None)

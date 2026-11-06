@@ -50,8 +50,8 @@ services:
       - CORS_ORIGINS=${CORS_ORIGINS:-["http://localhost:5173","http://localhost:5050"]}
       - RUNS_DIR=/data/runs
       - RUNS_OWNER=${HOST_UID:-1000}:${HOST_GID:-1000}
-      - MAP_OSM_PATH=storage/maps/history/lanelet2_map.osm
-      - MAP_PROJECTOR_PATH=storage/maps/history/map_projector_info.yaml
+      - MAP_OSM_PATH=storage/maps/nsh/lanelet2_map.osm
+      - MAP_PROJECTOR_PATH=storage/maps/nsh/map_projector_info.yaml
       - MISSION_FOLDER=storage/missions
       - APP_STATE_PATH=storage/app_state.yaml
       - DEVICE_OFFLINE_TIMEOUT_SEC=3.0

@@ -9,14 +9,14 @@ export function isLiveTower(device: Device): boolean {
 
 /** Towers in the order an operator needs them: connected ones first --
  * those with open alerts on top (most first) -- then the offline ones, each
- * group by name. */
+ * group by device id. */
 export function sortTowers(towers: Device[], alertCounts: Record<string, number>): Device[] {
   const rank = (t: Device) => (!t.connected ? 2 : (alertCounts[t.deviceId] ?? 0) > 0 ? 0 : 1);
   return [...towers].sort(
     (a, b) =>
       rank(a) - rank(b) ||
       (alertCounts[b.deviceId] ?? 0) - (alertCounts[a.deviceId] ?? 0) ||
-      (a.name ?? a.deviceId).localeCompare(b.name ?? b.deviceId),
+      a.deviceId.localeCompare(b.deviceId),
   );
 }
 

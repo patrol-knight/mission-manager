@@ -40,7 +40,7 @@ function applyConnectivityStyle(el: HTMLElement, device: Device, backendConnecte
   const online = status === "online";
   el.style.opacity = online ? "1" : "0.45";
   el.style.filter = online ? "none" : "grayscale(1)";
-  const name = device.name ?? device.deviceId;
+  const name = device.deviceId;
   // Hover hint (HintLayer): what clicking does, or why it's dimmed.
   el.dataset.hint =
     status === "unknown" ? `${name} · Backend disconnected` : online ? `${name} · Click to view camera` : `${name} · Disconnected`;
@@ -49,7 +49,7 @@ function applyConnectivityStyle(el: HTMLElement, device: Device, backendConnecte
 
 /** An arrow pointing where the robot faces, inside a soft halo. The marker
  * itself is rotated (useMarkerList's rotationOf), so the arrow points up. */
-function buildRobotElement(): HTMLElement {
+export function buildRobotElement(): HTMLElement {
   const color = mapPalette.device.robot;
   const el = document.createElement("div");
   el.style.cssText = `

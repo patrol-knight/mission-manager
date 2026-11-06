@@ -43,14 +43,12 @@ const anomaly: Anomaly = {
 
 const robot: Device = {
   deviceId: "robot-1",
-  name: "Robot",
   type: "robot",
   pose: { frameId: "map", x: 0, y: 0, yaw: 0, lat: 1, lon: 2 },
   timestamp: 1,
   battery: 90,
   speed: 0,
   status: {},
-  capabilities: [],
   connected: true,
   lastSeen: 1,
 };

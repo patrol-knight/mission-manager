@@ -27,15 +27,9 @@ export function DeviceInspectorOverlay() {
   const { inspectorOpen, selectedDeviceId, closeInspector } = useDeviceInspector();
   const device = useDeviceStore((s) => (selectedDeviceId ? s.devices[selectedDeviceId] : undefined));
   const hasKnownCamera = useDeviceStore((s) => (selectedDeviceId ? Boolean(s.cameras[selectedDeviceId]) : false));
-  // zenoh_bridge doesn't populate DeviceState.capabilities today, so
-  // capabilities alone would never open a camera session for a real device.
-  // The cameras store slice (fed by the separate camera-state relay) is the
-  // more reliable signal -- fall back to it whenever capabilities hasn't
-  // caught up.
-  const hasCameraCapability = (device?.capabilities.includes("camera") ?? false) || hasKnownCamera;
   const { camera, stream, error } = useCameraSession(
     inspectorOpen ? (selectedDeviceId ?? null) : null,
-    hasCameraCapability,
+    hasKnownCamera,
   );
   const { status: wsStatus } = useApiConnection();
   const alerts = useDeviceStore((s) => (selectedDeviceId ? (selectAlertCounts(s)[selectedDeviceId] ?? 0) : 0));
@@ -45,13 +39,12 @@ export function DeviceInspectorOverlay() {
   if (!inspectorOpen || !device) return null;
 
   const connectivity = deviceConnectivity(device, wsStatus === "connected");
-  const name = device.name ?? device.deviceId;
   const mode = device.type === "robot" ? robotMode(device) : null;
   const activity = device.type === "robot" ? robotStatus(connectivity.status === "online", investigation, execution, robotState(device)) : null;
 
   return (
-    <Modal label={`${name} inspector`} onClose={closeInspector} variant="fullscreen">
-      <ModalHeader title={name} onClose={closeInspector} closeLabel="Close inspector">
+    <Modal label={`${device.deviceId} inspector`} onClose={closeInspector} variant="fullscreen">
+      <ModalHeader title={device.deviceId} onClose={closeInspector} closeLabel="Close inspector">
         <span className={layout.headerPills}>
           <Pill tone="neutral">{device.type === "robot" ? "Robot" : "IoT tower"}</Pill>
           <Pill tone={CONNECTIVITY_TONE[connectivity.status]} dot={connectivity.status === "online"} title={connectivity.title}>

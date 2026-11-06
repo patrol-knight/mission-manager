@@ -33,7 +33,7 @@ export function RobotCard() {
 
   const status = robotStatus(connected, investigation, execution, robotState(robot));
   const mode = robotMode(robot);
-  const name = robot.name ?? robot.deviceId;
+  const name = robot.deviceId;
   return (
     <Card
       title="Robot"

@@ -110,6 +110,12 @@ t4 browser receive                                     t4 - t3  path C
 - **Git**: `/data/` is ignored as a whole. `./data` is mounted into the backend container.
 - **Analyzer**: `python -m scripts.analyzer data/runs/<run>` writes `summary.md` (percentiles, delivery, gaps, WebRTC) and plots: one figure per device (ping, rate, jitter, bandwidth), ping CDF, WebRTC, and a coverage map of the robot's ping RTT along its route.
 
+## Localize
+
+The Localize tab sets the robot's pose by hand, for when GNSS can't. **Initialize** freezes the map; press where the robot is and drag toward where it faces. Releasing sends it, and a click without a drag sends nothing: the backend converts it to the map frame and sends `set_initial_pose`, and zenoh_bridge publishes `/initialpose`. The page shows an error if the bridge refuses or doesn't reply within 2 s. Nothing checks Autoware's outcome: the robot's marker appears or moves, and the operator judges it. It's the only part of `/dev` that commands the robot, and it has no safety checks, so use it with the robot stopped. A failed alignment leaves Autoware's localization off.
+
+**Pick point** reads the map-frame x/y of a clicked point, to find roughly where an IoT tower stands.
+
 ## Phases
 
 1. **Mission Manager only**, enough for field testing without touching the devices: passive Zenoh tap (rate, jitter, gaps, bandwidth, payload size, reconnects), ICMP ping per device (RTT, loss; device IPs from the zenohd admin space if available, otherwise entered by hand), WebRTC `getStats()`, robot pose in recordings, record to a run folder, analyzer. Latency `t2 - t0` is shown but marked unsynced until clocks are synced.

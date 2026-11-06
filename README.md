@@ -52,6 +52,8 @@ pip install -r scripts/analyzer/requirements.txt
 python -m scripts.analyzer data/runs/<run>
 ```
 
+**Localize** sets the robot's pose by hand, for when GNSS can't: press **Initialize**, press where the robot is, and drag toward where it faces. The robot's marker shows the result; an error under the cards means zenoh_bridge refused it or didn't reply. Use it with the robot stopped. **Pick point** shows the map-frame x/y of a clicked point, e.g. to place an IoT tower. Indoors, start Autoware with `localization_gnss_enabled:=false`.
+
 Design and metrics: [docs/design.md](docs/design.md).
 
 ## Architecture

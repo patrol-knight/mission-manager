@@ -12,14 +12,12 @@ vi.mock("../../hooks/useApiConnection", () => ({ useApiConnection: () => ({ stat
 
 const fakeDevice: Device = {
   deviceId: "sim-robot-01",
-  name: "Robot 1",
   type: "robot",
   pose: { frameId: "map", x: 0, y: 0, yaw: 0, lat: 37.0, lon: -122.0 },
   timestamp: 0,
   battery: 80,
   speed: 0,
   status: {},
-  capabilities: [],
   connected: true,
   lastSeen: 0,
 };
@@ -47,7 +45,7 @@ describe("DeviceInspectorOverlay", () => {
     render(<Harness />);
     await userEvent.click(screen.getByText("Open"));
     expect(screen.getByRole("dialog")).toBeInTheDocument();
-    expect(screen.getByText("Robot 1")).toBeInTheDocument();
+    expect(screen.getByText("sim-robot-01")).toBeInTheDocument();
   });
 
   it("closes when the verify window opens, and closes it when opened itself", async () => {
@@ -68,7 +66,7 @@ describe("DeviceInspectorOverlay", () => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 
-  it("shows an empty camera state when the device has no camera capability", async () => {
+  it("shows an empty camera state when the device has no known camera", async () => {
     render(<Harness />);
     await userEvent.click(screen.getByText("Open"));
     expect(await screen.findByText(/no camera available/i)).toBeInTheDocument();

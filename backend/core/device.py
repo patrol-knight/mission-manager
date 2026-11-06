@@ -37,8 +37,6 @@ class BaseDevice:
     def _meaningfully_differs(self, new: DeviceState) -> bool:
         old = self.state
 
-        if old.name != new.name:
-            return True
         if (old.pose is None) != (new.pose is None):
             return True
         if old.pose is not None and new.pose is not None:
@@ -55,8 +53,6 @@ class BaseDevice:
         if _optional_differs(old.speed, new.speed, SPEED_EPSILON):
             return True
         if old.status != new.status:
-            return True
-        if old.capabilities != new.capabilities:
             return True
 
         return False

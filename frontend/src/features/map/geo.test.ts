@@ -1,10 +1,22 @@
 import { describe, it, expect } from "vitest";
-import { headingDegrees, remainingRoute } from "./geo";
+import { headingDegrees, remainingRoute, yawBetween } from "./geo";
 
 describe("headingDegrees", () => {
   it("turns map-frame yaw (CCW from east) into a compass heading", () => {
     expect(headingDegrees(0)).toBeCloseTo(90); // east
     expect(headingDegrees(Math.PI / 2)).toBeCloseTo(0); // north
+  });
+});
+
+describe("yawBetween", () => {
+  const from = { lng: -79.9, lat: 40.4 };
+  it("is counter-clockwise from east", () => {
+    expect(yawBetween(from, { lng: -79.8, lat: 40.4 })).toBeCloseTo(0);
+    expect(yawBetween(from, { lng: -79.9, lat: 40.5 })).toBeCloseTo(Math.PI / 2);
+  });
+  it("corrects longitude for latitude", () => {
+    const dLat = 0.0001 * Math.cos((40.4 * Math.PI) / 180);
+    expect(yawBetween(from, { lng: -79.8999, lat: 40.4 + dLat })).toBeCloseTo(Math.PI / 4);
   });
 });
 

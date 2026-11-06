@@ -62,7 +62,7 @@ function TowerRow({
   onFlyTo: () => void;
   onInfo: () => void;
 }) {
-  const name = tower.name ?? tower.deviceId;
+  const name = tower.deviceId;
   const online = connectivity.status === "online";
   const setHoveredDevice = useMapHighlightStore((s) => s.setHoveredDevice);
   return (

@@ -16,7 +16,6 @@ export interface Pose2D {
 /** App-facing device shape (camelCase). Built from RawDevice via deviceFromRaw. */
 export interface Device {
   deviceId: string;
-  name: string | null;
   type: DeviceType;
   /** Null while the robot isn't localized: no position, so no map marker. */
   pose: Pose2D | null;
@@ -24,7 +23,6 @@ export interface Device {
   battery: number | null;
   speed: number | null;
   status: Record<string, unknown>;
-  capabilities: string[];
   connected: boolean;
   lastSeen: number;
 }
@@ -34,7 +32,6 @@ export type RawDevice = components["schemas"]["DeviceView"];
 export function deviceFromRaw(raw: RawDevice): Device {
   return {
     deviceId: raw.device_id,
-    name: raw.name,
     type: raw.type,
     pose: raw.pose && {
       frameId: raw.pose.frame_id,
@@ -48,7 +45,6 @@ export function deviceFromRaw(raw: RawDevice): Device {
     battery: raw.battery,
     speed: raw.speed,
     status: raw.status,
-    capabilities: raw.capabilities,
     connected: raw.connected,
     lastSeen: raw.last_seen,
   };

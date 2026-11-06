@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 TAP_KEYS = ["devices/**", "anomalies/*/state"]
 # Sent by this backend, not received from devices.
-OUTBOUND_STREAMS = {"commands", "camera_commands", "camera_webrtc_to_device"}
+OUTBOUND_STREAMS = {"commands", "camera_webrtc_to_device"}
 LINK_REFRESH_SEC = 2.0
 PING_TIMEOUT_SEC = 0.9
 _COMMANDS_SUBSCRIBER_RE = re.compile(r"/subscriber/devices/([^/*$]+)/commands$")
@@ -198,7 +198,7 @@ class DevtoolsService:
                 "lat": d.pose.lat, "lon": d.pose.lon, "connected": d.connected,
             }
             for d in self._devices.list_devices()
-            if d.type == "robot"
+            if d.type == "robot" and d.pose is not None  # None: not localized
         ]
 
         if self.recorder.run_id:

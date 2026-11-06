@@ -14,4 +14,6 @@ export const devApi = {
   stopRun: () => http.post<{ run_id: string | null }>("/api/dev/runs/stop"),
   setTarget: (deviceId: string, ip: string | null) =>
     http.put<DevStatus>(`/api/dev/targets/${encodeURIComponent(deviceId)}`, { ip }),
+  setInitialPose: (lat: number, lon: number, yaw: number) =>
+    http.post<void>("/api/dev/initial-pose", { lat, lon, yaw }),
 };
