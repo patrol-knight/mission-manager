@@ -308,9 +308,19 @@ def test_a_paused_mission_waits_for_the_robot_to_resume(sim: Sim):
     assert sim.client.post("/api/missions/current/resume").json()["status"] == "running"
 
 
-def test_mission_files_from_before_time_slots_were_removed_still_load():
-    mission = Mission(mission_id="m", name="n", map_name="x", time_slot=None)
-    assert "time_slot" not in mission.model_dump()
+def test_mission_files_with_removed_fields_still_load():
+    mission = Mission(
+        mission_id="m",
+        name="n",
+        map_name="x",
+        time_slot=None,
+        description=None,
+        metadata={},
+        waypoints=[{"waypoint_id": "w", "x": 0, "y": 0, "type": "patrol"}],
+    )
+    dumped = mission.model_dump()
+    assert not {"time_slot", "description", "metadata"} & dumped.keys()
+    assert "type" not in dumped["waypoints"][0]
 
 
 def test_mission_list_routes_each_version_once(client: TestClient, services, fake_map, monkeypatch):

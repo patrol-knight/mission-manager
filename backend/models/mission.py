@@ -8,6 +8,9 @@ from models.base import WireModel
 from models.waypoint import Waypoint
 
 _MISSION_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+_LEGACY_FIELDS = {"time_slot", "description", "metadata"}
+
+
 class Mission(WireModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -17,7 +20,6 @@ class Mission(WireModel):
     map_name: str = ""
     frame_id: str = "map"
 
-    description: str | None = None
     waypoints: list[Waypoint] = Field(default_factory=list)
     loop_count: int = Field(default=1, ge=1)
     # Loop until the operator stops it; loop_count is kept (not used while
@@ -26,15 +28,14 @@ class Mission(WireModel):
 
     created_at: datetime | None = None
     updated_at: datetime | None = None
-    metadata: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="before")
     @classmethod
     def drop_legacy_fields(cls, data: Any) -> Any:
-        # Mission files written before time slots were removed still carry
-        # `time_slot: null`; ignore it rather than fail to load them.
-        if isinstance(data, dict) and "time_slot" in data:
-            data = {k: v for k, v in data.items() if k != "time_slot"}
+        # Older mission files still carry these; ignore them rather than fail
+        # to load. They go away the next time the mission is saved.
+        if isinstance(data, dict):
+            data = {k: v for k, v in data.items() if k not in _LEGACY_FIELDS}
         return data
 
     @field_validator("mission_id")

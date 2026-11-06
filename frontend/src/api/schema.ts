@@ -217,6 +217,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/geofences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Geofences */
+        get: operations["get_geofences_api_geofences_get"];
+        /**
+         * Replace Geofences
+         * @description Replaces every zone of the loaded map. Anomaly Detection gets them the
+         *     next time it asks.
+         */
+        put: operations["replace_geofences_api_geofences_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/investigation": {
         parameters: {
             query?: never;
@@ -664,6 +686,39 @@ export interface components {
             timestamp: number;
             type: components["schemas"]["DeviceType"];
         };
+        /** GeofencePoint */
+        GeofencePoint: {
+            /** Lat */
+            lat: number;
+            /** Lon */
+            lon: number;
+        };
+        /**
+         * GeofenceSet
+         * @description Every zone of the loaded map. Empty means no restricted zones.
+         */
+        "GeofenceSet-Input": {
+            /** Zones */
+            zones: components["schemas"]["GeofenceZone"][];
+        };
+        /**
+         * GeofenceSet
+         * @description Every zone of the loaded map. Empty means no restricted zones.
+         */
+        "GeofenceSet-Output": {
+            /** Zones */
+            zones: components["schemas"]["GeofenceZone"][];
+        };
+        /**
+         * GeofenceZone
+         * @description One zone as the map editor sees it.
+         */
+        GeofenceZone: {
+            /** Points */
+            points: components["schemas"]["GeofencePoint"][];
+            /** Zone Id */
+            zone_id: string;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -754,8 +809,6 @@ export interface components {
         Mission: {
             /** Created At */
             created_at?: string | null;
-            /** Description */
-            description?: string | null;
             /**
              * Frame Id
              * @default map
@@ -776,10 +829,6 @@ export interface components {
              * @default
              */
             map_name?: string;
-            /** Metadata */
-            metadata?: {
-                [key: string]: unknown;
-            };
             /** Mission Id */
             mission_id: string;
             /** Name */
@@ -828,8 +877,6 @@ export interface components {
         MissionGeo: {
             /** Created At */
             created_at: string | null;
-            /** Description */
-            description: string | null;
             /**
              * Frame Id
              * @default map
@@ -850,10 +897,6 @@ export interface components {
              * @default
              */
             map_name: string;
-            /** Metadata */
-            metadata: {
-                [key: string]: unknown;
-            };
             /** Mission Id */
             mission_id: string;
             /** Name */
@@ -1012,12 +1055,6 @@ export interface components {
         };
         /** Waypoint */
         Waypoint: {
-            /**
-             * Type
-             * @default patrol
-             * @enum {string}
-             */
-            type?: "patrol" | "inspection" | "charging" | "custom";
             /** Waypoint Id */
             waypoint_id: string;
             /** X */
@@ -1040,12 +1077,6 @@ export interface components {
             lat: number | null;
             /** Lon */
             lon: number | null;
-            /**
-             * Type
-             * @default patrol
-             * @enum {string}
-             */
-            type: "patrol" | "inspection" | "charging" | "custom";
             /** Waypoint Id */
             waypoint_id: string;
             /** X */
@@ -1401,6 +1432,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DeviceView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_geofences_api_geofences_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeofenceSet-Output"];
+                };
+            };
+        };
+    };
+    replace_geofences_api_geofences_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GeofenceSet-Input"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeofenceSet-Output"];
                 };
             };
             /** @description Validation Error */

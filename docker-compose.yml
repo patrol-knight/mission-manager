@@ -53,6 +53,7 @@ services:
       - MAP_OSM_PATH=storage/maps/nsh/lanelet2_map.osm
       - MAP_PROJECTOR_PATH=storage/maps/nsh/map_projector_info.yaml
       - MISSION_FOLDER=storage/missions
+      - GEOFENCE_FOLDER=storage/geofences
       - APP_STATE_PATH=storage/app_state.yaml
       - DEVICE_OFFLINE_TIMEOUT_SEC=3.0
       - DEVICE_MONITOR_INTERVAL_SEC=1.0

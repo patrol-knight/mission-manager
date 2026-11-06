@@ -2,7 +2,6 @@ import type { components } from "../../api/schema";
 
 type Schemas = components["schemas"];
 
-export type WaypointType = Schemas["Waypoint"]["type"];
 
 export interface Waypoint {
   waypointId: string;
@@ -10,7 +9,6 @@ export interface Waypoint {
   y: number;
   /** Goal heading; null = along the lane (the backend fills it in). */
   yaw: number | null;
-  type: WaypointType;
   /** From the backend (never saved back); null when the map was unavailable. */
   lat?: number | null;
   lon?: number | null;
@@ -26,14 +24,12 @@ export interface MissionDefinition {
   name: string;
   mapName: string;
   frameId: string;
-  description: string | null;
   waypoints: Waypoint[];
   loopCount: number;
   /** Loop until cancelled; loopCount is kept but unused while this is set. */
   infiniteLoop: boolean;
   createdAt: string | null;
   updatedAt: string | null;
-  metadata: Record<string, unknown>;
 }
 
 /** "not_ready": idle, but the robot can't run a mission (offline). */
@@ -92,13 +88,11 @@ export function missionDefinitionFromRaw(raw: RawMission): MissionDefinition {
     name: raw.name,
     mapName: raw.map_name,
     frameId: raw.frame_id,
-    description: raw.description,
     waypoints: raw.waypoints.map((wp) => ({
       waypointId: wp.waypoint_id,
       x: wp.x,
       y: wp.y,
       yaw: wp.yaw,
-      type: wp.type,
       lat: wp.lat,
       lon: wp.lon,
     })),
@@ -106,7 +100,6 @@ export function missionDefinitionFromRaw(raw: RawMission): MissionDefinition {
     infiniteLoop: raw.infinite_loop,
     createdAt: raw.created_at,
     updatedAt: raw.updated_at,
-    metadata: raw.metadata,
   };
 }
 
@@ -166,18 +159,15 @@ export function missionDraftToRawPayload(draft: ResolvedMissionDraft): Schemas["
     mission_id: draft.missionId,
     name: draft.name.trim(),
     frame_id: draft.frameId,
-    description: null,
     waypoints: draft.waypoints.map((wp) => ({
       waypoint_id: wp.waypointId,
       x: wp.x,
       y: wp.y,
       yaw: wp.yaw,
-      type: wp.type,
     })),
     loop_count: draft.loopCount,
     infinite_loop: draft.infiniteLoop,
     created_at: null,
     updated_at: null,
-    metadata: {},
   };
 }

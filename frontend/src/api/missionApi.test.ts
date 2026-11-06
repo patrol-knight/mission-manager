@@ -7,8 +7,8 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 const waypoints: Waypoint[] = [
-  { waypointId: "wp1", x: 0, y: 0, yaw: null, type: "patrol" },
-  { waypointId: "wp2", x: 1, y: 1, yaw: null, type: "patrol" },
+  { waypointId: "wp1", x: 0, y: 0, yaw: null },
+  { waypointId: "wp2", x: 1, y: 1, yaw: null },
 ];
 
 const rawMission = {
@@ -16,16 +16,14 @@ const rawMission = {
   name: "Patrol A",
   map_name: "demo",
   frame_id: "map",
-  description: null,
   infinite_loop: false,
   waypoints: [
-    { waypoint_id: "wp1", x: 0, y: 0, yaw: null, type: "patrol" },
-    { waypoint_id: "wp2", x: 1, y: 1, yaw: null, type: "patrol" },
+    { waypoint_id: "wp1", x: 0, y: 0, yaw: null },
+    { waypoint_id: "wp2", x: 1, y: 1, yaw: null },
   ],
   loop_count: 2,
   created_at: null,
   updated_at: null,
-  metadata: {},
 };
 
 describe("missionApi.saveMission", () => {

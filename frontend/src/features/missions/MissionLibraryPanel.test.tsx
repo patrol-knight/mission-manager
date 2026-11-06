@@ -53,13 +53,11 @@ const fullMission: MissionDefinition = {
   name: "Patrol B",
   mapName: "demo",
   frameId: "map",
-  description: null,
   infiniteLoop: false,
   waypoints: [],
   loopCount: 1,
   createdAt: null,
   updatedAt: null,
-  metadata: {},
 };
 
 function EditorProbe() {

@@ -7,7 +7,10 @@ import { StatusDot } from "../../components/ui/StatusDot";
 import { useToast } from "../../components/useToast";
 import { selectDeviceList, useDeviceStore } from "../../stores/deviceStore";
 import { useShallow } from "zustand/react/shallow";
-import { buildRobotElement } from "../devices/DeviceMarkerLayer";
+import { buildRobotElement } from "../devices/deviceMarker";
+import { GeofenceCard } from "../geofences/GeofenceCard";
+import { GeofenceLayer } from "../geofences/GeofenceLayer";
+import { useGeofenceEditor } from "../geofences/useGeofenceEditor";
 import { headingDegrees, yawBetween } from "../map/geo";
 import { LaneletLayer } from "../map/LaneletLayer";
 import { MapContext } from "../map/MapContext";
@@ -256,6 +259,8 @@ export function LocalizeView() {
   const [point, setPoint] = useState<PickedPoint | null>(null);
   const [error, setError] = useState<string | null>(null);
   const { show } = useToast();
+  const geofences = useGeofenceEditor();
+  const editingGeofences = geofences.state.draft !== null;
 
   const report = (err: unknown) => setError(err instanceof Error ? err.message : "Request failed");
 
@@ -285,6 +290,7 @@ export function LocalizeView() {
         <MapContext.Provider value={{ map, ready }}>
           <MapWorkspace containerRef={containerRef} map={map} ready={ready}>
             <LaneletLayer />
+            <GeofenceLayer editor={geofences} />
             <RobotLayer robot={robot} />
             <InitializeLayer active={mode === "initialize"} onRelease={initialize} />
             <PickPointLayer active={mode === "pick"} point={point} onPick={pick} />
@@ -308,7 +314,7 @@ export function LocalizeView() {
           <Button
             variant={mode === "initialize" ? "secondary" : "primary"}
             block
-            disabled={!robot?.connected}
+            disabled={!robot?.connected || editingGeofences}
             onClick={() => toggle("initialize")}
           >
             {mode === "initialize" ? "Cancel" : "Initialize"}
@@ -324,10 +330,12 @@ export function LocalizeView() {
           ) : (
             <span className={styles.muted}>No point</span>
           )}
-          <Button block onClick={() => toggle("pick")}>
+          <Button block disabled={editingGeofences} onClick={() => toggle("pick")}>
             {mode === "pick" ? "Cancel" : "Pick point"}
           </Button>
         </section>
+
+        <GeofenceCard editor={geofences} disabled={mode !== "idle"} />
 
         {error && <span className={styles.error}>{error}</span>}
       </div>

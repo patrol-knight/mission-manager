@@ -19,6 +19,7 @@ class Settings(BaseSettings):
 
     mission_folder: str = "storage/missions"
     app_state_path: str = "storage/app_state.yaml"
+    geofence_folder: str = "storage/geofences"
 
     device_offline_timeout_sec: float = 3.0
     # How long the robot may stay offline before the mission and any
@@ -47,6 +48,8 @@ class Settings(BaseSettings):
     zenoh_anomaly_feedback_keyexpr: str = "anomalies/{anomaly_id}/feedback"
     # Outbound: {device_id} is substituted by ZenohGateway.publish_command().
     zenoh_device_commands_keyexpr: str = "devices/{device_id}/commands"
+    # Queryable: Anomaly Detection asks for the zones, nothing is published.
+    zenoh_geofences_keyexpr: str = "geofences/restricted_zones"
 
     # Video streaming (see ../zenoh_bridge/docs/video_streaming_pipeline.md).
     # start_camera_stream/stop_camera_stream commands ride the existing

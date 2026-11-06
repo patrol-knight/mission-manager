@@ -9,6 +9,7 @@ from core.camera_stream import CameraStreamService
 from core.device_registry import DeviceRegistry
 from core.devtools import DevtoolsService
 from core.errors import MapUnavailableError
+from core.geofence_server import GeofenceServer
 from core.investigation import InvestigationCoordinator
 from core.map_server import MapServer
 from core.mission_drive import MissionDriveCoordinator
@@ -41,6 +42,7 @@ class Services:
     camera_stream: CameraStreamService
     websocket_manager: WebSocketManager
     zenoh_gateway: ZenohGateway
+    geofences: GeofenceServer
     devtools: DevtoolsService
 
 
@@ -54,6 +56,8 @@ def build_services(settings: Settings) -> Services:
     map_name = map_server.get_info().map_name if map_server.is_available() else None
     mission_server = MissionServer(settings.mission_folder, settings.app_state_path, map_name)
     mission_server.load()
+    geofences = GeofenceServer(settings.geofence_folder, map_name, map_server)
+    geofences.load()
 
     device_registry = DeviceRegistry()
     camera_registry = CameraRegistry()
@@ -76,7 +80,7 @@ def build_services(settings: Settings) -> Services:
     # and mission drive also need each other. Both cycles are closed after
     # construction with bind_*() calls.
     zenoh_gateway = ZenohGateway(
-        settings, device_registry, websocket_manager, anomaly_registry, map_server, camera_registry
+        settings, device_registry, websocket_manager, anomaly_registry, map_server, camera_registry, geofences
     )
     investigation = InvestigationCoordinator(
         anomaly_registry=anomaly_registry,
@@ -136,5 +140,6 @@ def build_services(settings: Settings) -> Services:
         camera_stream=camera_stream,
         websocket_manager=websocket_manager,
         zenoh_gateway=zenoh_gateway,
+        geofences=geofences,
         devtools=DevtoolsService(settings.runs_dir, settings.runs_owner, zenoh_gateway, device_registry),
     )

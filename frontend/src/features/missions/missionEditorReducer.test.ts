@@ -37,16 +37,14 @@ describe("missionEditorReducer", () => {
       name: "Patrol A",
       mapName: "demo",
       frameId: "map",
-      description: null,
       infiniteLoop: false,
       waypoints: [
-        { waypointId: "wp1", x: 0, y: 0, yaw: null, type: "patrol" },
-        { waypointId: "wp2", x: 1, y: 1, yaw: null, type: "patrol" },
+        { waypointId: "wp1", x: 0, y: 0, yaw: null },
+        { waypointId: "wp2", x: 1, y: 1, yaw: null },
       ],
       loopCount: 3,
       createdAt: null,
       updatedAt: null,
-      metadata: {},
     };
     const state = missionEditorReducer(BLANK_STATE, { type: "OPEN", mission });
     expect(state.name).toBe("Patrol A");

@@ -12,6 +12,7 @@ from core.anomaly_registry import AnomalyRegistry
 from core.camera_registry import CameraRegistry
 from core.device_registry import DeviceRegistry
 from core.errors import DeviceTypeMismatchError, MapUnavailableError
+from core.geofence_server import GeofenceServer
 from core.map_server import MapServer
 from core.websocket_manager import WebSocketManager
 from models.anomaly import AnomalyFeedbackMessage, AnomalyStateMessage
@@ -56,6 +57,7 @@ class ZenohGateway:
         anomaly_registry: AnomalyRegistry,
         map_server: MapServer,
         camera_registry: CameraRegistry,
+        geofences: GeofenceServer | None = None,
     ) -> None:
         self._settings = settings
         self._device_registry = device_registry
@@ -63,10 +65,12 @@ class ZenohGateway:
         self._anomaly_registry = anomaly_registry
         self._map_server = map_server
         self._camera_registry = camera_registry
+        self._geofences = geofences
         self._investigation: InvestigationCoordinator | None = None
         self._mission_drive_coordinator: MissionDriveCoordinator | None = None
         self._session = None
         self._subscribers: list = []
+        self._geofence_queryable = None
         # device_id -> ((x, y, frame_id), (lat, lon)): towers never move.
         self._last_projection: dict[str, tuple[tuple[float, float, str], tuple[float, float] | None]] = {}
         self._camera_sessions: CameraStreamService | None = None
@@ -108,6 +112,9 @@ class ZenohGateway:
             config.insert_json5("connect/endpoints", json.dumps([self._settings.zenoh_router]))
             self._session = zenoh.open(config)
             self._subscribers = [self._session.declare_subscriber(key, handler) for key, handler in subscriptions]
+            self._geofence_queryable = self._session.declare_queryable(
+                self._settings.zenoh_geofences_keyexpr, self._on_geofence_query
+            )
             logger.info(
                 "Zenoh session opened on %s; subscribed to %s",
                 self._settings.zenoh_router,
@@ -116,6 +123,7 @@ class ZenohGateway:
         except Exception:
             self._session = None
             self._subscribers = []
+            self._geofence_queryable = None
             logger.error("Failed to start Zenoh gateway", exc_info=True)
             raise
 
@@ -123,10 +131,19 @@ class ZenohGateway:
         for subscriber in self._subscribers:
             subscriber.undeclare()
         self._subscribers = []
+        if self._geofence_queryable is not None:
+            self._geofence_queryable.undeclare()
+            self._geofence_queryable = None
         if self._session is not None:
             self._session.close()
             self._session = None
         logger.info("Zenoh gateway stopped")
+
+    def _on_geofence_query(self, query) -> None:
+        # No reply without a saved file: Anomaly Detection keeps its local zones.
+        payload = self._geofences.wire_payload() if self._geofences is not None else None
+        if payload is not None:
+            query.reply(self._settings.zenoh_geofences_keyexpr, payload)
 
     def _on_zenoh_device_sample(self, sample) -> None:
         # Zenoh invokes this from its own thread, not the asyncio event loop.

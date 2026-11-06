@@ -36,6 +36,7 @@ def settings(tmp_path: Path) -> Settings:
         zenoh_enabled=False,
         database_url=None,
         runs_dir=str(tmp_path / "data" / "runs"),
+        geofence_folder=str(tmp_path / "geofences"),
         device_monitor_interval_sec=3600,  # tests drive the monitor's checks themselves
     )
 
