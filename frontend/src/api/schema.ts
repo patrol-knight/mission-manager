@@ -697,15 +697,7 @@ export interface components {
          * GeofenceSet
          * @description Every zone of the loaded map. Empty means no restricted zones.
          */
-        "GeofenceSet-Input": {
-            /** Zones */
-            zones: components["schemas"]["GeofenceZone"][];
-        };
-        /**
-         * GeofenceSet
-         * @description Every zone of the loaded map. Empty means no restricted zones.
-         */
-        "GeofenceSet-Output": {
+        GeofenceSet: {
             /** Zones */
             zones: components["schemas"]["GeofenceZone"][];
         };
@@ -1460,7 +1452,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["GeofenceSet-Output"];
+                    "application/json": components["schemas"]["GeofenceSet"];
                 };
             };
         };
@@ -1474,7 +1466,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["GeofenceSet-Input"];
+                "application/json": components["schemas"]["GeofenceSet"];
             };
         };
         responses: {
@@ -1484,7 +1476,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["GeofenceSet-Output"];
+                    "application/json": components["schemas"]["GeofenceSet"];
                 };
             };
             /** @description Validation Error */

@@ -1,7 +1,7 @@
 import type { components } from "../../api/schema";
 import { http } from "../../api/httpClient";
 
-export type GeofenceSet = components["schemas"]["GeofenceSet-Output"];
+export type GeofenceSet = components["schemas"]["GeofenceSet"];
 
 export const geofenceApi = {
   get: () => http.get<GeofenceSet>("/api/geofences"),
