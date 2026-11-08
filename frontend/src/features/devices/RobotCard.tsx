@@ -7,7 +7,7 @@ import { Card } from "../../components/ui/Card";
 import { Pill } from "../../components/ui/Pill";
 import { useConnectedRobot } from "./useConnectedRobot";
 import { useDeviceInspector } from "./useDeviceInspector";
-import { robotState, robotMode, robotStatus } from "./robotStatus";
+import { robotMode, robotStatus, useSettledRobotState } from "./robotStatus";
 import { Speed } from "./Speed";
 
 /** The robot: what it's doing, its name, then the two live readings an
@@ -19,6 +19,7 @@ export function RobotCard() {
   const connected = useConnectedRobot() !== null;
   const investigation = useInvestigationStore((s) => s.investigation);
   const execution = useMissionStore((s) => s.execution);
+  const state = useSettledRobotState(robot);
   const { openInspector } = useDeviceInspector();
   const setHoveredDevice = useMapHighlightStore((s) => s.setHoveredDevice);
   useEffect(() => () => setHoveredDevice(null), [setHoveredDevice]);
@@ -31,7 +32,7 @@ export function RobotCard() {
     );
   }
 
-  const status = robotStatus(connected, investigation, execution, robotState(robot));
+  const status = robotStatus(connected, investigation, execution, state);
   const mode = robotMode(robot);
   const name = robot.deviceId;
   return (

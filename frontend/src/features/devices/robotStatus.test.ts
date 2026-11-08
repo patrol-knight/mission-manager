@@ -1,5 +1,6 @@
-import { describe, it, expect } from "vitest";
-import { robotMode, robotStatus, robotUnavailableHint } from "./robotStatus";
+import { act, renderHook } from "@testing-library/react";
+import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
+import { robotMode, robotStatus, robotUnavailableHint, useSettledRobotState } from "./robotStatus";
 import type { Device } from "../../types/domain";
 import { missionProgress, missionStatus, targetWaypointIndex } from "../missions/missionStatus";
 import type { MissionExecutionState, MissionStatus } from "../missions/missionTypes";
@@ -42,10 +43,16 @@ describe("robotStatus", () => {
   });
 
   it("follows the mission otherwise", () => {
-    expect(robotStatus(true, null, execution("running"), "ready").label).toBe("Patrolling");
+    expect(robotStatus(true, null, execution("running"), "ready").label).toBe("Waiting");
     expect(robotStatus(true, null, execution("paused"), "ready").label).toBe("Holding");
     expect(robotStatus(true, null, execution("ready"), "ready").label).toBe("Ready");
     expect(robotStatus(true, null, null, "ready").label).toBe("Ready");
+  });
+
+  it("shows an obstacle over the investigation and mission", () => {
+    expect(robotStatus(true, investigation, execution("running"), "blocked").label).toBe("Blocked");
+    expect(robotStatus(true, null, execution("running"), "blocked").label).toBe("Blocked");
+    expect(robotStatus(true, null, null, "blocked").label).toBe("Blocked");
   });
 
   it("is not ready when the robot reports no state or an unknown one", () => {
@@ -63,12 +70,16 @@ describe("robotUnavailableHint", () => {
     expect(robotUnavailableHint(null)).toBe("The robot is offline");
     expect(robotUnavailableHint(robot("failure"))).toBe("Please adjust the robot");
     expect(robotUnavailableHint(robot("notready"))).toBe("The robot is not ready");
+    expect(robotUnavailableHint(robot("failure", { reason: "not_moving" }))).toBe(
+      "The robot stopped moving. Drive it with RC, then Resume",
+    );
   });
 
   it("is null when the robot can drive", () => {
     expect(robotUnavailableHint(robot("ready"))).toBeNull();
     expect(robotUnavailableHint(robot("arrived"))).toBeNull();
     expect(robotUnavailableHint(robot("navigating"))).toBeNull();
+    expect(robotUnavailableHint(robot("blocked"))).toBeNull();
   });
 
   it("is manual or e-stopped when state_machine says so, even if Autoware is ready", () => {
@@ -85,6 +96,34 @@ describe("robotUnavailableHint", () => {
   it("is not ready without a known state", () => {
     expect(robotUnavailableHint(robot())).toBe("The robot is not ready");
     expect(robotUnavailableHint(robot("charging"))).toBe("The robot is not ready");
+  });
+});
+
+describe("useSettledRobotState", () => {
+  const robot = (state: string) => ({ deviceId: "r", status: { state } }) as unknown as Device;
+
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it("holds the previous state through a brief ready", () => {
+    const { result, rerender } = renderHook((r: Device) => useSettledRobotState(r), { initialProps: robot("navigating") });
+    rerender(robot("ready"));
+    act(() => void vi.advanceTimersByTime(500));
+    expect(result.current).toBe("navigating");
+    rerender(robot("navigating"));
+    act(() => void vi.advanceTimersByTime(1000));
+    expect(result.current).toBe("navigating");
+  });
+
+  it("settles on a lasting ready, and follows anything else at once", () => {
+    const { result, rerender } = renderHook((r: Device) => useSettledRobotState(r), { initialProps: robot("navigating") });
+    rerender(robot("ready"));
+    act(() => void vi.advanceTimersByTime(1000));
+    expect(result.current).toBe("ready");
+    rerender(robot("failure"));
+    expect(result.current).toBe("failure");
+    rerender(robot("ready"));
+    expect(result.current).toBe("ready");
   });
 });
 

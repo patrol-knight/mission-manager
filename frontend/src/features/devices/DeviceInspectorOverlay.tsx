@@ -10,7 +10,7 @@ import { Modal, ModalHeader } from "../../components/ui/Modal";
 import { Note } from "../../components/ui/Note";
 import { Pill, type PillTone } from "../../components/ui/Pill";
 import { deviceConnectivity, type DeviceConnectivity } from "./connectivity";
-import { robotState, robotMode, robotStatus } from "./robotStatus";
+import { robotMode, robotStatus, useSettledRobotState } from "./robotStatus";
 import layout from "../cameras/CameraWindow.module.css";
 
 const CONNECTIVITY_TONE: Record<DeviceConnectivity["status"], PillTone> = {
@@ -35,12 +35,13 @@ export function DeviceInspectorOverlay() {
   const alerts = useDeviceStore((s) => (selectedDeviceId ? (selectAlertCounts(s)[selectedDeviceId] ?? 0) : 0));
   const investigation = useInvestigationStore((s) => s.investigation);
   const execution = useMissionStore((s) => s.execution);
+  const state = useSettledRobotState(device ?? null);
 
   if (!inspectorOpen || !device) return null;
 
   const connectivity = deviceConnectivity(device, wsStatus === "connected");
   const mode = device.type === "robot" ? robotMode(device) : null;
-  const activity = device.type === "robot" ? robotStatus(connectivity.status === "online", investigation, execution, robotState(device)) : null;
+  const activity = device.type === "robot" ? robotStatus(connectivity.status === "online", investigation, execution, state) : null;
 
   return (
     <Modal label={`${device.deviceId} inspector`} onClose={closeInspector} variant="fullscreen">

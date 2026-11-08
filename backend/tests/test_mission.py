@@ -187,7 +187,7 @@ def test_a_goal_state_machine_never_got_is_sent_again(sim: Sim, code: str):
     assert sim.mission_status() == "running"
 
 
-@pytest.mark.parametrize("code", ["route_rejected", "route_aborted"])
+@pytest.mark.parametrize("code", ["route_rejected", "route_aborted", "not_moving"])
 def test_an_unroutable_goal_pauses_the_mission_without_a_cancel(sim: Sim, code: str):
     sim.robot(*sim.waypoints[2])
     target = sim.client.post("/api/missions/current/start").json()["target_waypoint_index"]

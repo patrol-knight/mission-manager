@@ -161,7 +161,7 @@ class MissionService:
     # -- Aborting autonomy ------------------------------------------------------
 
     def pause_on_failure(self, reason: str) -> bool:
-        """The robot couldn't route its goal: a running mission pauses with its
+        """The robot couldn't finish its goal: a running mission pauses with its
         progress kept, and no cancel, so Autoware keeps retrying while the
         operator drives the robot back onto the lanes; Resume or Cancel then.
         An investigation is aborted instead. Returns whether anything changed."""
@@ -232,7 +232,8 @@ class MissionService:
             # route set, so it must not resume on release.
             reason = robot.unavailable_reason
             if reason == "failure":
-                self.pause_on_failure("robot_failure")
+                cause = robot.status.get("reason")
+                self.pause_on_failure(f"goal_{cause}" if cause else "robot_failure")
             else:
                 self.abort_autonomy(f"robot_{reason}", send_cancel=reason in ("notready", "estop"))
 

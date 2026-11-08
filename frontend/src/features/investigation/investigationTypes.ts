@@ -52,7 +52,7 @@ export interface RawAutonomyAborted {
 }
 
 /** Wire shape of `autonomy.paused`: the mission was paused because the robot
- * couldn't route its goal. */
+ * couldn't finish its goal. */
 export interface RawAutonomyPaused {
   reason: string;
 }
@@ -65,12 +65,13 @@ const ABORT_REASONS: Record<string, string> = {
   robot_notready: "The robot is not ready",
   goal_route_rejected: "No route to the goal",
   goal_route_aborted: "The route was aborted",
+  goal_not_moving: "The robot stopped moving",
   goal_manual_takeover: "The robot was taken over manually",
   goal_route_cleared: "The route was cleared",
   goal_cancelled: "The goal was cancelled on the robot",
 };
 
-const FAILURE_REASONS = ["robot_failure", "goal_route_rejected", "goal_route_aborted"];
+const FAILURE_REASONS = ["robot_failure", "goal_route_rejected", "goal_route_aborted", "goal_not_moving"];
 
 export function isFailureReason(reason: string): boolean {
   return FAILURE_REASONS.includes(reason);
@@ -78,6 +79,18 @@ export function isFailureReason(reason: string): boolean {
 
 export function describeAbort(raw: RawAutonomyAborted): string {
   return ABORT_REASONS[raw.reason] ?? `Stopped (${raw.reason})`;
+}
+
+export function describePause(raw: RawAutonomyPaused): { title: string; hint: string } {
+  return raw.reason === "goal_not_moving"
+    ? {
+        title: "The robot stopped moving. Mission paused.",
+        hint: "Drive the robot with RC, then Resume once it's ready, or Cancel the mission.",
+      }
+    : {
+        title: "No route from where the robot is. Mission paused.",
+        hint: "Drive the robot back onto the lanes with RC, then Resume once it's ready, or Cancel the mission.",
+      };
 }
 
 /** On site without a verdict: the robot can't leave and other anomalies can't be picked yet. */

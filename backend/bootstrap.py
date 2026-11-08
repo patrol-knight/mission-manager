@@ -10,6 +10,7 @@ from core.device_registry import DeviceRegistry
 from core.devtools import DevtoolsService
 from core.errors import MapUnavailableError
 from core.geofence_server import GeofenceServer
+from core.goal_result import PAUSE_CODES
 from core.investigation import InvestigationCoordinator
 from core.map_server import MapServer
 from core.mission_drive import MissionDriveCoordinator
@@ -118,7 +119,7 @@ def build_services(settings: Settings) -> Services:
     )
 
     def on_goal_failed(reason: str) -> None:
-        if reason in ("route_rejected", "route_aborted"):
+        if reason in PAUSE_CODES:
             mission_service.pause_on_failure(f"goal_{reason}")
         else:
             mission_service.abort_autonomy(f"goal_{reason}", send_cancel=False)

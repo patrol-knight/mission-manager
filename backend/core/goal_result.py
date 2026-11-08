@@ -4,6 +4,8 @@ from models.camera import CommandResult
 
 # state_machine never got the goal: sending it again is safe.
 RESEND_CODES = frozenset({"goal_dropped", "state_machine_unavailable"})
+# The robot can be recovered: the mission pauses with its progress kept.
+PAUSE_CODES = frozenset({"route_rejected", "route_aborted", "not_moving"})
 
 
 class GoalOutcome(str, Enum):

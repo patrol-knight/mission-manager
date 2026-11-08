@@ -7,7 +7,7 @@ from models.base import WireModel
 
 # The only states a robot can take a mission in; anything else, including a
 # missing state, counts as not ready.
-ROBOT_AVAILABLE_STATES = ("ready", "navigating", "arrived")
+ROBOT_AVAILABLE_STATES = ("ready", "navigating", "blocked", "arrived")
 
 
 class DeviceType(str, Enum):
