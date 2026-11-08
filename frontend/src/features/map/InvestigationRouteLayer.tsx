@@ -22,8 +22,8 @@ const ROUTE_PAINT: maplibregl.LineLayerSpecification["paint"] = {
 export function InvestigationRouteLayer() {
   const { map } = useContext(MapContext);
   const route = useInvestigationStore((s) => s.investigation?.route ?? null);
-  const robotLon = useDeviceStore((s) => selectRobot(s)?.pose.lon ?? null);
-  const robotLat = useDeviceStore((s) => selectRobot(s)?.pose.lat ?? null);
+  const robotLon = useDeviceStore((s) => selectRobot(s)?.pose?.lon ?? null);
+  const robotLat = useDeviceStore((s) => selectRobot(s)?.pose?.lat ?? null);
 
   const remaining = useMemo<GeoJSON.Feature<GeoJSON.LineString> | null>(() => {
     if (!route || robotLon === null || robotLat === null) return route;

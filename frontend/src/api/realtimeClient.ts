@@ -20,6 +20,7 @@ import {
   investigationFromRaw,
   type Investigation,
   type RawAutonomyAborted,
+  type RawAutonomyPaused,
   type RawInvestigation,
 } from "../features/investigation/investigationTypes";
 import type { ConnectionStatus, WsEnvelope } from "../types/ws";
@@ -79,6 +80,7 @@ export interface RealtimeEvents {
   "investigation.updated": Investigation | null;
   /** Mission and investigation were stopped, e.g. the robot was lost. */
   "autonomy.aborted": RawAutonomyAborted;
+  "autonomy.paused": RawAutonomyPaused;
   "cameras.snapshot": CameraState[];
   /** A camera's stream_state changed (idle/connecting/live/no_signal/offline/error). */
   "camera.updated": CameraState;
@@ -123,6 +125,7 @@ const ROUTES: Record<string, Route> = {
     d ? investigationFromRaw(d as RawInvestigation) : null,
   ),
   "autonomy.aborted": route("autonomy.aborted", (d) => d as RawAutonomyAborted),
+  "autonomy.paused": route("autonomy.paused", (d) => d as RawAutonomyPaused),
   "cameras.snapshot": route("cameras.snapshot", (d) => (d as RawCameraState[]).map(cameraStateFromRaw)),
   "camera.updated": route("camera.updated", (d) => cameraStateFromRaw(d as RawCameraState)),
   "camera.signal": route("camera.signal", (d) => d as RawCameraSignal),

@@ -24,6 +24,10 @@ try:
 except ImportError:
     _LANELET2_AVAILABLE = False
 
+# A stretch of a lanelet a route drives: the lanelet, and from/to as 0..1
+# shares of its centerline.
+_Span = tuple[object, float, float]
+
 
 class MapServer:
     def __init__(self) -> None:
@@ -78,8 +82,11 @@ class MapServer:
             self._map_bounds = self._compute_bounds()
             self._geojson = None
             self._centerlines = {}
+            self._legs.cache_clear()
             self._route.cache_clear()
-            self._map_name = Path(osm_path).stem
+            # Maps live in storage/maps/<name>/, so the folder names the map
+            # (the .osm file itself is always lanelet2_map.osm).
+            self._map_name = Path(osm_path).resolve().parent.name
             self._available = True
             logger.info(
                 "MapServer loaded %d lanelets from %s", len(self._lanelet_layer), osm_path
@@ -169,6 +176,15 @@ class MapServer:
         sx, sy = self._interp_centerline_xy_at(ll, t)
         lon, lat = self._to_latlon(sx, sy)
         return MapPoint(x=sx, y=sy, frame_id=frame_id, lanelet_id=ll.id, lat=lat, lon=lon)
+
+    def lane_yaw(self, x: float, y: float) -> float | None:
+        """The driving direction of the lane at (x, y), in the map frame, or
+        None without a map or a nearby lanelet. Sent as the goal heading so
+        the robot arrives facing along the road."""
+        if not self._available:
+            return None
+        ll = self._nearest_lanelet(x, y)
+        return self._get_lanelet_yaw(ll, x, y) if ll is not None else None
 
     def place_waypoint(self, lat: float, lon: float) -> MapPoint | None:
         """A clicked point snapped onto its lanelet, or None if it's off the road."""
@@ -291,59 +307,84 @@ class MapServer:
             return None
         return self._route(tuple((wp["x"], wp["y"]) for wp in waypoints))
 
+    def leg_at(self, waypoints: list[dict], x: float, y: float, first: int = 0) -> int | None:
+        """Which leg of the route through `waypoints` (leg i runs from waypoint
+        i to i + 1) the point (x, y) is driving along, looking from leg `first`
+        on, since a route can cross a lanelet twice. A point exactly on a
+        waypoint is on the leg into it. None when the point is on no leg."""
+        if not self._available or len(waypoints) < 2:
+            return None
+        legs = self._legs(tuple((wp["x"], wp["y"]) for wp in waypoints))
+        if legs is None:
+            return None
+        # Every lanelet under the point (distance 0): lanelets overlap at junctions.
+        under = findNearest(self._lanelet_layer, BasicPoint2d(x, y), 8)
+        at = {ll.id: self._project_point_onto_centerline(ll, x, y) for dist, ll in under if dist == 0.0}
+        for k in range(len(legs)):
+            i = (first + k) % len(legs)
+            for ll, t_start, t_end in legs[i]:
+                t = at.get(ll.id)
+                if t is not None and t_start < t <= t_end:
+                    return i
+        return None
+
+    @lru_cache(maxsize=256)  # noqa: B019 -- MapServer lives as long as the app
+    def _legs(self, points: tuple[tuple[float, float], ...]) -> tuple[tuple[_Span, ...], ...] | None:
+        """Each leg between consecutive points as the lanelets it drives, or
+        None if any leg has no route."""
+        legs = []
+        for (x0, y0), (x1, y1) in pairwise(points):
+            leg = self._leg(x0, y0, x1, y1)
+            if leg is None:
+                return None
+            legs.append(leg)
+        return tuple(legs)
+
+    def _leg(self, x0: float, y0: float, x1: float, y1: float) -> tuple[_Span, ...] | None:
+        start_ll = self._nearest_lanelet(x0, y0)
+        end_ll = self._nearest_lanelet(x1, y1)
+        if start_ll is None or end_ll is None:
+            return None
+
+        t0 = self._project_point_onto_centerline(start_ll, x0, y0)
+        t1 = self._project_point_onto_centerline(end_ll, x1, y1)
+
+        if start_ll.id == end_ll.id and t0 > t1:
+            # Behind on its own lanelet: once around through the next one.
+            following = list(self._routing_graph.following(start_ll))
+            if not following:
+                logger.info("No following lanelets for ll=%s, cannot reroute", start_ll.id)
+                return None
+            via_ll = following[0]
+            route1 = self._routing_graph.getRoute(start_ll, via_ll, 0)
+            route2 = self._routing_graph.getRoute(via_ll, end_ll, 0)
+            if route1 is None or route2 is None:
+                return None
+            sequence = list(route1.shortestPath()) + list(route2.shortestPath())[1:]
+        else:
+            route = self._routing_graph.getRoute(start_ll, end_ll, 0)
+            if route is None:
+                return None
+            sequence = list(route.shortestPath())
+
+        last = len(sequence) - 1
+        return tuple((ll, t0 if i == 0 else 0.0, t1 if i == last else 1.0) for i, ll in enumerate(sequence))
+
     @lru_cache(maxsize=256)  # noqa: B019 -- MapServer lives as long as the app
     def _route(self, points: tuple[tuple[float, float], ...]) -> dict | None:
-        waypoints = [{"x": x, "y": y} for x, y in points]
+        legs = self._legs(points)
+        if legs is None:
+            return None
 
         full_coords = []
         total_length = 0.0
-
-        for seg in range(len(waypoints) - 1):
-            wx0, wy0 = waypoints[seg]["x"],   waypoints[seg]["y"]
-            wx1, wy1 = waypoints[seg+1]["x"], waypoints[seg+1]["y"]
-
-            start_ll = self._nearest_lanelet(wx0, wy0)
-            end_ll   = self._nearest_lanelet(wx1, wy1)
-            if start_ll is None or end_ll is None:
-                return None
-
-            t0 = self._project_point_onto_centerline(start_ll, wx0, wy0)
-            t1 = self._project_point_onto_centerline(end_ll,   wx1, wy1)
-
-            if start_ll.id == end_ll.id and t0 > t1:
-                following = list(self._routing_graph.following(start_ll))
-                if not following:
-                    logger.info("No following lanelets for ll=%s, cannot reroute", start_ll.id)
-                    return None
-                via_ll = following[0]
-
-                route1 = self._routing_graph.getRoute(start_ll, via_ll, 0)
-                if route1 is None:
-                    logger.info("getRoute part1 returned None")
-                    return None
-                route2 = self._routing_graph.getRoute(via_ll, end_ll, 0)
-                if route2 is None:
-                    logger.info("getRoute part2 returned None")
-                    return None
-
-                path1 = list(route1.shortestPath())
-                path2 = list(route2.shortestPath())
-                ll_sequence = path1 + path2[1:]
-            else:
-                route = self._routing_graph.getRoute(start_ll, end_ll, 0)
-                if route is None:
-                    return None
-                ll_sequence = list(route.shortestPath())
-
+        for leg in legs:
             coords = []
-            for i, ll in enumerate(ll_sequence):
-                last = i == len(ll_sequence) - 1
-                t_start = t0 if i == 0 else 0.0
-                t_end = t1 if last else 1.0
+            for i, (ll, t_start, t_end) in enumerate(leg):
+                last = i == len(leg) - 1
                 # Each lanelet ends where the next begins: only the last keeps its end point.
                 coords.extend(self._sample_centerline(ll, t_start, t_end, include_end=last))
                 total_length += max(0.0, t_end - t_start) * self._centerline(ll)[1][-1]
-
             if full_coords and coords:
                 coords = coords[1:]
             full_coords.extend(coords)

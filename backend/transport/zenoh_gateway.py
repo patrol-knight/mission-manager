@@ -2,6 +2,8 @@ import json
 import logging
 import re
 import time
+from concurrent.futures import Future
+from concurrent.futures import TimeoutError as FutureTimeoutError
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
@@ -10,6 +12,7 @@ from core.anomaly_registry import AnomalyRegistry
 from core.camera_registry import CameraRegistry
 from core.device_registry import DeviceRegistry
 from core.errors import DeviceTypeMismatchError, MapUnavailableError
+from core.geofence_server import GeofenceServer
 from core.map_server import MapServer
 from core.websocket_manager import WebSocketManager
 from models.anomaly import AnomalyFeedbackMessage, AnomalyStateMessage
@@ -54,6 +57,7 @@ class ZenohGateway:
         anomaly_registry: AnomalyRegistry,
         map_server: MapServer,
         camera_registry: CameraRegistry,
+        geofences: GeofenceServer | None = None,
     ) -> None:
         self._settings = settings
         self._device_registry = device_registry
@@ -61,13 +65,16 @@ class ZenohGateway:
         self._anomaly_registry = anomaly_registry
         self._map_server = map_server
         self._camera_registry = camera_registry
+        self._geofences = geofences
         self._investigation: InvestigationCoordinator | None = None
         self._mission_drive_coordinator: MissionDriveCoordinator | None = None
         self._session = None
         self._subscribers: list = []
+        self._geofence_queryable = None
         # device_id -> ((x, y, frame_id), (lat, lon)): towers never move.
         self._last_projection: dict[str, tuple[tuple[float, float, str], tuple[float, float] | None]] = {}
         self._camera_sessions: CameraStreamService | None = None
+        self._awaited_results: dict[str, Future[CommandResult]] = {}
 
     def bind_camera_sessions(self, camera_sessions: "CameraStreamService") -> None:
         """Late-bound for the same reason as bind_coordinators: the service
@@ -105,6 +112,9 @@ class ZenohGateway:
             config.insert_json5("connect/endpoints", json.dumps([self._settings.zenoh_router]))
             self._session = zenoh.open(config)
             self._subscribers = [self._session.declare_subscriber(key, handler) for key, handler in subscriptions]
+            self._geofence_queryable = self._session.declare_queryable(
+                self._settings.zenoh_geofences_keyexpr, self._on_geofence_query
+            )
             logger.info(
                 "Zenoh session opened on %s; subscribed to %s",
                 self._settings.zenoh_router,
@@ -113,6 +123,7 @@ class ZenohGateway:
         except Exception:
             self._session = None
             self._subscribers = []
+            self._geofence_queryable = None
             logger.error("Failed to start Zenoh gateway", exc_info=True)
             raise
 
@@ -120,10 +131,19 @@ class ZenohGateway:
         for subscriber in self._subscribers:
             subscriber.undeclare()
         self._subscribers = []
+        if self._geofence_queryable is not None:
+            self._geofence_queryable.undeclare()
+            self._geofence_queryable = None
         if self._session is not None:
             self._session.close()
             self._session = None
         logger.info("Zenoh gateway stopped")
+
+    def _on_geofence_query(self, query) -> None:
+        # No reply without a saved file: Anomaly Detection keeps its local zones.
+        payload = self._geofences.wire_payload() if self._geofences is not None else None
+        if payload is not None:
+            query.reply(self._settings.zenoh_geofences_keyexpr, payload)
 
     def _on_zenoh_device_sample(self, sample) -> None:
         # Zenoh invokes this from its own thread, not the asyncio event loop.
@@ -182,14 +202,16 @@ class ZenohGateway:
         # truth for this projection -- so every later consumer (REST reads
         # via DeviceRegistry, and the broadcast below) gets it for free,
         # with no separate xy-to-lnglat round trip needed.
-        at = (state.pose.x, state.pose.y, state.pose.frame_id)
-        last = self._last_projection.get(state.device_id)
-        if last is not None and last[0] == at:
-            latlon = last[1]
-        else:
-            latlon = self._project_latlon(*at)
-            if latlon is not None:
-                self._last_projection[state.device_id] = (at, latlon)
+        latlon = None
+        if state.pose is not None:  # None: the robot isn't localized
+            at = (state.pose.x, state.pose.y, state.pose.frame_id)
+            last = self._last_projection.get(state.device_id)
+            if last is not None and last[0] == at:
+                latlon = last[1]
+            else:
+                latlon = self._project_latlon(*at)
+                if latlon is not None:
+                    self._last_projection[state.device_id] = (at, latlon)
         if latlon is not None:
             lat, lon = latlon
             state = state.model_copy(update={"pose": state.pose.model_copy(update={"lat": lat, "lon": lon})})
@@ -208,15 +230,8 @@ class ZenohGateway:
                     "data": view.model_dump(mode="json") if view else None,
                 }
             )
-            # Only a meaningful change (DeviceRegistry's own de-dupe) is
-            # forwarded -- both coordinators watch for an
-            # operational_state transition here rather than a separate
-            # Zenoh subscription of their own.
-            if view is not None:
-                if self._investigation is not None:
-                    self._investigation.on_device_state(view)
-                if self._mission_drive_coordinator is not None:
-                    self._mission_drive_coordinator.on_device_state(view)
+            if view is not None and self._mission_drive_coordinator is not None:
+                self._mission_drive_coordinator.on_device_state(view)
         return changed
 
     def ingest_anomaly_payload(
@@ -282,8 +297,16 @@ class ZenohGateway:
         except Exception as exc:
             logger.warning("Discarding malformed command result payload: %s", exc)
             return False
+        if result.status not in ("accepted", "running"):
+            awaited = self._awaited_results.pop(result.request_id, None)
+            if awaited is not None:
+                awaited.set_result(result)
         if self._camera_sessions is not None:
             self._camera_sessions.on_command_result(result)
+        if self._investigation is not None:
+            self._investigation.on_command_result(result)
+        if self._mission_drive_coordinator is not None:
+            self._mission_drive_coordinator.on_command_result(result)
         return True
 
     def ingest_camera_signal_payload(self, payload: bytes | str | dict, key_expr: str) -> bool:
@@ -322,6 +345,22 @@ class ZenohGateway:
             return False
         return True
 
+    def declare_subscriber(self, key: str, handler):
+        """For devtools' tap; None while the session is not open."""
+        if self._session is None:
+            return None
+        return self._session.declare_subscriber(key, handler)
+
+    def query(self, selector: str, timeout_sec: float = 1.0) -> list[tuple[str, bytes]]:
+        """Blocking get, e.g. on the router's admin space (@/...)."""
+        if self._session is None:
+            return []
+        return [
+            (str(reply.ok.key_expr), reply.ok.payload.to_bytes())
+            for reply in self._session.get(selector, timeout=timeout_sec)
+            if reply.ok is not None
+        ]
+
     def publish_camera_signal(self, device_id: str, camera_id: str, signal: dict) -> bool:
         """Relays the browser's answer/ICE (from the WebSocket) to the device's gateway."""
         key = self._settings.zenoh_camera_webrtc_to_device_keyexpr.format(device_id=device_id, camera_id=camera_id)
@@ -343,3 +382,19 @@ class ZenohGateway:
         payload = {"command": command, "request_id": request_id, **(fields or {})}
         key = self._settings.zenoh_device_commands_keyexpr.format(device_id=device_id)
         return self._put(key, json.dumps(payload).encode("utf-8"), f"command {command!r} to {device_id}")
+
+    def request_command(
+        self, device_id: str, command: str, request_id: str, fields: dict | None, timeout_sec: float
+    ) -> CommandResult | None:
+        """publish_command, then waits for its outcome. None if it couldn't be
+        sent or no outcome came in time. Blocks: not for the event loop."""
+        awaited: Future[CommandResult] = Future()
+        self._awaited_results[request_id] = awaited
+        try:
+            if not self.publish_command(device_id, command, request_id, fields):
+                return None
+            return awaited.result(timeout_sec)
+        except FutureTimeoutError:
+            return None
+        finally:
+            self._awaited_results.pop(request_id, None)

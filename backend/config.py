@@ -14,11 +14,12 @@ class Settings(BaseSettings):
 
     cors_origins: list[str] = ["http://localhost:5173"]
 
-    map_osm_path: str = "storage/maps/lanelet2_map.osm"
-    map_projector_path: str = "storage/maps/map_projector_info.yaml"
+    map_osm_path: str = "storage/maps/nsh/lanelet2_map.osm"
+    map_projector_path: str = "storage/maps/nsh/map_projector_info.yaml"
 
     mission_folder: str = "storage/missions"
     app_state_path: str = "storage/app_state.yaml"
+    geofence_folder: str = "storage/geofences"
 
     device_offline_timeout_sec: float = 3.0
     # How long the robot may stay offline before the mission and any
@@ -35,6 +36,10 @@ class Settings(BaseSettings):
     # postgresql://mission_manager:mission_manager@localhost:5432/mission_manager
     database_url: str | None = None
 
+    # Devtools recordings, one folder per run.
+    runs_dir: str = "../data/runs"
+    runs_owner: str | None = None  # "uid:gid"
+
     zenoh_enabled: bool = False
     zenoh_router: str = "tcp/localhost:7447"
     zenoh_device_state_keyexpr: str = "devices/*/state"
@@ -43,6 +48,8 @@ class Settings(BaseSettings):
     zenoh_anomaly_feedback_keyexpr: str = "anomalies/{anomaly_id}/feedback"
     # Outbound: {device_id} is substituted by ZenohGateway.publish_command().
     zenoh_device_commands_keyexpr: str = "devices/{device_id}/commands"
+    # Queryable: Anomaly Detection asks for the zones, nothing is published.
+    zenoh_geofences_keyexpr: str = "geofences/restricted_zones"
 
     # Video streaming (see ../zenoh_bridge/docs/video_streaming_pipeline.md).
     # start_camera_stream/stop_camera_stream commands ride the existing
@@ -73,9 +80,7 @@ class Settings(BaseSettings):
     # autonomously driving the current mission's waypoints.
     mission_drive_enabled: bool = True
 
-    # MissionDriveCoordinator: how long to wait for the robot to report
-    # "arrived" after a waypoint navigate_to_goal before re-sending it. The
-    # robot is the source of truth for arrival -- this is only a safety net
-    # for a lost command, not a simulated travel time. (Investigations
-    # deliberately have no timeout; the operator decides when to Cancel.)
-    navigation_timeout_sec: float = 60.0
+    # MissionDriveCoordinator: how long to wait for state_machine to take a
+    # waypoint goal (a "running" result) before sending it again. Once it has
+    # it, only the goal's own result ends it.
+    navigation_timeout_sec: float = 10.0

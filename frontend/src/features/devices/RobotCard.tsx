@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, type ReactNode } from "react";
 import { useDeviceStore, selectRobot } from "../../stores/deviceStore";
 import { useMapHighlightStore } from "../../stores/mapHighlightStore";
 import { useMissionStore } from "../../stores/missionStore";
@@ -7,7 +7,8 @@ import { Card } from "../../components/ui/Card";
 import { Pill } from "../../components/ui/Pill";
 import { useConnectedRobot } from "./useConnectedRobot";
 import { useDeviceInspector } from "./useDeviceInspector";
-import { robotStatus } from "./robotStatus";
+import { robotMode, robotStatus, useSettledRobotState } from "./robotStatus";
+import { Speed } from "./Speed";
 
 /** The robot: what it's doing, its name, then the two live readings an
  * operator acts on -- battery (when to stop) and speed (moving, stuck, or
@@ -18,6 +19,7 @@ export function RobotCard() {
   const connected = useConnectedRobot() !== null;
   const investigation = useInvestigationStore((s) => s.investigation);
   const execution = useMissionStore((s) => s.execution);
+  const state = useSettledRobotState(robot);
   const { openInspector } = useDeviceInspector();
   const setHoveredDevice = useMapHighlightStore((s) => s.setHoveredDevice);
   useEffect(() => () => setHoveredDevice(null), [setHoveredDevice]);
@@ -30,32 +32,36 @@ export function RobotCard() {
     );
   }
 
-  const status = robotStatus(connected, investigation, execution);
-  const name = robot.name ?? robot.deviceId;
+  const status = robotStatus(connected, investigation, execution, state);
+  const mode = robotMode(robot);
+  const name = robot.deviceId;
   return (
     <Card
       title="Robot"
       aside={
-        <Pill tone={status.tone} dot={status.live}>
-          {status.label}
-        </Pill>
+        <span style={{ display: "flex", gap: 6 }}>
+          {connected && mode && <Pill tone={mode.tone}>{mode.label}</Pill>}
+          <Pill tone={status.tone} dot={status.live}>
+            {status.label}
+          </Pill>
+        </span>
       }
       onClick={() => openInspector(robot.deviceId)}
       onMouseEnter={() => setHoveredDevice(robot.deviceId)}
       onMouseLeave={() => setHoveredDevice(null)}
-      aria-label={`${name}: ${status.label}. Open camera and status`}
+      aria-label={`${name}: ${connected && mode ? `${mode.label}, ` : ""}${status.label}. Open camera and status`}
     >
       <div style={{ marginTop: -6, fontSize: "var(--text-sm)", color: "var(--color-text-muted)" }}>{name}</div>
       <div style={{ display: "flex", gap: 20, marginTop: 10 }}>
         <Reading label="Battery" value={robot.battery !== null ? `${Math.round(robot.battery)}%` : "—"} />
-        <Reading label="Speed" value={robot.speed !== null ? `${robot.speed.toFixed(1)} m/s` : "—"} />
+        <Reading label="Speed" value={<Speed value={robot.speed} digits={1} />} />
       </div>
     </Card>
   );
 }
 
 /** A small uppercase label over its value. */
-function Reading({ label, value }: { label: string; value: string }) {
+function Reading({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
       <span style={{ fontSize: "var(--text-2xs)", letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--color-text-faint)" }}>

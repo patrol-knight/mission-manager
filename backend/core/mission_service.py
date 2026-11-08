@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 from core.device_registry import DeviceRegistry
 from core.errors import (
+    InvalidExecutionTransitionError,
     InvestigationActiveError,
     MapUnavailableError,
     MissionExecutionLockedError,
@@ -16,7 +17,7 @@ from core.mission_execution import ACTIVE_STATUSES, MissionExecutionManager
 from core.mission_server import MissionServer
 from core.websocket_manager import WebSocketManager
 from models.mission import Mission, MissionGeo, MissionSummary, WaypointGeo
-from models.mission_execution import MissionExecutionState
+from models.mission_execution import MissionExecutionState, MissionStatus
 from transport.zenoh_gateway import ZenohGateway
 
 if TYPE_CHECKING:
@@ -122,11 +123,11 @@ class MissionService:
         return state
 
     def start(self) -> MissionExecutionState:
-        """From the waypoint closest to the robot (waypoint 0 without a map)."""
+        """From where the robot is on the route (waypoint 0 without a map)."""
         self._assert_not_investigating()
         current = self._missions.get_current()
-        closest = self._drive.closest_waypoint_index(current) if current is not None else None
-        result = self._execution.start(closest if closest is not None else 0)
+        index = self._drive.join_index(current) if current is not None else None
+        result = self._execution.start(index if index is not None else 0)
         self._drive.advance()
         return result
 
@@ -137,10 +138,12 @@ class MissionService:
         return result
 
     def resume(self) -> MissionExecutionState:
+        """The operator may have driven the robot with RC meanwhile, maybe past
+        its goal: it rejoins where it now is rather than turning back."""
         self._assert_not_investigating()
-        result = self._execution.resume()
-        self._drive.advance()
-        return result
+        self._execution.resume()
+        self._drive.rejoin()
+        return self._execution.get_state()
 
     def cancel(self) -> MissionExecutionState:
         self._assert_not_investigating()
@@ -159,12 +162,28 @@ class MissionService:
 
     # -- Aborting autonomy ------------------------------------------------------
 
-    def abort_autonomy(self, reason: str) -> bool:
+    def pause_on_failure(self, reason: str) -> bool:
+        """The robot couldn't finish its goal: a running mission pauses with its
+        progress kept, and no cancel, so Autoware keeps retrying while the
+        operator drives the robot back onto the lanes; Resume or Cancel then.
+        An investigation is aborted instead. Returns whether anything changed."""
+        if self._investigation.is_active():
+            return self.abort_autonomy(reason, send_cancel=False)
+        try:
+            self._execution.pause()
+        except InvalidExecutionTransitionError:
+            return False
+        self._drive.abort()
+        self._websocket.broadcast_threadsafe({"type": "autonomy.paused", "data": {"reason": reason}})
+        logger.warning("Mission paused (%s)", reason)
+        return True
+
+    def abort_autonomy(self, reason: str, send_cancel: bool = True) -> bool:
         """Stops everything the robot does on its own: cancels the
         investigation (no verdict) and drops the mission to READY. Nothing
         resumes by itself -- the operator has to Start or Investigate again.
-        Used when the robot is lost (abort_if_robot_lost) and, later, when the
-        joystick takes over. Returns whether anything was running."""
+        Used when the robot is lost (abort_if_robot_lost) or reports it can't
+        drive (abort_if_robot_unavailable). Returns whether anything was running."""
         cancelled = self._investigation.abort()
         aborted = self._execution.abort()
         if cancelled is None and not aborted:
@@ -172,7 +191,7 @@ class MissionService:
         self._drive.abort()
 
         robot = self._devices.get_robot()
-        if robot is not None:
+        if robot is not None and send_cancel:
             if robot.connected:
                 self._gateway.publish_command(
                     robot.device_id, "cancel_navigation", request_id=f"abort-{uuid.uuid4().hex[:8]}"
@@ -202,6 +221,24 @@ class MissionService:
         if mission_active or self._investigation.is_active():
             self.abort_autonomy("robot_disconnected")
 
+    def abort_if_robot_unavailable(self) -> None:
+        """Call on every monitor tick. A paused mission is left alone: Resume
+        waits for the robot to be ready again."""
+        robot = self._devices.get_connected_robot()
+        if robot is None or not robot.unavailable:
+            return
+        execution = self._execution.get_state()
+        running = execution is not None and execution.status == MissionStatus.RUNNING
+        if running or self._investigation.is_active():
+            # A takeover has already cleared the route. An e-stop leaves the
+            # route set, so it must not resume on release.
+            reason = robot.unavailable_reason
+            if reason == "failure":
+                cause = robot.status.get("reason")
+                self.pause_on_failure(f"goal_{cause}" if cause else "robot_failure")
+            else:
+                self.abort_autonomy(f"robot_{reason}", send_cancel=reason in ("notready", "estop"))
+
     # -- Helpers -------------------------------------------------------------
 
     def _assert_not_investigating(self) -> None:
@@ -214,6 +251,15 @@ class MissionService:
             self._assert_not_investigating()
 
     def _with_map_name(self, mission: Mission) -> Mission:
+        """Fills in what the map decides: the map's name, and each waypoint's
+        yaw -- the lane's driving direction there, sent as the goal heading.
+        Recomputed on every save, so a moved waypoint gets its new lane's."""
+        if self._map.is_available():
+            waypoints = [
+                wp.model_copy(update={"yaw": yaw}) if (yaw := self._map.lane_yaw(wp.x, wp.y)) is not None else wp
+                for wp in mission.waypoints
+            ]
+            mission = mission.model_copy(update={"waypoints": waypoints})
         if mission.map_name:
             return mission
         map_name = self._map.get_info().map_name if self._map.is_available() else "default"

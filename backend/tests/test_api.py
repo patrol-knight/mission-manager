@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
         ("GET", "/api/map/bounds", None),
         ("POST", "/api/map/place-waypoint", {"lat": 0, "lon": 0}),
         ("POST", "/api/map/xy-to-lnglat", {"x": 0, "y": 0}),
+        ("POST", "/api/map/lnglat-to-xy", {"lat": 0, "lon": 0}),
         ("POST", "/api/map/route-preview", {"waypoints": [{"x": 0, "y": 0}, {"x": 1, "y": 1}]}),
     ],
 )
