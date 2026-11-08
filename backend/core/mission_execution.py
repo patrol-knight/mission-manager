@@ -168,7 +168,8 @@ class MissionExecutionManager:
     def join_at(self, waypoint_index: int) -> None:
         with self._lock:
             state = self._state
-            if state is None or state.status != MissionStatus.RUNNING:
+            # The same target is no join: its arrival still counts a loop.
+            if state is None or state.status != MissionStatus.RUNNING or state.target_waypoint_index == waypoint_index:
                 return
             self._update(state, target_waypoint_index=waypoint_index, joining=True)
 

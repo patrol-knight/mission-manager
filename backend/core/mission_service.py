@@ -123,11 +123,11 @@ class MissionService:
         return state
 
     def start(self) -> MissionExecutionState:
-        """From the waypoint closest to the robot (waypoint 0 without a map)."""
+        """From where the robot is on the route (waypoint 0 without a map)."""
         self._assert_not_investigating()
         current = self._missions.get_current()
-        closest = self._drive.closest_waypoint_index(current) if current is not None else None
-        result = self._execution.start(closest if closest is not None else 0)
+        index = self._drive.join_index(current) if current is not None else None
+        result = self._execution.start(index if index is not None else 0)
         self._drive.advance()
         return result
 
@@ -138,10 +138,12 @@ class MissionService:
         return result
 
     def resume(self) -> MissionExecutionState:
+        """The operator may have driven the robot with RC meanwhile, maybe past
+        its goal: it rejoins where it now is rather than turning back."""
         self._assert_not_investigating()
-        result = self._execution.resume()
-        self._drive.advance()
-        return result
+        self._execution.resume()
+        self._drive.rejoin()
+        return self._execution.get_state()
 
     def cancel(self) -> MissionExecutionState:
         self._assert_not_investigating()

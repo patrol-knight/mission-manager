@@ -59,6 +59,12 @@ class Mission(WireModel):
             raise ValueError("waypoint_id values must be unique within a mission")
         return self
 
+    def loop_points(self) -> list[dict]:
+        """The route the operator sees: every waypoint, then back to the first.
+        Leg i of it runs from waypoint i to waypoint i + 1."""
+        looped = [*self.waypoints, self.waypoints[0]] if len(self.waypoints) >= 2 else self.waypoints
+        return [{"x": wp.x, "y": wp.y} for wp in looped]
+
 
 class MissionSummary(WireModel):
     mission_id: str

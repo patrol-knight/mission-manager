@@ -95,6 +95,18 @@ def test_start_joins_at_the_closest_waypoint(sim: Sim):
     assert sim.mission_status() == "ready"  # one loop configured
 
 
+def along(a: tuple[float, float], b: tuple[float, float], share: float) -> tuple[float, float]:
+    return a[0] + share * (b[0] - a[0]), a[1] + share * (b[1] - a[1])
+
+
+def test_start_on_the_route_heads_on_along_it_even_past_a_closer_waypoint(sim: Sim):
+    w = sim.waypoints
+    sim.robot(*along(w[0], w[1], 0.25))  # w[0] is closer, but behind
+    started = sim.client.post("/api/missions/current/start").json()
+    assert started["target_waypoint_index"] == 1
+    assert sim.goal() == w[1]
+
+
 def test_joining_waypoint_0_finishes_no_loop(sim: Sim):
     w = sim.waypoints
     sim.robot(*w[0])
@@ -211,6 +223,35 @@ def test_after_a_failure_resume_sends_the_same_waypoint_again(sim: Sim):
     sim.robot(*w[2], "ready", mode="none")  # Autoware's retry found a route
     assert sim.client.post("/api/missions/current/resume").json()["status"] == "running"
     assert sim.goal() == w[target]
+
+
+def test_resume_after_driving_past_the_goal_with_rc_heads_on_instead_of_back(sim: Sim):
+    w = sim.waypoints
+    sim.robot(*w[0])
+    sim.client.post("/api/missions/current/start")
+    sim.drive_to(*w[0])
+    assert sim.execution()["target_waypoint_index"] == 1
+    sim.goal_result("failed", "not_moving")
+    sim.robot(*along(w[0], w[1], 0.5), "failure", mode="manual")
+    sim.robot(*along(w[1], w[2], 0.5), "ready", mode="none")  # RC'd past waypoint 1
+
+    resumed = sim.client.post("/api/missions/current/resume").json()
+    assert resumed["status"] == "running" and resumed["target_waypoint_index"] == 2
+    assert sim.goal() == w[2]
+
+
+def test_resume_in_place_keeps_the_loop_count(sim: Sim):
+    w = sim.waypoints
+    sim.robot(*w[0])
+    sim.client.post("/api/missions/current/start")
+    for i in [0, 1, 2]:
+        sim.drive_to(*w[i])
+    sim.client.post("/api/missions/current/pause")
+    sim.robot(*along(w[2], w[0], 0.5))
+    resumed = sim.client.post("/api/missions/current/resume").json()
+    assert resumed["target_waypoint_index"] == 0 and resumed["joining"] is False
+    sim.drive_to(*w[0])
+    assert sim.mission_status() == "ready"  # the one loop is done
 
 
 def test_after_a_failure_cancel_clears_it(sim: Sim):

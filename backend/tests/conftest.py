@@ -1,5 +1,6 @@
 """Shared fixtures: an app on a throwaway copy of storage/, a straight-line
-map instead of lanelet2 routing (deterministic, no map files needed), a fake
+map instead of lanelet2 routing (the route between waypoints is the straight
+line too) (deterministic, no map files needed), a fake
 robot and anomaly source fed through the real Zenoh ingest path, and a record
 of every command the backend would have sent over Zenoh."""
 
@@ -7,6 +8,7 @@ import math
 import shutil
 import time
 from dataclasses import dataclass, field
+from itertools import pairwise
 from pathlib import Path
 
 import pytest
@@ -61,6 +63,23 @@ def _straight_route(points: list[dict]) -> dict:
     }
 
 
+def _straight_leg_at(points: list[dict], x: float, y: float, first: int = 0) -> int | None:
+    """The straight leg (x, y) lies on, past its start and up to its end."""
+    legs = list(pairwise(points))
+    for k in range(len(legs)):
+        i = (first + k) % len(legs)
+        a, b = legs[i]
+        dx, dy = b["x"] - a["x"], b["y"] - a["y"]
+        length_sq = dx * dx + dy * dy
+        if length_sq == 0:
+            continue
+        along = ((x - a["x"]) * dx + (y - a["y"]) * dy) / length_sq
+        off = abs((x - a["x"]) * dy - (y - a["y"]) * dx) / math.sqrt(length_sq)
+        if 0 < along <= 1 and off < 1e-6:
+            return i
+    return None
+
+
 LANE_YAW = 0.5  # every lane of the fake map runs this way
 
 
@@ -75,6 +94,7 @@ def fake_map(services: Services, monkeypatch: pytest.MonkeyPatch) -> None:
     )
     monkeypatch.setattr(m, "xy_to_latlon", lambda x, y, frame_id="map": LatLon(lat=1.0, lon=2.0))
     monkeypatch.setattr(m, "get_route", _straight_route)
+    monkeypatch.setattr(m, "leg_at", _straight_leg_at)
     monkeypatch.setattr(m, "lane_yaw", lambda x, y: LANE_YAW)
 
 

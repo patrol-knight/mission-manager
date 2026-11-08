@@ -96,9 +96,8 @@ class MissionServer:
     def _loop_distance_m(self, mission: Mission, map_server: MapServer) -> float | None:
         if len(mission.waypoints) < 2:
             return None
-        looped = list(mission.waypoints) + [mission.waypoints[0]]
         try:
-            route = map_server.get_route([{"x": wp.x, "y": wp.y} for wp in looped])
+            route = map_server.get_route(mission.loop_points())
         except Exception:
             logger.warning(
                 "Failed to compute route distance for mission %s", mission.mission_id, exc_info=True

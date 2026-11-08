@@ -91,13 +91,14 @@ class MissionDriveCoordinator:
         return self._investigation is not None and self._investigation.is_active_for(device_id)
 
     def rejoin(self) -> None:
-        """After an investigation: retarget at the closest waypoint and drive there."""
+        """The robot may have moved off its goal (an investigation, or the
+        operator driving it with RC): retarget where it now is and drive there."""
         exec_state = self._mission_execution_manager.get_state()
         mission = self._mission_server.get_mission(exec_state.mission_id) if exec_state else None
         if mission is not None:
-            closest = self.closest_waypoint_index(mission)
-            if closest is not None:
-                self._mission_execution_manager.join_at(closest)
+            index = self.join_index(mission, exec_state.target_waypoint_index or 0)
+            if index is not None:
+                self._mission_execution_manager.join_at(index)
         self.advance()
 
     def advance(self) -> None:
@@ -155,13 +156,23 @@ class MissionDriveCoordinator:
             ", joining the route" if exec_state.joining else "",
         )
 
-    def closest_waypoint_index(self, mission: Mission) -> int | None:
-        """By lanelet route length, not straight-line distance: lanelets are
-        one-way, so a waypoint just behind the robot can be a full lap away."""
+    def join_index(self, mission: Mission, toward: int = 0) -> int | None:
+        """The waypoint the robot joins the mission at. On the route the
+        operator sees: the end of the leg it's on, so Autoware drives that
+        route (a leg is a shortest path, so is the rest of it), and waypoints
+        passed meanwhile are skipped. Legs are searched from the one into
+        `toward`, the current target, so the robot never skips ahead when the
+        route runs a lanelet twice. Off the route: the closest waypoint by
+        lanelet route length."""
         robot = self._device_registry.get_connected_robot()
         if robot is None or robot.pose is None or not self._map_server.is_available():
             return None
         fx, fy = robot.pose.x, robot.pose.y
+        count = len(mission.waypoints)
+        leg = self._map_server.leg_at(mission.loop_points(), fx, fy, first=(toward - 1) % count)
+        if leg is not None:
+            return (leg + 1) % count
+
         best: tuple[float, int] | None = None
         for index, waypoint in enumerate(mission.waypoints):
             route = self._map_server.get_route([{"x": fx, "y": fy}, {"x": waypoint.x, "y": waypoint.y}])
