@@ -3,12 +3,12 @@ from fastapi import APIRouter, Depends
 from api.deps import get_services
 from bootstrap import Services
 from models.map import (
+    XY,
     LatLon,
     LatLonQuery,
     MapPoint,
     PointQuery,
     RoutePreviewRequest,
-    XY,
 )
 
 router = APIRouter()

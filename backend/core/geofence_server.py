@@ -13,7 +13,7 @@ from models.geofence import GeofenceFile, GeofencePoint, GeofencePolygon, Geofen
 logger = logging.getLogger(__name__)
 
 
-class GeofenceServer(object):
+class GeofenceServer:
     """The loaded map's restricted zones, one file per map. Anomaly Detection
     asks for them over Zenoh (ZenohGateway), so saving is all a change needs.
 

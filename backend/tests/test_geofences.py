@@ -12,7 +12,7 @@ from bootstrap import Services
 from config import Settings
 from core.geofence_server import GeofenceServer
 from models.geofence import GeofenceSet
-from models.map import LatLon, XY
+from models.map import XY, LatLon
 from transport.zenoh_gateway import ZenohGateway
 
 SQUARE = [{"lat": 1.0, "lon": 2.0}, {"lat": 1.0, "lon": 3.0}, {"lat": 2.0, "lon": 3.0}]
