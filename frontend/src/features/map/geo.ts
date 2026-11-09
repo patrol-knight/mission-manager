@@ -8,6 +8,12 @@ export function headingDegrees(yaw: number): number {
   return 90 - (yaw * 180) / Math.PI;
 }
 
+/** Map-frame yaw of the line between two points. Flat-earth, as offsetLngLat. */
+export function yawBetween(from: { lng: number; lat: number }, to: { lng: number; lat: number }): number {
+  const dx = (to.lng - from.lng) * Math.cos((from.lat * Math.PI) / 180);
+  return Math.atan2(to.lat - from.lat, dx);
+}
+
 /** The point `distanceM` meters from (lon, lat) in map-frame direction
  * `angle` (radians CCW from east). Flat-earth approximation -- exact enough
  * over the few meters a camera sees. */

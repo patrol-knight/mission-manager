@@ -44,9 +44,7 @@ function VerifyDialog({ investigation }: { investigation: Investigation }) {
   const closeVerify = useInvestigationStore((s) => s.closeVerify);
   const setInvestigation = useInvestigationStore((s) => s.setInvestigation);
   const anomaly = useDeviceStore((s) => s.anomalies[investigation.anomalyId]);
-  const robotName = useDeviceStore((s) => s.devices[investigation.robotDeviceId]?.name ?? investigation.robotDeviceId);
   const sourceId = anomaly?.sourceDeviceId ?? null;
-  const sourceName = useDeviceStore((s) => (sourceId ? (s.devices[sourceId]?.name ?? sourceId) : null));
   // Whose camera the stage shows: the robot's (on site, the closest look) or
   // the tower's that reported it (the original angle). One stream at a time.
   const [view, setView] = useState<"robot" | "source">("robot");
@@ -75,8 +73,8 @@ function VerifyDialog({ investigation }: { investigation: Investigation }) {
         <div className={layout.stage}>
           {sourceId && (
             <div className={layout.switcher} role="tablist" aria-label="Camera">
-              <SwitchButton on={view === "robot"} onClick={() => setView("robot")} name={robotName} role="Robot" />
-              <SwitchButton on={view === "source"} onClick={() => setView("source")} name={sourceName ?? sourceId} role="Source" />
+              <SwitchButton on={view === "robot"} onClick={() => setView("robot")} name={investigation.robotDeviceId} role="Robot" />
+              <SwitchButton on={view === "source"} onClick={() => setView("source")} name={sourceId} role="Source" />
             </div>
           )}
           <div className={layout.feed}>
@@ -93,7 +91,7 @@ function VerifyDialog({ investigation }: { investigation: Investigation }) {
                   <InfoRow label="Type" value={formatAnomalyTypes(anomaly.types)} />
                   <InfoRow label="Confidence" value={formatConfidence(anomaly.confidence)} />
                   <InfoRow label="Detected" value={`${formatAge(anomaly.detectedAt, now)} ago`} />
-                  <InfoRow label="Source" value={sourceName ?? anomaly.sourceDeviceId} />
+                  <InfoRow label="Source" value={anomaly.sourceDeviceId} />
                 </>
               )}
             </InfoList>

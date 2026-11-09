@@ -43,10 +43,10 @@ check_docker() (
   export COMPOSE_PROJECT_NAME=mission-manager-smoke API_BASE_URL=http://smoke.test:8000
   trap 'status=$?; [ "$status" -ne 0 ] && docker compose logs --no-color backend frontend; docker compose down --volumes --remove-orphans' EXIT
   docker compose up --build --detach --wait
-  get() { curl -fsS --retry 30 --retry-connrefused --retry-delay 1 "$1"; }
+  get() { curl -fsS --retry 30 --retry-all-errors --retry-delay 1 "$1"; }
   get http://localhost:8000/api/system/status > /dev/null
   get http://localhost:8000/api/map/bounds > /dev/null  # 503 if the map didn't load
-  get http://localhost:8000/api/missions/current > /dev/null
+  get http://localhost:8000/api/missions > /dev/null  # loads with or without a current mission
   get http://localhost:5050/ | grep -q 'id="root"'
   get http://localhost:5050/config.js | grep -q "$API_BASE_URL"  # envsubst ran
   echo "Smoke test passed"

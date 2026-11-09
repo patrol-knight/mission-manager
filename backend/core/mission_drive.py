@@ -2,16 +2,18 @@ import asyncio
 import logging
 import threading
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from config import Settings
 from core.device_registry import DeviceRegistry
-from core.goal_arrival import arrived_at
+from core.goal_result import GoalOutcome, classify
 from core.map_server import MapServer
 from core.mission_execution import MissionExecutionManager
 from core.mission_server import MissionServer
 from core.websocket_manager import WebSocketManager
+from models.camera import CommandResult
 from models.device import DeviceView
 from models.mission import Mission
 from models.mission_execution import MissionStatus
@@ -28,22 +30,15 @@ class _ActiveGoal:
     token: int
     robot_device_id: str
     target_waypoint_index: int
-    # The robot's own DeviceState.timestamp when this goal was issued -- an
-    # "arrived" sample only completes the goal if it is strictly newer.
-    # Otherwise a stale "arrived" left over from whatever the robot did
-    # *before* this goal (e.g. reaching an anomaly just as the investigation
-    # handed the robot back) would satisfy a goal never acted on. The
-    # aggregator republishes at a fixed rate, so this timestamp reliably
-    # increases.
-    issued_after_timestamp: float
-    target_x: float
-    target_y: float
+    request_id: str
+    # state_machine has the goal (a "running" result).
+    acknowledged: bool = False
 
 
 class MissionDriveCoordinator:
     """Autonomously drives the current mission: sends the target waypoint
     (MissionExecutionState.target_waypoint_index) as a `navigate_to_goal`
-    command, waits for the robot's own reported arrival (on_device_state()),
+    command, waits for its result (on_command_result()),
     advances MissionExecutionManager via record_waypoint_reached(), and sends
     the next one.
 
@@ -74,6 +69,7 @@ class MissionDriveCoordinator:
         self._websocket_manager = websocket_manager
         self._settings = settings
         self._investigation: InvestigationCoordinator | None = None
+        self._on_goal_failed: Callable[[str], None] | None = None
 
         self._lock = threading.RLock()
         self._active: _ActiveGoal | None = None
@@ -87,17 +83,22 @@ class MissionDriveCoordinator:
         (see bootstrap.py)."""
         self._investigation = investigation
 
+    def bind_goal_failed(self, on_goal_failed: Callable[[str], None]) -> None:
+        """Called with state_machine's reason when a waypoint goal fails."""
+        self._on_goal_failed = on_goal_failed
+
     def _robot_is_investigating(self, device_id: str) -> bool:
         return self._investigation is not None and self._investigation.is_active_for(device_id)
 
     def rejoin(self) -> None:
-        """After an investigation: retarget at the closest waypoint and drive there."""
+        """The robot may have moved off its goal (an investigation, or the
+        operator driving it with RC): retarget where it now is and drive there."""
         exec_state = self._mission_execution_manager.get_state()
         mission = self._mission_server.get_mission(exec_state.mission_id) if exec_state else None
         if mission is not None:
-            closest = self.closest_waypoint_index(mission)
-            if closest is not None:
-                self._mission_execution_manager.join_at(closest)
+            index = self.join_index(mission, exec_state.target_waypoint_index or 0)
+            if index is not None:
+                self._mission_execution_manager.join_at(index)
         self.advance()
 
     def advance(self) -> None:
@@ -125,13 +126,12 @@ class MissionDriveCoordinator:
             target = mission.waypoints[next_index]
 
             token = self._next_token = self._next_token + 1
+            request_id = f"mission-{mission.mission_id}-wp{next_index}-{token}"
             self._active = _ActiveGoal(
                 token=token,
                 robot_device_id=robot.device_id,
                 target_waypoint_index=next_index,
-                issued_after_timestamp=robot.timestamp,
-                target_x=target.x,
-                target_y=target.y,
+                request_id=request_id,
             )
 
         fields = {"x": target.x, "y": target.y, "frame_id": mission.frame_id}
@@ -139,8 +139,9 @@ class MissionDriveCoordinator:
             fields["yaw"] = target.yaw
 
         sent = self._zenoh_gateway.publish_command(
-            robot.device_id, "navigate_to_goal",
-            request_id=f"mission-{mission.mission_id}-wp{next_index}-{token}",
+            robot.device_id,
+            "navigate_to_goal",
+            request_id=request_id,
             fields=fields,
         )
         if not sent:
@@ -149,16 +150,29 @@ class MissionDriveCoordinator:
         self._websocket_manager.run_coroutine_threadsafe(self._timeout_then_retry(token))
         logger.info(
             "Mission drive: robot %s heading to waypoint %s (index %d%s)",
-            robot.device_id, target.waypoint_id, next_index, ", joining the route" if exec_state.joining else "",
+            robot.device_id,
+            target.waypoint_id,
+            next_index,
+            ", joining the route" if exec_state.joining else "",
         )
 
-    def closest_waypoint_index(self, mission: Mission) -> int | None:
-        """By lanelet route length, not straight-line distance: lanelets are
-        one-way, so a waypoint just behind the robot can be a full lap away."""
+    def join_index(self, mission: Mission, toward: int = 0) -> int | None:
+        """The waypoint the robot joins the mission at. On the route the
+        operator sees: the end of the leg it's on, so Autoware drives that
+        route (a leg is a shortest path, so is the rest of it), and waypoints
+        passed meanwhile are skipped. Legs are searched from the one into
+        `toward`, the current target, so the robot never skips ahead when the
+        route runs a lanelet twice. Off the route: the closest waypoint by
+        lanelet route length."""
         robot = self._device_registry.get_connected_robot()
-        if robot is None or not self._map_server.is_available():
+        if robot is None or robot.pose is None or not self._map_server.is_available():
             return None
         fx, fy = robot.pose.x, robot.pose.y
+        count = len(mission.waypoints)
+        leg = self._map_server.leg_at(mission.loop_points(), fx, fy, first=(toward - 1) % count)
+        if leg is not None:
+            return (leg + 1) % count
+
         best: tuple[float, int] | None = None
         for index, waypoint in enumerate(mission.waypoints):
             route = self._map_server.get_route([{"x": fx, "y": fy}, {"x": waypoint.x, "y": waypoint.y}])
@@ -188,28 +202,39 @@ class MissionDriveCoordinator:
                 view.device_id, "cancel_navigation", request_id=f"reconnect-{uuid.uuid4().hex[:8]}"
             )
 
-        if self._robot_is_investigating(view.device_id):
-            return  # this sample belongs to the investigation, not us
-
+    def on_command_result(self, result: CommandResult) -> None:
+        if result.command != "navigate_to_goal":
+            return
+        outcome, reason = classify(result)
         with self._lock:
             active = self._active
-            if active is None or active.robot_device_id != view.device_id:
+            if active is None or active.request_id != result.request_id:
                 return
-            if not arrived_at(view, active.target_x, active.target_y, active.issued_after_timestamp):
+            if outcome == GoalOutcome.RUNNING:
+                active.acknowledged = True
                 return
-            waypoint_index = active.target_waypoint_index
+            if outcome == GoalOutcome.IGNORE:
+                return
             self._active = None
 
-        self._mission_execution_manager.record_waypoint_reached(waypoint_index)
-        self.advance()
+        if outcome == GoalOutcome.ARRIVED:
+            self._mission_execution_manager.record_waypoint_reached(active.target_waypoint_index)
+            self.advance()
+        elif outcome == GoalOutcome.RESEND:
+            logger.warning("Mission drive: goal not taken (%s); sending it again", reason)
+            self.advance()
+        else:
+            logger.warning("Mission drive: goal to waypoint index %d failed: %s", active.target_waypoint_index, reason)
+            if self._on_goal_failed is not None:
+                self._on_goal_failed(reason or "failed")
 
     async def _timeout_then_retry(self, token: int) -> None:
         await asyncio.sleep(self._settings.navigation_timeout_sec)
         with self._lock:
-            if self._active is None or self._active.token != token:
-                return  # already arrived, or superseded
+            if self._active is None or self._active.token != token or self._active.acknowledged:
+                return
             self._active = None
-        logger.warning("Mission drive: navigate_to_goal timed out; retrying")
+        logger.warning("Mission drive: no answer to navigate_to_goal; sending it again")
         self.advance()
 
     def abort(self) -> None:

@@ -8,7 +8,10 @@ from core.anomaly_repository import AnomalyRepository, RecordingContext, file_ha
 from core.camera_registry import CameraRegistry
 from core.camera_stream import CameraStreamService
 from core.device_registry import DeviceRegistry
+from core.devtools import DevtoolsService
 from core.errors import MapUnavailableError
+from core.geofence_server import GeofenceServer
+from core.goal_result import PAUSE_CODES
 from core.heatmap_service import HeatmapService
 from core.investigation import InvestigationCoordinator
 from core.map_server import MapServer
@@ -43,6 +46,8 @@ class Services:
     camera_stream: CameraStreamService
     websocket_manager: WebSocketManager
     zenoh_gateway: ZenohGateway
+    geofences: GeofenceServer
+    devtools: DevtoolsService
 
 
 def build_services(settings: Settings) -> Services:
@@ -53,8 +58,11 @@ def build_services(settings: Settings) -> Services:
     except MapUnavailableError as exc:
         logger.warning("%s; map endpoints will return 503", exc)
 
-    mission_server = MissionServer(settings.mission_folder, settings.app_state_path)
+    map_name = map_server.get_info().map_name if map_server.is_available() else None
+    mission_server = MissionServer(settings.mission_folder, settings.app_state_path, map_name)
     mission_server.load()
+    geofences = GeofenceServer(settings.geofence_folder, map_name, map_server)
+    geofences.load()
 
     device_registry = DeviceRegistry()
     camera_registry = CameraRegistry()
@@ -86,7 +94,7 @@ def build_services(settings: Settings) -> Services:
     # and mission drive also need each other. Both cycles are closed after
     # construction with bind_*() calls.
     zenoh_gateway = ZenohGateway(
-        settings, device_registry, websocket_manager, anomaly_registry, map_server, camera_registry
+        settings, device_registry, websocket_manager, anomaly_registry, map_server, camera_registry, geofences
     )
     investigation = InvestigationCoordinator(
         anomaly_registry=anomaly_registry,
@@ -123,6 +131,15 @@ def build_services(settings: Settings) -> Services:
         websocket_manager=websocket_manager,
     )
 
+    def on_goal_failed(reason: str) -> None:
+        if reason in PAUSE_CODES:
+            mission_service.pause_on_failure(f"goal_{reason}")
+        else:
+            mission_service.abort_autonomy(f"goal_{reason}", send_cancel=False)
+
+    mission_drive_coordinator.bind_goal_failed(on_goal_failed)
+    investigation.bind_goal_failed(on_goal_failed)
+
     return Services(
         map_server=map_server,
         mission_server=mission_server,
@@ -138,4 +155,6 @@ def build_services(settings: Settings) -> Services:
         camera_stream=camera_stream,
         websocket_manager=websocket_manager,
         zenoh_gateway=zenoh_gateway,
+        geofences=geofences,
+        devtools=DevtoolsService(settings.runs_dir, settings.runs_owner, zenoh_gateway, device_registry),
     )

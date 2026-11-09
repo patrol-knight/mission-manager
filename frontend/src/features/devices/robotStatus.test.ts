@@ -1,5 +1,7 @@
-import { describe, it, expect } from "vitest";
-import { robotStatus } from "./robotStatus";
+import { act, renderHook } from "@testing-library/react";
+import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
+import { robotMode, robotStatus, robotUnavailableHint, useSettledRobotState } from "./robotStatus";
+import type { Device } from "../../types/domain";
 import { missionProgress, missionStatus, targetWaypointIndex } from "../missions/missionStatus";
 import type { MissionExecutionState, MissionStatus } from "../missions/missionTypes";
 import type { Investigation } from "../investigation/investigationTypes";
@@ -21,19 +23,107 @@ const investigation = { anomalyId: "a1", phase: "en_route" } as Investigation;
 
 describe("robotStatus", () => {
   it("reports an offline robot before anything else", () => {
-    expect(robotStatus(false, investigation, execution("running")).label).toBe("Offline");
+    expect(robotStatus(false, investigation, execution("running"), "navigating").label).toBe("Offline");
   });
 
   it("shows the investigation phase over the mission", () => {
-    expect(robotStatus(true, investigation, execution("running")).label).toBe("En route");
-    expect(robotStatus(true, { ...investigation, phase: "on_site" }, null).label).toBe("On site");
+    expect(robotStatus(true, investigation, execution("running"), "navigating").label).toBe("En route");
+    expect(robotStatus(true, { ...investigation, phase: "on_site" }, null, "arrived").label).toBe("On site");
+  });
+
+  it("shows the robot's own trouble over the investigation and mission", () => {
+    expect(robotStatus(true, investigation, execution("running"), "failure").label).toBe("Failure");
+    expect(robotStatus(true, null, null, "notready").label).toBe("Not ready");
+  });
+
+  it("is patrolling while the robot drives, mission or not", () => {
+    expect(robotStatus(true, null, null, "navigating").label).toBe("Patrolling");
+    expect(robotStatus(true, null, execution("running"), "arrived").label).toBe("Patrolling");
+    expect(robotStatus(true, null, execution("ready"), "arrived").label).toBe("Ready");
   });
 
   it("follows the mission otherwise", () => {
-    expect(robotStatus(true, null, execution("running")).label).toBe("Patrolling");
-    expect(robotStatus(true, null, execution("paused")).label).toBe("Holding");
-    expect(robotStatus(true, null, execution("ready")).label).toBe("Idle");
-    expect(robotStatus(true, null, null).label).toBe("Idle");
+    expect(robotStatus(true, null, execution("running"), "ready").label).toBe("Waiting");
+    expect(robotStatus(true, null, execution("paused"), "ready").label).toBe("Holding");
+    expect(robotStatus(true, null, execution("ready"), "ready").label).toBe("Ready");
+    expect(robotStatus(true, null, null, "ready").label).toBe("Ready");
+  });
+
+  it("shows an obstacle over the investigation and mission", () => {
+    expect(robotStatus(true, investigation, execution("running"), "blocked").label).toBe("Blocked");
+    expect(robotStatus(true, null, execution("running"), "blocked").label).toBe("Blocked");
+    expect(robotStatus(true, null, null, "blocked").label).toBe("Blocked");
+  });
+
+  it("is not ready when the robot reports no state or an unknown one", () => {
+    expect(robotStatus(true, null, null, null).label).toBe("Not ready");
+    expect(robotStatus(true, null, execution("running"), "").label).toBe("Not ready");
+    expect(robotStatus(true, investigation, null, "charging").label).toBe("Not ready");
+  });
+});
+
+describe("robotUnavailableHint", () => {
+  const robot = (state?: string, extra: Record<string, string> = {}) =>
+    ({ deviceId: "r", status: state ? { state, ...extra } : {} }) as unknown as Device;
+
+  it("explains why the robot can't take a mission", () => {
+    expect(robotUnavailableHint(null)).toBe("The robot is offline");
+    expect(robotUnavailableHint(robot("failure"))).toBe("Please adjust the robot");
+    expect(robotUnavailableHint(robot("notready"))).toBe("The robot is not ready");
+    expect(robotUnavailableHint(robot("failure", { reason: "not_moving" }))).toBe(
+      "The robot stopped moving. Drive it with RC, then Resume",
+    );
+  });
+
+  it("is null when the robot can drive", () => {
+    expect(robotUnavailableHint(robot("ready"))).toBeNull();
+    expect(robotUnavailableHint(robot("arrived"))).toBeNull();
+    expect(robotUnavailableHint(robot("navigating"))).toBeNull();
+    expect(robotUnavailableHint(robot("blocked"))).toBeNull();
+  });
+
+  it("is manual or e-stopped when state_machine says so, even if Autoware is ready", () => {
+    expect(robotUnavailableHint(robot("ready", { mode: "manual" }))).toBe("The robot is in manual mode");
+    expect(robotUnavailableHint(robot("ready", { mode: "estop" }))).toBe("The emergency stop is pressed");
+  });
+
+  it("says why the robot is not ready", () => {
+    expect(robotUnavailableHint(robot("notready", { reason: "autoware_unavailable" }))).toBe("Autoware is not running");
+    expect(robotUnavailableHint(robot("notready", { reason: "status_stale" }))).toBe("No status from the robot");
+    expect(robotUnavailableHint(robot("notready", { reason: "something_new" }))).toBe("The robot is not ready");
+  });
+
+  it("is not ready without a known state", () => {
+    expect(robotUnavailableHint(robot())).toBe("The robot is not ready");
+    expect(robotUnavailableHint(robot("charging"))).toBe("The robot is not ready");
+  });
+});
+
+describe("useSettledRobotState", () => {
+  const robot = (state: string) => ({ deviceId: "r", status: { state } }) as unknown as Device;
+
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it("holds the previous state through a brief ready", () => {
+    const { result, rerender } = renderHook((r: Device) => useSettledRobotState(r), { initialProps: robot("navigating") });
+    rerender(robot("ready"));
+    act(() => void vi.advanceTimersByTime(500));
+    expect(result.current).toBe("navigating");
+    rerender(robot("navigating"));
+    act(() => void vi.advanceTimersByTime(1000));
+    expect(result.current).toBe("navigating");
+  });
+
+  it("settles on a lasting ready, and follows anything else at once", () => {
+    const { result, rerender } = renderHook((r: Device) => useSettledRobotState(r), { initialProps: robot("navigating") });
+    rerender(robot("ready"));
+    act(() => void vi.advanceTimersByTime(1000));
+    expect(result.current).toBe("ready");
+    rerender(robot("failure"));
+    expect(result.current).toBe("failure");
+    rerender(robot("ready"));
+    expect(result.current).toBe("ready");
   });
 });
 
@@ -90,5 +180,27 @@ describe("missionProgress", () => {
   it("shows just the loop number for an infinite mission", () => {
     expect(missionProgress(3, infinite, execution("running")).loops).toMatchObject({ total: null, fraction: "2" });
     expect(missionProgress(3, infinite, execution("ready", null)).loops.fraction).toBe("1");
+  });
+});
+
+describe("robotMode", () => {
+  const robot = (status: Record<string, string>) => ({ deviceId: "r", status }) as unknown as Device;
+
+  it("is Auto while autonomy drives", () => {
+    expect(robotMode(robot({ mode: "auto" }))?.label).toBe("Auto");
+  });
+
+  it("is Manual while someone drives", () => {
+    expect(robotMode(robot({ mode: "manual" }))?.label).toBe("Manual");
+  });
+
+  it("is E-stop while the emergency stop is pressed", () => {
+    expect(robotMode(robot({ mode: "estop" }))?.label).toBe("E-stop");
+  });
+
+  it("shows no pill while nobody drives or no mode is reported", () => {
+    expect(robotMode(robot({ mode: "none" }))).toBeNull();
+    expect(robotMode(robot({}))).toBeNull();
+    expect(robotMode(null)).toBeNull();
   });
 });

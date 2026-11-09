@@ -30,8 +30,8 @@ interface PendingRemoval {
 }
 
 /** Creates the maplibre Map exactly once against the given container and tears it
- * down on unmount. `MapWorkspace` is the only caller — every layer reads the
- * resulting instance via MapContext instead of constructing its own. */
+ * down on unmount. One per page (AppShell, /dev's LocalizeMap) — every layer reads
+ * the resulting instance via MapContext instead of constructing its own. */
 export function useMapInstance(containerRef: RefObject<HTMLDivElement | null>): {
   map: maplibregl.Map | null;
   ready: boolean;

@@ -15,3 +15,6 @@ pyproj
 # Anomaly-history persistence (only required when DATABASE_URL is set; see
 # core/anomaly_repository.py -- fail-soft, backend runs fine without it)
 psycopg[binary]>=3.1
+
+# Devtools: ICMP ping to devices
+icmplib>=3.0

@@ -39,7 +39,7 @@ class FakeRepository:
 def map_server() -> MapServer:
     pytest.importorskip("lanelet2")
     server = MapServer()
-    server.load(str(STORAGE / "maps" / "lanelet2_map.osm"), str(STORAGE / "maps" / "map_projector_info.yaml"))
+    server.load(str(STORAGE / "maps" / "ks" / "lanelet2_map.osm"), str(STORAGE / "maps" / "ks" / "map_projector_info.yaml"))
     return server
 
 

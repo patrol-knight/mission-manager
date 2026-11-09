@@ -29,11 +29,20 @@ export const mapPalette = {
   anomalyLifeTrack: "#ffffff",
   /** Google-Maps-like saturated blue for the robot. */
   device: { robot: "#1a73e8", iot: "#5a4fcf" } satisfies Record<DeviceType, string>,
+  /** The arrow that sets the robot's pose on /dev. */
+  poseArrow: "#16a34a",
+  /** A point picked on /dev to read its map-frame coordinates. */
+  mapPoint: "#a97a9f",
   /** Ring around a tower whose row is hovered in the towers list. */
   towerHalo: "rgba(90,79,207,0.3)",
   /** A tower camera's field of view. */
   fovFill: "rgba(90,79,207,0.08)",
   fovLine: "rgba(90,79,207,0.45)",
+  /** A restricted zone, drawn in the anomaly red; stronger while selected. */
+  geofenceFill: "rgba(197,30,58,0.12)",
+  geofenceFillSelected: "rgba(197,30,58,0.24)",
+  /** The dot on a zone's edge that inserts a point. */
+  geofenceMidpoint: "rgba(169,122,159,0.6)",
 } as const;
 
 /** Width of every route line (mission, preview, editor, investigation):

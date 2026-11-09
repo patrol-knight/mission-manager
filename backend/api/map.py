@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends
 from api.deps import get_services
 from bootstrap import Services
 from models.map import (
+    XY,
     HeatmapView,
     LatLon,
     LatLonQuery,
@@ -43,3 +44,8 @@ def route_preview(req: RoutePreviewRequest, services: Services = Depends(get_ser
 @router.post("/xy-to-lnglat", response_model=LatLon)
 def xy_to_lnglat(query: PointQuery, services: Services = Depends(get_services)) -> LatLon:
     return services.map_server.xy_to_latlon(query.x, query.y, query.frame_id)
+
+
+@router.post("/lnglat-to-xy", response_model=XY)
+def lnglat_to_xy(query: LatLonQuery, services: Services = Depends(get_services)) -> XY:
+    return services.map_server.latlon_to_xy(query.lat, query.lon, query.frame_id)

@@ -290,11 +290,10 @@ class CameraStreamService:
         device = self._devices.get(device_id)
         if device is None:
             raise CameraSessionError(404, "device_not_found", f"Device not found: {device_id}")
-        # zenoh_bridge doesn't populate DeviceState.capabilities, so the
-        # camera state it publishes is the reliable signal (same fallback as
-        # the frontend's DeviceInspectorOverlay.tsx hasCameraCapability).
+        # The camera state the bridge publishes is what says a device has a
+        # camera (same check as the frontend's DeviceInspectorOverlay.tsx).
         known_camera = self._cameras.get(device_id)
-        if "camera" not in device.capabilities and (known_camera is None or known_camera.camera_id != camera_id):
+        if known_camera is None or known_camera.camera_id != camera_id:
             raise CameraSessionError(400, "camera_unavailable", f"Device has no camera {camera_id}")
         if not device.connected:
             raise CameraSessionError(503, "device_unavailable", f"Device not connected: {device_id}")

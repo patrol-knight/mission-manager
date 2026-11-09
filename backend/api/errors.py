@@ -23,6 +23,7 @@ from core.errors import (
     NoCurrentMissionError,
     NoRouteError,
     NotOnSiteError,
+    RobotNotReadyError,
     VerdictRequiredError,
 )
 
@@ -40,6 +41,7 @@ _STATUS_BY_ERROR: dict[type[Exception], int] = {
     MissionExecutionLockedError: 409,
     InvalidExecutionTransitionError: 409,
     NoConnectedRobotError: 409,
+    RobotNotReadyError: 409,
     InvalidAnomalyTransitionError: 409,
     DeviceNotConnectedError: 409,
     InvestigationActiveError: 409,

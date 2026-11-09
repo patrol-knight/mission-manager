@@ -3,8 +3,7 @@ import type { InspectionSession } from "./cameraApi";
 
 /**
  * Fake session: returns the device's one canned camera (only if the device
- * advertises the "camera" capability) and transitions it from "connecting"
- * to "live".
+ * has a known camera) and transitions it from "connecting" to "live".
  */
 export async function openInspectionSession(
   deviceId: string,

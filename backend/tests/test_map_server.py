@@ -1,6 +1,7 @@
-"""The real lanelet2 map in storage/maps. Skipped where lanelet2 isn't installed
+"""The real KS lanelet2 map in storage/maps/ks. Skipped where lanelet2 isn't installed
 (it is in CI, from requirements.txt)."""
 
+import math
 from pathlib import Path
 
 import pytest
@@ -11,18 +12,19 @@ from core.map_server import MapServer  # noqa: E402
 from core.mission_server import MissionServer  # noqa: E402
 
 STORAGE = Path(__file__).resolve().parent.parent / "storage"
+FIXTURE_MISSIONS = Path(__file__).resolve().parent / "fixtures" / "missions"
 
 
 @pytest.fixture(scope="module")
 def map_server() -> MapServer:
     server = MapServer()
-    server.load(str(STORAGE / "maps" / "lanelet2_map.osm"), str(STORAGE / "maps" / "map_projector_info.yaml"))
+    server.load(str(STORAGE / "maps" / "ks" / "lanelet2_map.osm"), str(STORAGE / "maps" / "ks" / "map_projector_info.yaml"))
     return server
 
 
 @pytest.fixture(scope="module")
-def waypoints():
-    missions = MissionServer(str(STORAGE / "missions"), str(STORAGE / "app_state.yaml"))
+def waypoints(tmp_path_factory):
+    missions = MissionServer(str(FIXTURE_MISSIONS), str(tmp_path_factory.mktemp("state") / "app_state.yaml"))
     missions.load()
     return missions.get_mission("mission-2-tdpjxe").waypoints
 
@@ -60,3 +62,17 @@ def test_place_waypoint_snaps_onto_the_road_and_rejects_off_road(map_server: Map
 def test_routes_are_cached(map_server: MapServer, waypoints):
     points = [{"x": wp.x, "y": wp.y} for wp in waypoints[:2]]
     assert map_server.get_route(points) is map_server.get_route(list(points))
+
+
+def test_a_point_is_on_the_leg_into_its_waypoint_and_on_the_next_just_past_it(map_server: MapServer, waypoints):
+    loop = [{"x": wp.x, "y": wp.y} for wp in [*waypoints, waypoints[0]]]
+    for k, wp in enumerate(waypoints):
+        assert map_server.leg_at(loop, wp.x, wp.y) == (k - 1) % len(waypoints)
+        yaw = map_server.lane_yaw(wp.x, wp.y)
+        ahead = wp.x + 0.5 * math.cos(yaw), wp.y + 0.5 * math.sin(yaw)
+        assert map_server.leg_at(loop, *ahead) == k
+
+
+def test_a_point_off_the_route_is_on_no_leg(map_server: MapServer, waypoints):
+    loop = [{"x": wp.x, "y": wp.y} for wp in [*waypoints, waypoints[0]]]
+    assert map_server.leg_at(loop, waypoints[0].x + 5000, waypoints[0].y) is None

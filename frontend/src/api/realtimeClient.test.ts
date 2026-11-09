@@ -59,14 +59,12 @@ describe("realtimeClient", () => {
       data: [
         {
           device_id: "sim-robot-01",
-          name: null,
           type: "robot",
           pose: { frame_id: "map", x: 0, y: 0, yaw: 0 },
           timestamp: 1,
           battery: null,
           speed: null,
           status: {},
-          capabilities: [],
           connected: true,
           last_seen: 1,
         },

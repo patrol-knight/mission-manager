@@ -21,7 +21,8 @@ export function overviewBounds(
 ): LngLatBoundsLike | null {
   const points: [number, number][] = mapBounds ? [...mapBounds] : [];
   for (const d of devices) {
-    const { lat, lon } = d.pose;
+    const lat = d.pose?.lat;
+    const lon = d.pose?.lon;
     if (lat == null || lon == null) continue;
     const dLat = marginM / METERS_PER_DEGREE_LAT;
     const dLon = marginM / (METERS_PER_DEGREE_LAT * Math.cos((lat * Math.PI) / 180));

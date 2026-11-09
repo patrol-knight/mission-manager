@@ -22,6 +22,7 @@ import { DeviceInspectorProvider } from "../features/devices/DeviceInspectorProv
 import { DeviceInspectorOverlay } from "../features/devices/DeviceInspectorOverlay";
 import { VerifyModal } from "../features/investigation/VerifyModal";
 import { InvestigationNotifier } from "../features/investigation/InvestigationNotifier";
+import { RobotStateNotifier } from "../features/devices/RobotStateNotifier";
 import { MissionCompleteWatcher } from "../features/missions/MissionCompleteWatcher";
 
 export function AppShell() {
@@ -84,6 +85,7 @@ export function AppShell() {
             <DeviceInspectorOverlay />
             <VerifyModal />
             <InvestigationNotifier />
+            <RobotStateNotifier />
             <MissionCompleteWatcher />
           </DeviceInspectorProvider>
         </MissionEditorProvider>

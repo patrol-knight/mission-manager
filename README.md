@@ -28,12 +28,38 @@ Set these in the root `.env`. Every one is optional.
 | `HEATMAP_SOURCES` | `ANOMALY_SOURCE` | Sources the heatmap shows, e.g. `sim,real` for a demo with simulated history |
 | `HEATMAP_SCALE_FLOOR` / `HEATMAP_SCALE_CEILING` | `0.05` / `5` | Alerts per operating hour drawn transparent / fully colored |
 
-If you open the UI from another machine, point `API_BASE_URL` / `WS_URL` at the host running Docker instead of `localhost`. 
+If you open the UI from another machine, point `API_BASE_URL` / `WS_URL` at the host running Docker instead of `localhost`, and add the page's origin to `CORS_ORIGINS`, e.g. `CORS_ORIGINS=["http://192.168.1.10:5050"]`.
 Data lives in `backend/storage/` on the host, so it survives container rebuilds:
 
-- `maps/`: `lanelet2_map.osm` and `map_projector_info.yaml`. Swap these files to change the map.
-- `missions/`: saved missions (YAML)
+- `maps/<site>/`: one folder per site (currently `ks` and `nsh`), each holding `lanelet2_map.osm` and `map_projector_info.yaml`. The folder name is the map's name.
+- `missions/`: saved missions (YAML). Each one records the map it was made on, and only missions for the loaded map are shown. Missions for other maps stay on disk and come back when you switch to their map.
 - `app_state.yaml`: the active mission and its progress
+
+To change the map, point `MAP_OSM_PATH` and `MAP_PROJECTOR_PATH` in `docker-compose.yml` at another site's folder, then recreate the backend. The map is only read at startup.
+
+```yaml
+      - MAP_OSM_PATH=storage/maps/nsh/lanelet2_map.osm
+      - MAP_PROJECTOR_PATH=storage/maps/nsh/map_projector_info.yaml
+```
+
+```bash
+docker compose up -d --force-recreate backend
+```
+
+If the current mission belongs to a different map, it is cleared on the switch. If the map fails to load, the backend still starts, but with no map and with every mission shown, so check the startup log.
+
+## Devtools
+
+`http://<host>:5050/dev` measures the device links live: per device, ping RTT and loss and the Zenoh session; per stream, rate, inter-arrival jitter, gaps and bandwidth; and WebRTC stats for one camera. **Record** saves everything to `data/runs/<YYYYMMDD_HHMMSS>/` until stopped. Turn a run into plots and `summary.md`:
+
+```bash
+pip install -r scripts/analyzer/requirements.txt
+python -m scripts.analyzer data/runs/<run>
+```
+
+**Localize** sets the robot's pose by hand, for when GNSS can't: press **Initialize**, press where the robot is, and drag toward where it faces. The robot's marker shows the result; an error under the cards means zenoh_bridge refused it or didn't reply. Use it with the robot stopped. **Pick point** shows the map-frame x/y of a clicked point, e.g. to place an IoT tower. Indoors, start Autoware with `localization_gnss_enabled:=false`.
+
+Design and metrics: [docs/design.md](docs/design.md).
 
 ## Architecture
 

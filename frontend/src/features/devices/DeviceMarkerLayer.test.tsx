@@ -56,28 +56,24 @@ vi.mock("../../hooks/useApiConnection", () => ({
 
 const robot: Device = {
   deviceId: "sim-robot-01",
-  name: "Robot 1",
   type: "robot",
   pose: { frameId: "map", x: 0, y: 0, yaw: 0, lat: 0, lon: 0 },
   timestamp: 0,
   battery: 95,
   speed: 0,
   status: {},
-  capabilities: [],
   connected: true,
   lastSeen: 0,
 };
 
 const iotDevice: Device = {
   deviceId: "sim-iot-01",
-  name: "IoT 1",
   type: "iot",
   pose: { frameId: "map", x: 1, y: 1, yaw: 0, lat: 1, lon: 1 },
   timestamp: 0,
   battery: 80,
   speed: null,
   status: {},
-  capabilities: [],
   connected: true,
   lastSeen: 0,
 };
@@ -108,7 +104,7 @@ describe("DeviceMarkerLayer", () => {
     render(<Harness />);
     await vi.waitFor(() => expect(FakeMarker.instances).toHaveLength(2));
 
-    const robotMarker = FakeMarker.instances.find((m) => m.element.dataset.hint === "Robot 1 · Click to view camera");
+    const robotMarker = FakeMarker.instances.find((m) => m.element.dataset.hint === "sim-robot-01 · Click to view camera");
     robotMarker!.element.dispatchEvent(new MouseEvent("click", { bubbles: true }));
 
     await vi.waitFor(() => expect(document.body.textContent).toContain("inspector=sim-robot-01"));
@@ -119,8 +115,8 @@ describe("DeviceMarkerLayer", () => {
     render(<Harness />);
     await vi.waitFor(() => expect(FakeMarker.instances).toHaveLength(2));
 
-    const robotMarker = FakeMarker.instances.find((m) => m.element.dataset.hint === "Robot 1 · Click to view camera");
-    const iotMarker = FakeMarker.instances.find((m) => m.element.dataset.hint === "IoT 1 · Disconnected");
+    const robotMarker = FakeMarker.instances.find((m) => m.element.dataset.hint === "sim-robot-01 · Click to view camera");
+    const iotMarker = FakeMarker.instances.find((m) => m.element.dataset.hint === "sim-iot-01 · Disconnected");
 
     expect(iotMarker).toBeDefined();
     expect(iotMarker!.element.style.opacity).toBe("0.45");

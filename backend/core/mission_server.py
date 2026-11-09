@@ -26,9 +26,11 @@ def _atomic_write_yaml(path: Path, data: dict) -> None:
 
 
 class MissionServer:
-    def __init__(self, mission_folder: str, app_state_path: str) -> None:
+    def __init__(self, mission_folder: str, app_state_path: str, map_name: str | None = None) -> None:
         self._mission_folder = Path(mission_folder)
         self._app_state_path = Path(app_state_path)
+        # Only missions made on this map are loaded; None (no map) loads all.
+        self._map_name = map_name
 
         self._lock = threading.RLock()
         self._missions: dict[str, Mission] = {}
@@ -55,6 +57,8 @@ class MissionServer:
                     raise MissionValidationError(
                         f"Invalid mission file {path}: {exc}"
                     ) from exc
+                if self._map_name is not None and mission.map_name != self._map_name:
+                    continue
                 missions[mission.mission_id] = mission
             self._missions = missions
 
@@ -92,9 +96,8 @@ class MissionServer:
     def _loop_distance_m(self, mission: Mission, map_server: MapServer) -> float | None:
         if len(mission.waypoints) < 2:
             return None
-        looped = list(mission.waypoints) + [mission.waypoints[0]]
         try:
-            route = map_server.get_route([{"x": wp.x, "y": wp.y} for wp in looped])
+            route = map_server.get_route(mission.loop_points())
         except Exception:
             logger.warning(
                 "Failed to compute route distance for mission %s", mission.mission_id, exc_info=True
@@ -156,7 +159,8 @@ class MissionServer:
 
     def create_mission(self, mission: Mission) -> Mission:
         with self._lock:
-            if mission.mission_id in self._missions:
+            # The file check also covers missions hidden because they belong to another map.
+            if mission.mission_id in self._missions or self._mission_path(mission.mission_id).exists():
                 raise MissionAlreadyExistsError(
                     f"Mission already exists: {mission.mission_id}"
                 )

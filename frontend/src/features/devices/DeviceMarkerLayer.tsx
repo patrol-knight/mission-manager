@@ -19,16 +19,7 @@ const COMFORT_ZOOM = 21;
 const DEVICE_Z_INDEX_WITH_BADGE = 7;
 import { headingDegrees } from "../map/geo";
 import { deviceConnectivity } from "./connectivity";
-
-// Explicit stacking, not mount order -- markers are appended to the DOM as
-// each layer's useMarkerList effect resolves, so mount order is fragile.
-// Waypoints 1 < IoT 4 < anomalies 5 (AnomalyLayer) < robot 10: anomalies sit
-// a meter or two from the tower that saw them, so they must win over the
-// tower to stay clickable, and the robot must always stay visible.
-const DEVICE_Z_INDEX: Record<Device["type"], number> = {
-  robot: 10,
-  iot: 4,
-};
+import { buildRobotElement, DEVICE_Z_INDEX } from "./deviceMarker";
 
 // Dim + desaturate on disconnect rather than removing the marker (last-known
 // position stays useful) or changing its base color (that's the type legend).
@@ -40,29 +31,11 @@ function applyConnectivityStyle(el: HTMLElement, device: Device, backendConnecte
   const online = status === "online";
   el.style.opacity = online ? "1" : "0.45";
   el.style.filter = online ? "none" : "grayscale(1)";
-  const name = device.name ?? device.deviceId;
+  const name = device.deviceId;
   // Hover hint (HintLayer): what clicking does, or why it's dimmed.
   el.dataset.hint =
     status === "unknown" ? `${name} · Backend disconnected` : online ? `${name} · Click to view camera` : `${name} · Disconnected`;
   el.setAttribute("aria-label", name);
-}
-
-/** An arrow pointing where the robot faces, inside a soft halo. The marker
- * itself is rotated (useMarkerList's rotationOf), so the arrow points up. */
-function buildRobotElement(): HTMLElement {
-  const color = mapPalette.device.robot;
-  const el = document.createElement("div");
-  el.style.cssText = `
-    width:40px;height:40px;cursor:pointer;z-index:${DEVICE_Z_INDEX.robot};
-    transition:width 150ms ease-out, height 150ms ease-out;
-  `;
-  el.innerHTML = `
-    <svg width="100%" height="100%" viewBox="0 0 40 40" style="display:block;filter:drop-shadow(0 2px 5px rgba(0,0,0,0.35))">
-      <circle cx="20" cy="20" r="18" fill="${color}" fill-opacity="0.18" stroke="${color}" stroke-opacity="0.5" />
-      <path d="M20 6.2 L30 31 L20 25.2 L10 31 Z" fill="${color}" stroke="${mapPalette.markerBorder}"
-        stroke-width="2" stroke-linejoin="round" />
-    </svg>`;
-  return el;
 }
 
 /** The robot card is hovered: grow the marker and deepen its halo. */
@@ -104,12 +77,14 @@ function applyTowerHighlight(el: HTMLElement, highlighted: boolean): void {
 /** Which corner of a tower faces away from the investigated anomaly --
  * screen y grows downward. Top right when there's no target. */
 function cornerAwayFrom(tower: Device, target: { lat: number | null; lon: number | null } | undefined): { x: "left" | "right"; y: "top" | "bottom" } {
-  if (!target || target.lat == null || target.lon == null || tower.pose.lat == null || tower.pose.lon == null) {
+  const lat = tower.pose?.lat;
+  const lon = tower.pose?.lon;
+  if (!target || target.lat == null || target.lon == null || lat == null || lon == null) {
     return { x: "right", y: "top" };
   }
   return {
-    x: tower.pose.lon >= target.lon ? "right" : "left",
-    y: tower.pose.lat >= target.lat ? "top" : "bottom",
+    x: lon >= target.lon ? "right" : "left",
+    y: lat >= target.lat ? "top" : "bottom",
   };
 }
 
@@ -190,10 +165,11 @@ export function DeviceMarkerLayer() {
   const options = useMemo<UseMarkerListOptions<Device>>(
     () => ({
       keyOf: (d) => d.deviceId,
-      dependsOn: (d) => [d.pose.lat, d.pose.lon],
+      dependsOn: (d) => [d.pose?.lat, d.pose?.lon],
       // lat/lon are computed server-side at Zenoh ingest (see
       // backend/models/device.py::Pose2D), so no projection call is needed.
-      project: async (d) => (d.pose.lat != null && d.pose.lon != null ? { lng: d.pose.lon, lat: d.pose.lat } : null),
+      // No pose (robot not localized): no marker, rather than one at (0, 0).
+      project: async (d) => (d.pose?.lat != null && d.pose.lon != null ? { lng: d.pose.lon, lat: d.pose.lat } : null),
       buildElement: (d) => (d.type === "robot" ? buildRobotElement() : buildTowerElement()),
       updateElement: (el, d) => {
         applyConnectivityStyle(el, d, backendConnected);
@@ -209,7 +185,7 @@ export function DeviceMarkerLayer() {
         el.style.zIndex = String(hidden.length > 0 ? DEVICE_Z_INDEX_WITH_BADGE : DEVICE_Z_INDEX.iot);
       },
       // Towers don't rotate; their facing is drawn by TowerFovLayer.
-      rotationOf: (d) => (d.type === "robot" ? headingDegrees(d.pose.yaw) : 0),
+      rotationOf: (d) => (d.type === "robot" ? headingDegrees(d.pose?.yaw ?? 0) : 0),
       onClick: (d) => openInspector(d.deviceId),
     }),
     [openInspector, backendConnected, hoveredDeviceId, hiddenByTower, target, zoomToHidden],
