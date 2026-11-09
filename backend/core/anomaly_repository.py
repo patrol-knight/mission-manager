@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import psycopg
+from psycopg.rows import dict_row
 
 from models.anomaly import Anomaly
 
@@ -133,8 +134,9 @@ class AnomalyRepository:
     (resolution NULL). Live state -- refreshes, robot_en_route/robot_arrived
     -- stays purely in memory. Every row belongs to this run's session
     (map, sim/real source), created at startup and kept alive by
-    heartbeat(), so runs without anomalies still count as operating time. This is the only place SQL is allowed to live
-    in this codebase -- callers go through this class's methods, never issue
+    heartbeat(), so runs without anomalies still count as operating time. This
+    module is the only place SQL is allowed to live in this codebase --
+    callers go through this class's (or HistoryAdmin's) methods, never issue
     SQL themselves.
 
     Optional: only built when DATABASE_URL is set (bootstrap.py), and off by
@@ -398,3 +400,172 @@ class AnomalyRepository:
             except psycopg.Error as exc:
                 logger.warning("AnomalyRepository: failed to end session (%s)", exc)
             self._conn = None
+
+
+HISTORY_COLUMNS = [
+    "anomaly_id", "types", "x", "y", "lat", "lon", "confidence", "source_device_id", "mission_id",
+    "detected_at", "last_seen_at", "closed_at", "resolution", "dispatched_at", "arrived_at",
+    "session_id", "map_name", "source",
+]
+
+
+class HistorySchemaMissingError(RuntimeError):
+    pass
+
+
+class HistoryAdmin:
+    """All recorded history, for the /dev History tab. Not fail-soft like
+    AnomalyRepository: errors propagate so the page can show them."""
+
+    def __init__(self, dsn: str) -> None:
+        self._dsn = dsn
+
+    def _connect(self) -> psycopg.Connection:
+        return psycopg.connect(self._dsn, row_factory=dict_row, connect_timeout=CONNECT_TIMEOUT_SEC)
+
+    @staticmethod
+    def _has_table(conn: psycopg.Connection, table: str) -> bool:
+        return conn.execute("SELECT to_regclass(%s) IS NOT NULL AS ok", (table,)).fetchone()["ok"]
+
+    def _ready(self) -> psycopg.Connection:
+        conn = self._connect()
+        if not self._has_table(conn, "sessions"):
+            conn.close()
+            raise HistorySchemaMissingError("No anomaly history tables yet: they are created when the backend connects")
+        return conn
+
+    def status(self) -> dict:
+        try:
+            with self._connect() as conn:
+                ready = self._has_table(conn, "sessions")
+                version = conn.execute("SELECT max(version) AS v FROM schema_version").fetchone()["v"] if ready else None
+                return {"connected": True, "schema_ready": ready, "schema_version": version, "error": None}
+        except psycopg.OperationalError as exc:
+            return {"connected": False, "schema_ready": False, "schema_version": None, "error": str(exc).strip()}
+
+    def sessions(self) -> list[dict]:
+        with self._ready() as conn:
+            return conn.execute(
+                """
+                SELECT s.id, s.map_name, s.map_hash, s.source, s.started_at, s.ended_at, s.last_seen_at,
+                       s.excluded, s.label,
+                       count(h.anomaly_id) AS total,
+                       count(h.anomaly_id) FILTER (WHERE h.resolution = 'true_positive') AS true_positive,
+                       count(h.anomaly_id) FILTER (WHERE h.resolution = 'false_positive') AS false_positive,
+                       count(h.anomaly_id) FILTER (WHERE h.resolution = 'unclear') AS unclear,
+                       count(h.anomaly_id) FILTER (WHERE h.resolution IS NULL) AS expired,
+                       max(h.closed_at) AS last_at
+                FROM sessions s LEFT JOIN anomaly_history h ON h.session_id = s.id
+                GROUP BY s.id ORDER BY s.started_at DESC
+                """
+            ).fetchall()
+
+    def update_session(self, session_id: uuid.UUID, changes: dict) -> bool:
+        allowed = {k: v for k, v in changes.items() if k in {"excluded", "source", "label"}}
+        with self._ready() as conn:
+            if not allowed:
+                return conn.execute("SELECT 1 FROM sessions WHERE id = %s", (session_id,)).fetchone() is not None
+            assignments = ", ".join(f"{k} = %({k})s" for k in allowed)
+            cur = conn.execute(f"UPDATE sessions SET {assignments} WHERE id = %(id)s", {**allowed, "id": session_id})
+            return cur.rowcount == 1
+
+    def delete_session(self, session_id: uuid.UUID) -> bool:
+        with self._ready() as conn:
+            return conn.execute("DELETE FROM sessions WHERE id = %s", (session_id,)).rowcount == 1
+
+    def purge(self, source: str, cutoff: datetime) -> dict:
+        with self._ready() as conn, conn.transaction():
+            anomalies = conn.execute(
+                "DELETE FROM anomaly_history h USING sessions s "
+                "WHERE h.session_id = s.id AND s.source = %s AND h.closed_at < %s",
+                (source, cutoff),
+            ).rowcount
+            sessions = conn.execute(
+                "DELETE FROM sessions s WHERE s.source = %s AND s.started_at < %s "
+                "AND NOT EXISTS (SELECT 1 FROM anomaly_history h WHERE h.session_id = s.id)",
+                (source, cutoff),
+            ).rowcount
+        return {"anomalies": anomalies, "sessions": sessions}
+
+    def history(
+        self,
+        map_name: str | None = None,
+        sources: Sequence[str] | None = None,
+        include_excluded: bool = True,
+        session_id: uuid.UUID | None = None,
+    ) -> list[dict]:
+        clauses, params = [], {}
+        if map_name is not None:
+            clauses.append("s.map_name = %(map_name)s")
+            params["map_name"] = map_name
+        if sources is not None:
+            clauses.append("s.source = ANY(%(sources)s)")
+            params["sources"] = list(sources)
+        if not include_excluded:
+            clauses.append("NOT s.excluded")
+        if session_id is not None:
+            clauses.append("s.id = %(session_id)s")
+            params["session_id"] = session_id
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        columns = ", ".join(f"s.{c}" if c in {"map_name", "source"} else f"h.{c}" for c in HISTORY_COLUMNS)
+        with self._ready() as conn:
+            return conn.execute(
+                f"SELECT {columns} FROM anomaly_history h JOIN sessions s ON s.id = h.session_id {where} "
+                "ORDER BY h.closed_at",
+                params,
+            ).fetchall()
+
+    def operating_periods(
+        self, map_name: str, sources: Sequence[str], include_excluded: bool = False
+    ) -> list[tuple[datetime, datetime]]:
+        excluded = "" if include_excluded else "AND NOT excluded"
+        with self._ready() as conn:
+            rows = conn.execute(
+                "SELECT started_at, coalesce(ended_at, last_seen_at, started_at) AS ended_at FROM sessions "
+                f"WHERE map_name = %s AND source = ANY(%s) {excluded}",
+                (map_name, list(sources)),
+            ).fetchall()
+        return [(r["started_at"], r["ended_at"]) for r in rows]
+
+    def device_periods(
+        self, map_name: str, sources: Sequence[str], include_excluded: bool = False
+    ) -> list[tuple[str, datetime, datetime]]:
+        excluded = "" if include_excluded else "AND NOT s.excluded"
+        with self._ready() as conn:
+            rows = conn.execute(
+                "SELECT u.device_id, u.started_at, u.last_seen_at FROM device_uptime u "
+                f"JOIN sessions s ON s.id = u.session_id WHERE s.map_name = %s AND s.source = ANY(%s) {excluded}",
+                (map_name, list(sources)),
+            ).fetchall()
+        return [(r["device_id"], r["started_at"], r["last_seen_at"]) for r in rows]
+
+    def insert_session(self, session: dict, anomalies: Sequence[dict], uptime: Sequence[dict] = ()) -> None:
+        with self._ready() as conn, conn.transaction():
+            conn.execute(
+                "INSERT INTO sessions (id, map_name, map_hash, source, started_at, ended_at, last_seen_at, label) "
+                "VALUES (%(id)s, %(map_name)s, %(map_hash)s, %(source)s, %(started_at)s, %(ended_at)s, "
+                "%(ended_at)s, %(label)s)",
+                session,
+            )
+            with conn.cursor() as cur:
+                cur.executemany(
+                    """
+                    INSERT INTO anomaly_history (
+                        anomaly_id, types, frame_id, x, y, lat, lon, confidence, source_device_id,
+                        detected_at, last_seen_at, mission_id, resolution, closed_at, session_id,
+                        dispatched_at, arrived_at
+                    ) VALUES (
+                        %(anomaly_id)s, %(types)s, 'map', %(x)s, %(y)s, %(lat)s, %(lon)s, %(confidence)s,
+                        %(source_device_id)s, %(detected_at)s, %(last_seen_at)s, %(mission_id)s,
+                        %(resolution)s, %(closed_at)s, %(session_id)s, %(dispatched_at)s, %(arrived_at)s
+                    )
+                    """,
+                    [{"dispatched_at": None, "arrived_at": None, **a} for a in anomalies],
+                )
+                if uptime:
+                    cur.executemany(
+                        "INSERT INTO device_uptime (id, session_id, device_id, device_type, x, y, started_at, "
+                        "last_seen_at) VALUES (%(id)s, %(session_id)s, %(device_id)s, %(device_type)s, %(x)s, %(y)s, "
+                        "%(started_at)s, %(last_seen_at)s)",
+                        list(uptime),
+                    )

@@ -1,0 +1,44 @@
+# Short history for a progress-report demo on the development map: three days
+# of four-hour runs, so a few minutes of live alerts visibly change the map.
+# Edit the device poses to match the towers you run (map-frame x, y).
+name: Progress report history
+source: sim
+days: 3
+hours_per_day: 4
+start_hour: 13
+seed: 7
+
+devices:
+  - id: iot-01
+    at: [0, 0]
+  - id: iot-02
+    at: [2, 83]
+
+verification:
+  dispatch_share: 0.3
+  dispatch_delay_s: [3, 20]
+  travel_s: [20, 120]
+
+hotspots:
+  - name: Back gate (iot-02)
+    at: [2, 83]
+    radius_m: 3
+    rate_per_hour: 0.6
+    types: [trespassing, loitering]
+    true_share: 0.3
+  - name: Loading bay (iot-01)
+    at: [0, 0]
+    radius_m: 3
+    rate_per_hour: 0.3
+    types: [loitering]
+    true_share: 0.6
+  - name: Parking entrance
+    at: [-30, 14]
+    radius_m: 4
+    rate_per_hour: 0.4
+    types: [loitering, lying_down]
+    true_share: 0.5
+
+background:
+  rate_per_hour: 0.2
+  true_share: 0.1

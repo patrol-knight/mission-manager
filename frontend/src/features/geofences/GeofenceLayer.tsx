@@ -83,7 +83,7 @@ export function GeofenceLayer({ editor: { state, dispatch } }: { editor: Geofenc
       id: LINE_ID,
       type: "line",
       source: SOURCE_ID,
-      paint: { "line-color": mapPalette.anomaly, "line-width": ["case", ["get", "selected"], 3, 1.5] },
+      paint: { "line-color": mapPalette.geofenceLine, "line-width": ["case", ["get", "selected"], 3, 1.5] },
     });
     return () => {
       [LINE_ID, FILL_ID].forEach((id) => map.getLayer(id) && map.removeLayer(id));
@@ -101,7 +101,7 @@ export function GeofenceLayer({ editor: { state, dispatch } }: { editor: Geofenc
       project: async (point) => ({ lng: point.lng, lat: point.lat }),
       buildElement: () => buildHandle(16, mapPalette.edit),
       updateElement: (el, point) => {
-        el.style.background = point.id === state.selectedPointId ? mapPalette.anomaly : mapPalette.edit;
+        el.style.background = point.id === state.selectedPointId ? mapPalette.geofenceLine : mapPalette.edit;
       },
       draggable: () => true,
       onDragEnd: (point, { lat, lng }) => dispatch({ type: "MOVE_POINT", id: point.id, lat, lng }),

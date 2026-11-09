@@ -98,3 +98,19 @@ class AlreadyOnSiteError(Exception):
 
 class NoRouteError(Exception):
     pass
+
+
+class HistoryUnavailableError(Exception):
+    pass
+
+
+class HistoryWriteDisabledError(Exception):
+    pass
+
+
+class SessionNotFoundError(Exception):
+    pass
+
+
+class ScenarioInvalidError(Exception):
+    pass

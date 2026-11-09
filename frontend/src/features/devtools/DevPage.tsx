@@ -8,14 +8,15 @@ import { devApi, type RunSummary } from "./devApi";
 import { connectDevSocket, type BrowserRowsProvider } from "./devSocket";
 import { useDevStore } from "./devStore";
 import { DeviceCard } from "./DeviceCard";
+import { HistoryView } from "./history/HistoryView";
 import { LocalizeView } from "./LocalizeView";
 import { fmt, percentile, recent } from "./metrics";
 import { WebrtcPanel } from "./WebrtcPanel";
 import styles from "./DevPage.module.css";
 
-type Tab = "live" | "runs" | "localize";
+type Tab = "live" | "runs" | "localize" | "history";
 
-const TAB_LABELS: Record<Tab, string> = { live: "Live", runs: "Runs", localize: "Localize" };
+const TAB_LABELS: Record<Tab, string> = { live: "Live", runs: "Runs", localize: "Localize", history: "History" };
 
 function duration(fromIso: string | null, toMs: number): string {
   if (!fromIso) return "";
@@ -175,7 +176,7 @@ export function DevPage() {
           <span className={styles.brandSub}>devtools</span>
         </div>
         <nav className={styles.tabs}>
-          {(["live", "runs", "localize"] as const).map((t) => (
+          {(["live", "runs", "localize", "history"] as const).map((t) => (
             <button
               key={t}
               type="button"
@@ -197,10 +198,11 @@ export function DevPage() {
         </div>
       </header>
       <main className={styles.main}>
-        {tab !== "localize" && <RecordBar />}
+        {(tab === "live" || tab === "runs") && <RecordBar />}
         {tab === "live" && <LiveView registerProvider={registerProvider} />}
         {tab === "runs" && <RunsView />}
         {tab === "localize" && <LocalizeView />}
+        {tab === "history" && <HistoryView />}
       </main>
     </div>
   );

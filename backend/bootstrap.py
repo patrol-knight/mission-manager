@@ -1,6 +1,5 @@
 import logging
 from dataclasses import dataclass
-from pathlib import Path
 
 from config import Settings
 from core.anomaly_registry import AnomalyRegistry
@@ -13,6 +12,7 @@ from core.errors import MapUnavailableError
 from core.geofence_server import GeofenceServer
 from core.goal_result import PAUSE_CODES
 from core.heatmap_service import HeatmapService
+from core.history_devtools import HistoryDevtools
 from core.investigation import InvestigationCoordinator
 from core.map_server import MapServer
 from core.mission_drive import MissionDriveCoordinator
@@ -48,13 +48,14 @@ class Services:
     zenoh_gateway: ZenohGateway
     geofences: GeofenceServer
     devtools: DevtoolsService
+    history: HistoryDevtools
 
 
 def build_services(settings: Settings) -> Services:
-    map_name = settings.map_name or Path(settings.map_osm_path).stem
     map_server = MapServer()
     try:
-        map_server.load(settings.map_osm_path, settings.map_projector_path, map_name)
+        # MAP_NAME overrides; otherwise MapServer names the map after its folder.
+        map_server.load(settings.map_osm_path, settings.map_projector_path, settings.map_name)
     except MapUnavailableError as exc:
         logger.warning("%s; map endpoints will return 503", exc)
 
@@ -157,4 +158,5 @@ def build_services(settings: Settings) -> Services:
         zenoh_gateway=zenoh_gateway,
         geofences=geofences,
         devtools=DevtoolsService(settings.runs_dir, settings.runs_owner, zenoh_gateway, device_registry),
+        history=HistoryDevtools(settings, map_server, anomaly_repository),
     )

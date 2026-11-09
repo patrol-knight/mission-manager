@@ -65,6 +65,11 @@ class Settings(BaseSettings):
     runs_dir: str = "../data/runs"
     runs_owner: str | None = None  # "uid:gid"
 
+    # /dev History tab: delete, purge, seed and load scenarios. Off because
+    # the backend is reachable from the whole LAN.
+    devtools_history_write: bool = False
+    history_scenarios_dir: str = "storage/scenarios"
+
     zenoh_enabled: bool = False
     zenoh_router: str = "tcp/localhost:7447"
     zenoh_device_state_keyexpr: str = "devices/*/state"

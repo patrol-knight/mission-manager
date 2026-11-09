@@ -1,0 +1,46 @@
+# Two weeks of a site running 8 hours a day. Coordinates are map-frame
+# meters (x, y), the same as device poses. Rates are alerts per operating hour.
+name: Example site, 2 weeks
+source: sim
+days: 14
+hours_per_day: 8
+start_hour: 9
+seed: 1
+
+devices:            # alerts are attributed to the nearest device
+  - id: iot-01
+    at: [0, 0]
+    offline_days_ago: [3, 4, 5, 6, 7]   # down for five days last week
+  - id: iot-02
+    at: [2, 83]
+
+verification:       # how the operator and robot handle alerts
+  dispatch_share: 0.3          # share of alerts the robot is sent to
+  dispatch_delay_s: [3, 20]    # detection -> dispatch
+  travel_s: [20, 120]          # dispatch -> arrival
+  unclear_share: 0.1
+
+hotspots:
+  - name: Back gate (iot-02)
+    at: [2, 83]
+    radius_m: 3
+    rate_per_hour: 0.8
+    types: [trespassing, loitering]
+    true_share: 0.2            # mostly false alarms (wind, shadows)
+  - name: Loading bay (iot-01)
+    at: [0, 0]
+    radius_m: 3
+    rate_per_hour: 0.4
+    types: [loitering]
+    true_share: 0.7            # fewer alerts, but usually real
+  - name: Parking entrance
+    at: [-30, 14]
+    radius_m: 4
+    rate_per_hour: 0.3
+    types: [loitering, lying_down]
+    true_share: 0.5
+    dispatch_share: 0.6        # operators check this one more often
+
+background:         # sparse alerts anywhere along the lanes
+  rate_per_hour: 0.2
+  true_share: 0.1

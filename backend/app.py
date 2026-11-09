@@ -9,6 +9,7 @@ from api import anomaly as anomaly_api
 from api import camera as camera_api
 from api import device as device_api
 from api import devtools as devtools_api
+from api import devtools_history as devtools_history_api
 from api import geofence as geofence_api
 from api import investigation as investigation_api
 from api import map as map_api
@@ -116,6 +117,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     fastapi_app.include_router(camera_api.router, prefix="/api/cameras", tags=["cameras"])
     fastapi_app.include_router(system_api.router, prefix="/api/system", tags=["system"])
     fastapi_app.include_router(devtools_api.router, prefix="/api/dev", tags=["devtools"])
+    fastapi_app.include_router(devtools_history_api.router, prefix="/api/dev/history", tags=["devtools"])
     fastapi_app.include_router(websocket_api.router, tags=["websocket"])
 
     return fastapi_app

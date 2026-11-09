@@ -202,6 +202,10 @@ class MapServer:
             return None
         return self.snap_to_lanelet(xy.x, xy.y)
 
+    def centerlines_xy(self) -> list[list[tuple[float, float]]]:
+        self._ensure_available()
+        return [[(p.x, p.y) for p in self._centerline(ll)[0]] for ll in self._lanelet_layer]
+
     def _centerline(self, ll) -> tuple[list, list[float]]:
         """The lanelet's centerline points and the arc length at each, cached."""
         cached = self._centerlines.get(ll.id)

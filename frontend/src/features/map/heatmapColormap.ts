@@ -8,6 +8,10 @@ const STOPS: [number, [number, number, number, number]][] = [
   [1, [226, 65, 43, 0.95]],
 ];
 
+export const HEATMAP_RAMP_CSS = `linear-gradient(to right, ${STOPS.slice(1)
+  .map(([t, [r, g, b, a]]) => `rgba(${r},${g},${b},${a}) ${t * 100}%`)
+  .join(", ")})`;
+
 export const HEATMAP_LUT: Uint8ClampedArray<ArrayBuffer> = (() => {
   const lut = new Uint8ClampedArray(256 * 4);
   for (let i = 0; i < 256; i++) {
