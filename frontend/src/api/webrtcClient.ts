@@ -2,6 +2,7 @@ import { ApiError, http } from "./httpClient";
 import { API_BASE_URL } from "./config";
 import { getRealtimeClient, type CameraSessionEnded, type RawCameraSignal } from "./realtimeClient";
 import type { CameraState } from "../types/domain";
+import { randomId } from "../utils/randomId";
 
 /** Why a camera session couldn't start or ended -- `code` is the backend's
  * machine-readable reason (camera_busy, session_stopping, gateway_timeout, ...). */
@@ -135,7 +136,7 @@ export async function startWebrtcSession(
     throw new CameraSessionError("no_connection", "No realtime connection to the backend");
   }
 
-  const sessionId = crypto.randomUUID();
+  const sessionId = randomId();
   const pc = new RTCPeerConnection({ iceServers: [] });
   let closed = false;
   let offerSeen = false;

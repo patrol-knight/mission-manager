@@ -1,4 +1,5 @@
 import type { MissionDefinition, RouteValidationResult, Waypoint } from "./missionTypes";
+import { randomId } from "../../utils/randomId";
 
 export interface MissionEditorState {
   /** null while authoring a brand new mission; set once editing an existing one. */
@@ -100,7 +101,7 @@ export function missionEditorReducer(
 
     case "ADD_WAYPOINT": {
       const waypoint: Waypoint = {
-        waypointId: crypto.randomUUID(),
+        waypointId: randomId(),
         x: action.x,
         y: action.y,
         yaw: null,
