@@ -1,12 +1,16 @@
 import threading
 from datetime import datetime, timedelta, timezone
+from typing import Protocol
 
-from core.anomaly_repository import AnomalyRepository
 from core.errors import AnomalyNotFoundError, InvalidAnomalyTransitionError
 from models.anomaly import FINAL_VERDICTS, Anomaly, AnomalyStateMessage, AnomalyVerdict
 
 # How long a removed closed anomaly's id is remembered, to ignore late refreshes.
 CLOSED_ID_RETENTION = timedelta(hours=1)
+
+
+class Recorder(Protocol):
+    def record_final(self, anomaly: Anomaly, closed_at: datetime) -> None: ...
 
 
 class AnomalyRegistry:
@@ -23,11 +27,10 @@ class AnomalyRegistry:
     are ignored and it leaves the map. An "unclear" verdict doesn't -- the
     anomaly stays live and can be investigated again.
 
-    When a repository is supplied, each anomaly is written to it exactly once,
-    at its terminal event -- a final verdict, or expiry -- and never updated
-    (see core/anomaly_repository.py). The repository is fail-soft on its own."""
+    When a recorder is supplied, each anomaly is passed to it exactly once,
+    at its terminal event -- a final verdict, or expiry."""
 
-    def __init__(self, repository: AnomalyRepository | None = None) -> None:
+    def __init__(self, recorder: Recorder | None = None) -> None:
         self._lock = threading.RLock()
         self._anomalies: dict[str, Anomaly] = {}
         # The anomaly the robot is investigating; expire() never removes it.
@@ -37,7 +40,7 @@ class AnomalyRegistry:
         # closed id; without this, a late refresh after removal would
         # recreate it as a brand-new anomaly.
         self._closed_ids: dict[str, datetime] = {}
-        self._repository = repository
+        self._recorder = recorder
 
     def ingest(
         self, message: AnomalyStateMessage, received_at: datetime, latlon: tuple[float, float] | None
@@ -139,7 +142,7 @@ class AnomalyRegistry:
 
     def resolve(self, anomaly_id: str, verdict: AnomalyVerdict, mission_id: str | None) -> Anomaly:
         """Records the operator's verdict. A final verdict closes the anomaly
-        and is its terminal event, so it's written to the repository here; it
+        and is its terminal event, so it's recorded here; it
         stays in memory, hidden from the map, until expire() drops it, so late
         refreshes keep being ignored. "unclear" is recorded but not final."""
         with self._lock:
@@ -159,16 +162,16 @@ class AnomalyRegistry:
             )
             self._anomalies[anomaly_id] = updated
             stored = updated.model_copy(deep=True)
-        if self._repository is not None and verdict in FINAL_VERDICTS:
-            self._repository.record_final(stored, closed_at=resolved_at)
+        if self._recorder is not None and verdict in FINAL_VERDICTS:
+            self._recorder.record_final(stored, closed_at=resolved_at)
         return stored
 
     # Quoted: inside this class body, `list` is the method above, not the builtin.
     def expire(self, now: datetime | None = None) -> "list[str]":
         """Removes every anomaly whose expires_at has passed, except the
-        investigation target. Open ones (no verdict, or unclear) are written
-        to the repository here, their terminal event; closed ones were
-        already written by resolve(). Returns the removed ids. Call
+        investigation target. Open ones (no verdict, or unclear) are recorded
+        here, their terminal event; closed ones were already recorded by
+        resolve(). Returns the removed ids. Call
         periodically (core/monitor.py)."""
         now = datetime.now(timezone.utc) if now is None else now
         with self._lock:
@@ -184,8 +187,8 @@ class AnomalyRegistry:
                 for anomaly_id, removed_at in self._closed_ids.items()
                 if now - removed_at < CLOSED_ID_RETENTION
             }
-        if self._repository is not None:
+        if self._recorder is not None:
             for anomaly in expired:
                 if not anomaly.is_closed:
-                    self._repository.record_final(anomaly, closed_at=now)
+                    self._recorder.record_final(anomaly, closed_at=now)
         return [a.anomaly_id for a in expired]

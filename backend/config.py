@@ -1,5 +1,3 @@
-from typing import Literal
-
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -33,42 +31,11 @@ class Settings(BaseSettings):
     robot_lost_grace_sec: float = 10.0
     device_monitor_interval_sec: float = 1.0
 
-    # Durable anomaly-detection history (backend/core/anomaly_repository.py).
-    # None means persistence is skipped entirely -- e.g. bare `uvicorn` local
-    # dev with no Postgres running -- same optional-service posture as
-    # zenoh_enabled/map loading below. Example:
-    # postgresql://mission_manager:mission_manager@localhost:5432/mission_manager
-    database_url: str | None = None
-    # Tags this run's anomaly history: "sim" for dummy detectors, "real" for
-    # real perception. sim by default, so test data never passes as real.
-    anomaly_source: Literal["sim", "real"] = "sim"
-
-    # Mission editor heatmap (core/heatmap_service.py). Sources it shows,
-    # comma-separated; empty = just anomaly_source. "sim,real" lets a demo
-    # show simulated history with live real alerts.
-    heatmap_sources: str = ""
-    # Alerts per operating hour drawn transparent / fully colored (log scale).
-    heatmap_scale_floor: float = 0.05
-    heatmap_scale_ceiling: float = 5.0
-    heatmap_bandwidth_m: float = 4.0
-    heatmap_half_life_days: float = 21.0
-    heatmap_prior_hours: float = 2.0
-
-    def heatmap_source_list(self) -> list[str]:
-        sources = [s.strip() for s in self.heatmap_sources.split(",") if s.strip()]
-        unknown = set(sources) - {"sim", "real"}
-        if unknown:
-            raise ValueError(f"HEATMAP_SOURCES: unknown source(s) {sorted(unknown)}; use sim and/or real")
-        return sources or [self.anomaly_source]
+    heatmap_dir: str = "storage/heatmap"
 
     # Devtools recordings, one folder per run.
     runs_dir: str = "../data/runs"
     runs_owner: str | None = None  # "uid:gid"
-
-    # /dev History tab: delete, purge, seed and load scenarios. Off because
-    # the backend is reachable from the whole LAN.
-    devtools_history_write: bool = False
-    history_scenarios_dir: str = "storage/scenarios"
 
     zenoh_enabled: bool = False
     zenoh_router: str = "tcp/localhost:7447"

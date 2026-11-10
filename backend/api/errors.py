@@ -1,8 +1,6 @@
-import psycopg
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from core.anomaly_repository import HistorySchemaMissingError
 from core.errors import (
     AlreadyOnSiteError,
     AnomalyNotFoundError,
@@ -11,8 +9,6 @@ from core.errors import (
     DeviceNotConnectedError,
     DeviceNotFoundError,
     DeviceUnreachableError,
-    HistoryUnavailableError,
-    HistoryWriteDisabledError,
     InsufficientWaypointsError,
     InvalidAnomalyTransitionError,
     InvalidExecutionTransitionError,
@@ -28,8 +24,6 @@ from core.errors import (
     NoRouteError,
     NotOnSiteError,
     RobotNotReadyError,
-    ScenarioInvalidError,
-    SessionNotFoundError,
     VerdictRequiredError,
 )
 
@@ -40,10 +34,6 @@ _STATUS_BY_ERROR: dict[type[Exception], int] = {
     NoCurrentMissionError: 404,
     AnomalyNotFoundError: 404,
     DeviceNotFoundError: 404,
-    SessionNotFoundError: 404,
-    HistoryWriteDisabledError: 403,
-    ScenarioInvalidError: 422,
-    HistorySchemaMissingError: 409,
     MissionValidationError: 400,
     InsufficientWaypointsError: 400,
     CameraUnavailableError: 400,
@@ -62,7 +52,6 @@ _STATUS_BY_ERROR: dict[type[Exception], int] = {
     NoRouteError: 409,
     MapUnavailableError: 503,
     DeviceUnreachableError: 503,
-    HistoryUnavailableError: 503,
 }
 
 
@@ -73,10 +62,6 @@ def register_error_handlers(app: FastAPI) -> None:
 
     app.add_exception_handler(CameraSessionError, camera_session_handler)
 
-    async def database_down_handler(_: Request, exc: Exception) -> JSONResponse:
-        return JSONResponse(status_code=503, content={"detail": f"Database unreachable: {str(exc).strip()}"})
-
-    app.add_exception_handler(psycopg.OperationalError, database_down_handler)
     for error_type, status_code in _STATUS_BY_ERROR.items():
 
         async def handler(_: Request, exc: Exception, status_code: int = status_code) -> JSONResponse:

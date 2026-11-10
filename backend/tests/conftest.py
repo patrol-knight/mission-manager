@@ -36,7 +36,7 @@ def settings(tmp_path: Path) -> Settings:
         app_state_path=str(tmp_path / "app_state.yaml"),
         map_osm_path=str(tmp_path / "no-map.osm"),  # MapServer stays unavailable unless faked
         zenoh_enabled=False,
-        database_url=None,
+        heatmap_dir=str(tmp_path / "heatmap"),
         runs_dir=str(tmp_path / "data" / "runs"),
         geofence_folder=str(tmp_path / "geofences"),
         device_monitor_interval_sec=3600,  # tests drive the monitor's checks themselves
@@ -98,6 +98,10 @@ def fake_map(services: Services, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(m, "lane_yaw", lambda x, y: LANE_YAW)
 
 
+def current_mission(services: Services) -> dict:
+    return services.mission_service.current_or_none().model_dump(mode="json")
+
+
 @dataclass
 class Sim:
     """A fake robot and anomaly source, plus what the backend sent back."""
@@ -111,7 +115,7 @@ class Sim:
 
     @property
     def waypoints(self) -> list[tuple[float, float]]:
-        return [(w["x"], w["y"]) for w in self.client.get("/api/missions/current").json()["waypoints"]]
+        return [(w["x"], w["y"]) for w in self.current()["waypoints"]]
 
     def robot(self, x: float | None, y: float | None, state: str = "ready", mode: str | None = None) -> None:
         """One state sample from the robot; each one is newer than the last.
@@ -169,14 +173,24 @@ class Sim:
 
     # -- reading state back -------------------------------------------------
 
+    def current(self) -> dict:
+        return current_mission(self.services)
+
     def mission_status(self) -> str:
-        return self.client.get("/api/missions/current/execution").json()["status"]
+        return self.execution()["status"]
 
     def execution(self) -> dict:
-        return self.client.get("/api/missions/current/execution").json()
+        return self.services.mission_execution_manager.get_state().model_dump(mode="json")
 
     def investigation(self) -> dict | None:
-        return self.client.get("/api/investigation").json()
+        state = self.services.investigation.get_state()
+        return state.model_dump(mode="json") if state else None
+
+    def anomaly_record(self, anomaly_id: str) -> dict:
+        return self.services.anomaly_registry.get(anomaly_id).model_dump(mode="json")
+
+    def device(self, device_id: str) -> dict:
+        return self.services.device_registry.get(device_id).model_dump(mode="json")
 
     def last_command(self) -> tuple[str, dict | None]:
         return self.commands[-1]

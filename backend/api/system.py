@@ -8,13 +8,5 @@ router = APIRouter()
 
 @router.get("/status")
 def get_system_status(services: Services = Depends(get_services)) -> dict:
-    """Curl-able status, so a degraded/unreachable Postgres is discoverable
-    rather than only visible in backend logs (see core/anomaly_repository.py)."""
-    repository = services.anomaly_repository
-    return {
-        "database": {
-            "configured": repository is not None,
-            "connected": repository.is_connected() if repository is not None else False,
-        },
-        "heatmap": {"installed": services.heatmap_service.installed},
-    }
+    map_server = services.map_server
+    return {"map": map_server.get_info().map_name if map_server.is_available() else None}

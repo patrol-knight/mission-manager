@@ -1,0 +1,16 @@
+# Heatmap weights and scale; see backend/core/heatmap/README.md
+verdict_weights:
+  true_positive: 1.0
+  unclear: 0.5
+  false_positive: 0.15
+  expired: 0.3
+type_weights:
+  trespassing: 1.0
+  loitering: 1.0
+  lying_down: 1.0
+confidence_for:
+- unclear
+- expired
+half_life_days: 7.0
+bandwidth_m: 4.0
+full_at: 4.0

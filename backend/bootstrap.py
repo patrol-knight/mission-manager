@@ -3,7 +3,6 @@ from dataclasses import dataclass
 
 from config import Settings
 from core.anomaly_registry import AnomalyRegistry
-from core.anomaly_repository import AnomalyRepository, RecordingContext, file_hash
 from core.camera_registry import CameraRegistry
 from core.camera_stream import CameraStreamService
 from core.device_registry import DeviceRegistry
@@ -11,8 +10,7 @@ from core.devtools import DevtoolsService
 from core.errors import MapUnavailableError
 from core.geofence_server import GeofenceServer
 from core.goal_result import PAUSE_CODES
-from core.heatmap_service import HeatmapService
-from core.history_devtools import HistoryDevtools
+from core.heatmap import HeatmapService
 from core.investigation import InvestigationCoordinator
 from core.map_server import MapServer
 from core.mission_drive import MissionDriveCoordinator
@@ -38,8 +36,7 @@ class Services:
     device_registry: DeviceRegistry
     camera_registry: CameraRegistry
     anomaly_registry: AnomalyRegistry
-    anomaly_repository: AnomalyRepository | None
-    heatmap_service: HeatmapService
+    heatmap: HeatmapService
     investigation: InvestigationCoordinator
     mission_drive_coordinator: MissionDriveCoordinator
     mission_service: MissionService
@@ -48,7 +45,6 @@ class Services:
     zenoh_gateway: ZenohGateway
     geofences: GeofenceServer
     devtools: DevtoolsService
-    history: HistoryDevtools
 
 
 def build_services(settings: Settings) -> Services:
@@ -68,23 +64,8 @@ def build_services(settings: Settings) -> Services:
     device_registry = DeviceRegistry()
     camera_registry = CameraRegistry()
 
-    anomaly_repository: AnomalyRepository | None = None
-    if settings.database_url:
-        anomaly_repository = AnomalyRepository(
-            settings.database_url,
-            RecordingContext(
-                map_name=map_name,
-                source=settings.anomaly_source,
-                map_hash=file_hash(settings.map_osm_path),
-            ),
-        )
-        try:
-            anomaly_repository.init_schema()
-            anomaly_repository.heartbeat()
-        except Exception:
-            logger.warning("Failed to initialize anomaly history schema; continuing without it", exc_info=True)
-    anomaly_registry = AnomalyRegistry(repository=anomaly_repository)
-    heatmap_service = HeatmapService(anomaly_repository, map_server, settings)
+    heatmap = HeatmapService(settings.heatmap_dir, map_server)
+    anomaly_registry = AnomalyRegistry(recorder=heatmap)
     websocket_manager = WebSocketManager()
 
     mission_execution_manager = MissionExecutionManager(mission_server, websocket_manager, device_registry)
@@ -148,8 +129,7 @@ def build_services(settings: Settings) -> Services:
         device_registry=device_registry,
         camera_registry=camera_registry,
         anomaly_registry=anomaly_registry,
-        anomaly_repository=anomaly_repository,
-        heatmap_service=heatmap_service,
+        heatmap=heatmap,
         investigation=investigation,
         mission_drive_coordinator=mission_drive_coordinator,
         mission_service=mission_service,
@@ -158,5 +138,4 @@ def build_services(settings: Settings) -> Services:
         zenoh_gateway=zenoh_gateway,
         geofences=geofences,
         devtools=DevtoolsService(settings.runs_dir, settings.runs_owner, zenoh_gateway, device_registry),
-        history=HistoryDevtools(settings, map_server, anomaly_repository),
     )

@@ -1,0 +1,65 @@
+# Dummy history the simulator generates baseline.jsonl from
+days: 35.0
+seed: 12
+hotspots:
+- name: Back entrance
+  x: -2.1
+  y: -2.9
+  radius_m: 3.0
+  per_day: 1.0
+  verdicts:
+    true_positive: 0.1
+    unclear: 0.05
+    false_positive: 0.35
+    expired: 0.5
+  types:
+  - trespassing
+  - loitering
+  confidence:
+    low: 0.5
+    high: 0.95
+- name: Loading dock
+  x: -8.0
+  y: 2.0
+  radius_m: 3.0
+  per_day: 0.4
+  verdicts:
+    true_positive: 0.5
+    unclear: 0.1
+    false_positive: 0.1
+    expired: 0.3
+  types:
+  - loitering
+  - lying_down
+  confidence:
+    low: 0.5
+    high: 0.95
+- name: Demo spot
+  x: 4.9
+  y: 3.5
+  radius_m: 3.0
+  per_day: 1.2
+  verdicts:
+    true_positive: 0.1
+    unclear: 0.1
+    false_positive: 0.3
+    expired: 0.5
+  types:
+  - trespassing
+  confidence:
+    low: 0.5
+    high: 0.95
+background:
+  per_day: 1.0
+  verdicts:
+    true_positive: 0.05
+    unclear: 0.1
+    false_positive: 0.25
+    expired: 0.6
+  types:
+  - trespassing
+  - loitering
+  - lying_down
+  confidence:
+    low: 0.3
+    high: 0.8

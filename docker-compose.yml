@@ -5,30 +5,9 @@ services:
       - "7447:7447"
     restart: unless-stopped
 
-  postgres:
-    # Anomaly history (backend/core/anomaly_repository.py). Published on the
-    # host's loopback only, for heatmap devtools.
-    image: postgres:16-alpine
-    ports:
-      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
-    environment:
-      - POSTGRES_DB=${POSTGRES_DB:-mission_manager}
-      - POSTGRES_USER=${POSTGRES_USER:-mission_manager}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-mission_manager}
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mission_manager}"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-    restart: unless-stopped
-
   backend:
     build:
       context: ./backend
-      additional_contexts:
-        heatmap: ./modules/heatmap
     # Connects explicitly to the zenohd service below (ZENOH_ROUTER) rather
     # than relying on multicast peer discovery, so plain bridge networking
     # works here -- no network_mode: host, portable to Docker Desktop too.
@@ -37,8 +16,6 @@ services:
     depends_on:
       zenohd:
         condition: service_started
-      postgres:
-        condition: service_healthy
     environment:
       - BACKEND_HOST=0.0.0.0
       - BACKEND_PORT=8000
@@ -58,16 +35,6 @@ services:
       - ZENOH_ENABLED=${ZENOH_ENABLED:-false}
       - ZENOH_ROUTER=${ZENOH_ROUTER:-tcp/zenohd:7447}
       - ZENOH_DEVICE_STATE_KEYEXPR=devices/*/state
-      # Set DATABASE_URL to empty in the root .env to stop recording history.
-      - DATABASE_URL=${DATABASE_URL-postgresql://${POSTGRES_USER:-mission_manager}:${POSTGRES_PASSWORD:-mission_manager}@postgres:5432/${POSTGRES_DB:-mission_manager}}
-      - ANOMALY_SOURCE=${ANOMALY_SOURCE:-sim}
-      - HEATMAP_SOURCES=${HEATMAP_SOURCES:-}
-      - HEATMAP_SCALE_FLOOR=${HEATMAP_SCALE_FLOOR:-0.05}
-      - HEATMAP_SCALE_CEILING=${HEATMAP_SCALE_CEILING:-5}
-      - HEATMAP_BANDWIDTH_M=${HEATMAP_BANDWIDTH_M:-4}
-      - HEATMAP_HALF_LIFE_DAYS=${HEATMAP_HALF_LIFE_DAYS:-21}
-      - HEATMAP_PRIOR_HOURS=${HEATMAP_PRIOR_HOURS:-2}
-      - DEVTOOLS_HISTORY_WRITE=${DEVTOOLS_HISTORY_WRITE:-false}
       - MAP_NAME=${MAP_NAME:-}
     volumes:
       # Whole storage/ dir, read-write, persisted on the host -- missions and
@@ -105,6 +72,3 @@ services:
     depends_on:
       - backend
     restart: unless-stopped
-
-volumes:
-  postgres-data:

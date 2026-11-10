@@ -5,11 +5,10 @@ Mission Manager is the operator console for the `husky` patrol robot. It shows a
 ## Quick start
 
 ```bash
-git submodule update --init
 docker compose up --build
 ```
 
-Then open <http://localhost:5050>. Use `--build` again whenever the source code changes. Compose starts four services. The **frontend** is nginx serving the built UI on port 5050. The **backend** serves the REST and WebSocket API on port 8000. **zenohd** is the Zenoh router that robots, towers and the anomaly detector connect to, on port 7447. **postgres** records anomaly history, on `127.0.0.1:5432`. The anomaly heatmap in the mission editor comes from the `modules/heatmap` submodule; without it the backend runs without the heatmap.
+Then open <http://localhost:5050>. Use `--build` again whenever the source code changes. Compose starts three services. The **frontend** is nginx serving the built UI on port 5050. The **backend** serves the REST and WebSocket API on port 8000. **zenohd** is the Zenoh router that robots, towers and the anomaly detector connect to, on port 7447.
 
 ## Configuration
 
@@ -22,11 +21,7 @@ Set these in the root `.env`. Every one is optional.
 | `API_BASE_URL` | `http://localhost:8000` | Backend address **as seen from the browser** |
 | `WS_URL` | `ws://localhost:8000/ws` | WebSocket address as seen from the browser |
 | `CAMERA_MODE` | `mock` | `mock` or `real` camera streams |
-| `DATABASE_URL` | the postgres service | Where anomaly history is recorded. Empty turns it off |
-| `ANOMALY_SOURCE` | `sim` | Tags recorded history as `sim` (dummy detectors) or `real` (real perception) |
-| `MAP_NAME` | osm file name | Map name the history is recorded under |
-| `HEATMAP_SOURCES` | `ANOMALY_SOURCE` | Sources the heatmap shows, e.g. `sim,real` for a demo with simulated history |
-| `HEATMAP_SCALE_FLOOR` / `HEATMAP_SCALE_CEILING` | `0.05` / `5` | Alerts per operating hour drawn transparent / fully colored |
+| `MAP_NAME` | map folder name | Name the map's missions, geofences and heatmap are stored under |
 
 If you open the UI from another machine, point `API_BASE_URL` / `WS_URL` at the host running Docker instead of `localhost`, and add the page's origin to `CORS_ORIGINS`, e.g. `CORS_ORIGINS=["http://192.168.1.10:5050"]`.
 Data lives in `backend/storage/` on the host, so it survives container rebuilds:
@@ -34,6 +29,7 @@ Data lives in `backend/storage/` on the host, so it survives container rebuilds:
 - `maps/<site>/`: one folder per site (currently `ks` and `nsh`), each holding `lanelet2_map.osm` and `map_projector_info.yaml`. The folder name is the map's name.
 - `missions/`: saved missions (YAML). Each one records the map it was made on, and only missions for the loaded map are shown. Missions for other maps stay on disk and come back when you switch to their map.
 - `app_state.yaml`: the active mission and its progress
+- `heatmap/<site>/`: the mission editor's anomaly heatmap. `config.yaml`, `baseline.yaml` and `baseline.jsonl` (dummy history) are tracked; `real.jsonl` (anomalies closed on this machine) is not. See [backend/core/heatmap/README.md](backend/core/heatmap/README.md)
 
 To change the map, point `MAP_OSM_PATH` and `MAP_PROJECTOR_PATH` in `docker-compose.yml` at another site's folder, then recreate the backend. The map is only read at startup.
 
@@ -63,7 +59,7 @@ Design and metrics: [docs/design.md](docs/design.md).
 
 ## Architecture
 
-The browser sends commands over REST and receives all live state over a single WebSocket. Only the backend talks to Zenoh: the gateway turns device and anomaly messages into registry updates, and mission drive and investigation send robot goals back out through it. The map server computes every route and waypoint snap from the Lanelet2 map. Missions and maps are files in `backend/storage/`, and closed anomalies go to Postgres, grouped into one session per backend run (map, `sim`/`real`).
+The browser sends commands over REST and receives all live state over a single WebSocket. Only the backend talks to Zenoh: the gateway turns device and anomaly messages into registry updates, and mission drive and investigation send robot goals back out through it. The map server computes every route and waypoint snap from the Lanelet2 map. Missions, maps and the heatmap are files in `backend/storage/`; every closed anomaly is appended to the heatmap's `real.jsonl`.
 
 ```mermaid
 flowchart TB
@@ -84,8 +80,7 @@ flowchart TB
         GW["Zenoh gateway"]
     end
 
-    Files[("storage/<br/>maps · missions")]
-    DB[("Postgres<br/>anomaly history")]
+    Files[("storage/<br/>maps · missions · heatmap")]
     Z["zenohd"]
     Robot["Robot"]
     Tower["IoT towers"]
@@ -102,7 +97,7 @@ flowchart TB
     Reg <-- states --> GW
     MapS -.- Files
     MS -.- Files
-    Reg -.-> DB
+    Reg -.-> Files
     GW <--> Z
     Z <-- "devices/{id}/state · events<br/>devices/{id}/commands<br/>devices/{id}/cameras/*" --> Robot
     Z <-- "devices/{id}/state<br/>devices/{id}/cameras/*" --> Tower

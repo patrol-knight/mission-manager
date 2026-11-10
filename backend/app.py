@@ -5,11 +5,9 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from api import anomaly as anomaly_api
 from api import camera as camera_api
-from api import device as device_api
 from api import devtools as devtools_api
-from api import devtools_history as devtools_history_api
+from api import devtools_heatmap as devtools_heatmap_api
 from api import geofence as geofence_api
 from api import investigation as investigation_api
 from api import map as map_api
@@ -19,24 +17,10 @@ from api import websocket as websocket_api
 from api.errors import register_error_handlers
 from bootstrap import build_services
 from config import Settings
-from core.anomaly_repository import DeviceSample
 from core.monitor import run_monitor
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-SESSION_HEARTBEAT_SEC = 60.0
-
-
-async def heartbeat_sessions(repository, device_registry) -> None:
-    while True:
-        await asyncio.sleep(SESSION_HEARTBEAT_SEC)
-        devices = [
-            DeviceSample(d.device_id, d.type.value, d.pose.x, d.pose.y)
-            for d in device_registry.list_devices() if d.connected
-        ]
-        await asyncio.to_thread(repository.heartbeat, devices)
-
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     """`settings` defaults to the environment / .env; tests pass their own
@@ -68,11 +52,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         )
 
-        heartbeat_task = (
-            asyncio.create_task(heartbeat_sessions(services.anomaly_repository, services.device_registry))
-            if services.anomaly_repository is not None
-            else None
-        )
         devtools_tasks = [
             asyncio.create_task(services.devtools.run()),
             asyncio.create_task(services.devtools.run_pings()),
@@ -82,8 +61,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             yield
         finally:
-            if heartbeat_task is not None:
-                heartbeat_task.cancel()
             for task in [monitor_task, *devtools_tasks]:
                 task.cancel()
                 try:
@@ -92,8 +69,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     pass
             services.devtools.stop_recording()
             services.zenoh_gateway.stop()
-            if services.anomaly_repository is not None:
-                services.anomaly_repository.close()
             logger.info("[Backend] Stopped")
 
     fastapi_app = FastAPI(lifespan=lifespan)
@@ -109,15 +84,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     register_error_handlers(fastapi_app)
 
     fastapi_app.include_router(mission_api.router, prefix="/api/missions", tags=["missions"])
-    fastapi_app.include_router(device_api.router, prefix="/api/devices", tags=["devices"])
-    fastapi_app.include_router(anomaly_api.router, prefix="/api/anomalies", tags=["anomalies"])
     fastapi_app.include_router(investigation_api.router, prefix="/api/investigation", tags=["investigation"])
     fastapi_app.include_router(map_api.router, prefix="/api/map", tags=["map"])
     fastapi_app.include_router(geofence_api.router, prefix="/api/geofences", tags=["geofences"])
     fastapi_app.include_router(camera_api.router, prefix="/api/cameras", tags=["cameras"])
     fastapi_app.include_router(system_api.router, prefix="/api/system", tags=["system"])
     fastapi_app.include_router(devtools_api.router, prefix="/api/dev", tags=["devtools"])
-    fastapi_app.include_router(devtools_history_api.router, prefix="/api/dev/history", tags=["devtools"])
+    fastapi_app.include_router(devtools_heatmap_api.router, prefix="/api/dev/heatmap", tags=["devtools"])
     fastapi_app.include_router(websocket_api.router, tags=["websocket"])
 
     return fastapi_app

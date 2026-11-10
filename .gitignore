@@ -28,3 +28,6 @@ msg/*.idl
 src/*/msg/lisp/
 
 /data/
+
+# Real anomalies recorded for the heatmap; local to each machine.
+backend/storage/heatmap/*/real.jsonl
