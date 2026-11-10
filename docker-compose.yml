@@ -5,6 +5,13 @@ services:
       - "7447:7447"
     restart: unless-stopped
 
+  # NTP for the devices: serves this machine's clock on UDP 123.
+  ntp:
+    build: ./ntp
+    ports:
+      - "123:123/udp"
+    restart: unless-stopped
+
   backend:
     build: ./backend
     ports:
