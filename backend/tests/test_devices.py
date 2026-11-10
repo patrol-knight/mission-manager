@@ -13,7 +13,7 @@ def test_ingest_rejects_malformed_payloads_and_type_changes(sim: Sim):
     assert not gateway.ingest_device_payload({**ROBOT, "unknown_field": 1})
     assert gateway.ingest_device_payload(ROBOT)
     assert not gateway.ingest_device_payload({**ROBOT, "type": "iot", "timestamp": 2.0})
-    assert sim.client.get("/api/devices/robot-1").json()["type"] == "robot"
+    assert sim.device("robot-1")["type"] == "robot"
 
 
 def test_only_meaningful_changes_are_broadcast(sim: Sim):

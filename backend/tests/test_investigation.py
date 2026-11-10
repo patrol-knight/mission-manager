@@ -59,7 +59,7 @@ def test_full_flow_from_a_ready_robot(sim: Sim):
     assert sim.finish_investigation().status_code == 204
 
     assert sim.investigation() is None
-    assert sim.client.get("/api/anomalies/a").json()["resolution"] == "true_positive"
+    assert sim.anomaly_record("a")["resolution"] == "true_positive"
     assert sim.feedback == [("a", "true_positive")]
     # Idle mission: the robot holds where it is
     assert sim.mission_status() == "ready"
@@ -69,15 +69,15 @@ def test_full_flow_from_a_ready_robot(sim: Sim):
 def test_dispatch_and_arrival_times_are_kept_for_history(sim: Sim):
     sim.robot(*sim.waypoints[1])
     sim.anomaly("a", 0, 0)
-    assert sim.client.get("/api/anomalies/a").json()["dispatched_at"] is None
+    assert sim.anomaly_record("a")["dispatched_at"] is None
 
     sim.investigate("a")
-    dispatched = sim.client.get("/api/anomalies/a").json()
+    dispatched = sim.anomaly_record("a")
     assert dispatched["dispatched_at"] is not None and dispatched["arrived_at"] is None
 
     sim.robot(0.5, 0, "arrived")
     sim.goal_result("succeeded")
-    arrived = sim.client.get("/api/anomalies/a").json()
+    arrived = sim.anomaly_record("a")
     assert arrived["dispatched_at"] == dispatched["dispatched_at"]
     assert arrived["arrived_at"] >= arrived["dispatched_at"]
 
@@ -89,7 +89,7 @@ def test_the_mission_is_frozen_while_investigating(sim: Sim):
     client = sim.client
     assert client.post("/api/missions/current/start").status_code == 409
     assert client.post("/api/missions/mission-1-48umx5/activate").status_code == 409
-    current = client.get("/api/missions/current").json()
+    current = sim.current()
     assert client.put(f"/api/missions/{MISSION_ID}", json=current).status_code == 409
 
 
@@ -113,7 +113,7 @@ def test_switching_on_site_needs_a_verdict_and_commits_it(sim: Sim):
     switched = sim.investigate("b").json()
     assert switched["anomaly_id"] == "b" and switched["phase"] == "en_route"
 
-    a = sim.client.get("/api/anomalies/a").json()
+    a = sim.anomaly_record("a")
     assert a["resolution"] == "unclear"  # recorded, still on the map
     assert sim.feedback == []  # unclear isn't sent
 
@@ -124,7 +124,7 @@ def test_switching_en_route_abandons_without_a_verdict(sim: Sim):
     sim.anomaly("b", 10, 0)
     sim.investigate("a")
     assert sim.investigate("b").json()["anomaly_id"] == "b"
-    assert sim.client.get("/api/anomalies/a").json()["resolution"] is None
+    assert sim.anomaly_record("a")["resolution"] is None
 
 
 def test_unclear_anomalies_can_be_revisited_but_closed_ones_cannot(sim: Sim):
@@ -177,7 +177,7 @@ def test_paused_mission_resumes_after_the_investigation(sim: Sim):
     assert sim.client.post("/api/missions/current/cancel").status_code == 409
 
     assert sim.cancel_investigation().status_code == 204  # Cancel en route needs no verdict
-    assert sim.client.get("/api/anomalies/a").json()["resolution"] is None
+    assert sim.anomaly_record("a")["resolution"] is None
     assert sim.mission_status() == "running"
 
 
@@ -215,7 +215,7 @@ def test_a_failed_goal_ends_the_investigation(sim: Sim):
     sim.investigate("a")
     sim.goal_result("failed", "route_rejected")
     assert sim.investigation() is None
-    assert sim.client.get("/api/anomalies/a").json()["resolution"] is None
+    assert sim.anomaly_record("a")["resolution"] is None
 
 
 def test_a_dropped_goal_to_the_anomaly_is_sent_again(sim: Sim):

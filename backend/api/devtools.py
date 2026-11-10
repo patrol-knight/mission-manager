@@ -28,11 +28,6 @@ class InitialPose(BaseModel):
     yaw: float = Field(default=0.0, allow_inf_nan=False)
 
 
-@router.get("/status")
-def get_status(services: Services = Depends(get_services)) -> dict:
-    return services.devtools.status()
-
-
 @router.get("/runs")
 def list_runs(services: Services = Depends(get_services)) -> list[dict]:
     return services.devtools.recorder.list_runs()

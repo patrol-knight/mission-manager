@@ -10,7 +10,6 @@ from core.errors import (
     MapUnavailableError,
     MissionExecutionLockedError,
     MissionNotFoundError,
-    NoCurrentMissionError,
 )
 from core.map_server import MapServer
 from core.mission_execution import ACTIVE_STATUSES, MissionExecutionManager
@@ -72,12 +71,6 @@ class MissionService:
             raise MissionNotFoundError(f"Mission not found: {mission_id}")
         return self._with_geo(mission)
 
-    def get_current(self) -> MissionGeo:
-        current = self.current_or_none()
-        if current is None:
-            raise NoCurrentMissionError("No current mission is set")
-        return current
-
     def current_or_none(self) -> MissionGeo | None:
         current = self._missions.get_current()
         return self._with_geo(current) if current is not None else None
@@ -115,12 +108,6 @@ class MissionService:
         return self._with_geo(activated)
 
     # -- Execution -----------------------------------------------------------
-
-    def get_execution(self) -> MissionExecutionState:
-        state = self._execution.get_state()
-        if state is None:
-            raise NoCurrentMissionError("No current mission is set")
-        return state
 
     def start(self) -> MissionExecutionState:
         """From where the robot is on the route (waypoint 0 without a map)."""
