@@ -2,12 +2,9 @@ FROM python:3.10-slim
 
 WORKDIR /app
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Skipped when the modules/heatmap submodule is not checked out.
-COPY --from=heatmap . /opt/heatmap
-RUN if [ -f /opt/heatmap/pyproject.toml ]; then pip install --no-cache-dir /opt/heatmap; fi
+COPY pyproject.toml .
+# Dependency groups need pip >= 25.1.
+RUN pip install --no-cache-dir -U "pip>=25.1" && pip install --no-cache-dir --group app
 
 COPY . .
 
