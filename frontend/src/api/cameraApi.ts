@@ -1,7 +1,13 @@
 import { describeCameraSessionError, releaseAbandonedSession, startWebrtcSession, type WebrtcSession } from "./webrtcClient";
 import { useDeviceStore } from "../stores/deviceStore";
 import type { CameraInfo } from "../types/domain";
-import type { InspectionSession } from "./cameraApi";
+
+/** Every device has exactly one camera, so a session is about that one
+ * camera -- `camera` is null when the device has none. */
+export interface InspectionSession {
+  sessionId: string;
+  camera: CameraInfo | null;
+}
 
 interface ActiveSession {
   session: WebrtcSession;
