@@ -4,7 +4,7 @@ import { Pill } from "../../components/ui/Pill";
 import { describeCameraSessionError, startWebrtcSession, type WebrtcSession } from "../../api/webrtcClient";
 import { useDeviceStore } from "../../stores/deviceStore";
 import type { BrowserRowsProvider } from "./devSocket";
-import { Kpi } from "./DeviceCard";
+import { Kpi } from "./Kpi";
 import { fmt, lossLevel, rttLevel } from "./metrics";
 import { Sparkline } from "./Sparkline";
 import { WebrtcStatsSampler, type WebrtcRow } from "./webrtcStats";

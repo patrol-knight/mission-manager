@@ -8,7 +8,7 @@ import { HEATMAP_RAMP_CSS } from "../../map/heatmapColormap";
 import devStyles from "../DevPage.module.css";
 import { BaselinePanel } from "./BaselinePanel";
 import { ConfigPanel } from "./ConfigPanel";
-import { Segmented, Slider, ToggleRow } from "./controls";
+import { Segmented, Slider, ToggleRow } from "../controls";
 import { saveComparison } from "./exportImage";
 import {
   errorText,

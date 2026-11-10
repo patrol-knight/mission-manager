@@ -1,4 +1,4 @@
-import type { PingResult } from "./devStore";
+import type { ClockSample, PingResult } from "./devStore";
 
 export type Level = "ok" | "warn" | "bad" | "idle";
 
@@ -50,6 +50,17 @@ export function silentLevel(silent: number | null, expectedHz: number | null): L
   if (silent === null || !expectedHz) return "idle";
   const period = 1 / expectedHz;
   return silent > Math.max(3, 10 * period) ? "bad" : silent > Math.max(1, 3 * period) ? "warn" : "ok";
+}
+
+/** The probe with the shortest round trip in the last minute bounds the offset best. */
+export function bestClock(samples: ClockSample[], sec = 60): ClockSample | null {
+  return recent(samples, sec).reduce<ClockSample | null>((best, c) => (!best || c.rtt_ms < best.rtt_ms ? c : best), null);
+}
+
+export function offsetLevel(ms: number | null): Level {
+  if (ms === null) return "idle";
+  const abs = Math.abs(ms);
+  return abs > 50 ? "bad" : abs > 5 ? "warn" : "ok";
 }
 
 export function fmt(value: number | null | undefined, digits = 1): string {

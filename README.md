@@ -8,7 +8,7 @@ Mission Manager is the operator console for the `husky` patrol robot. It shows a
 docker compose up --build
 ```
 
-Then open <http://localhost:5050>. Use `--build` again whenever the source code changes. Compose starts three services. The **frontend** is nginx serving the built UI on port 5050. The **backend** serves the REST and WebSocket API on port 8000. **zenohd** is the Zenoh router that robots, towers and the anomaly detector connect to, on port 7447.
+Then open <http://localhost:5050>. Use `--build` again whenever the source code changes. Compose starts four services. The **frontend** is nginx serving the built UI on port 5050. The **backend** serves the REST and WebSocket API on port 8000. **zenohd** is the Zenoh router that robots, towers and the anomaly detector connect to, on port 7447. **ntp** serves this machine's clock to the devices on UDP 123, so their clocks agree with Mission Manager's.
 
 ## Configuration
 
@@ -38,11 +38,12 @@ If the current mission belongs to a different map, it is cleared on the switch. 
 
 ## Devtools
 
-`http://<host>:5050/dev` measures the device links live: per device, ping RTT and loss and the Zenoh session; per stream, rate, inter-arrival jitter, gaps and bandwidth; and WebRTC stats for one camera. **Record** saves everything to `data/runs/<YYYYMMDD_HHMMSS>/` until stopped. Turn a run into plots and `summary.md`:
+`http://<host>:5050/dev` › **Network** shows the links between the devices and Mission Manager. **Devices**: backend traffic, then one row per device (ping RTT and loss, data bandwidth, gaps, command round trip, reconnects; click for per-stream detail) and a log of disconnects and gaps. **Video stream**: one camera's WebRTC stats. **Record** saves everything to `data/runs/<YYYYMMDD_HHMMSS>/record.jsonl` until stopped. Copy runs to your computer and analyze them there:
 
 ```bash
+tools/fetch.sh user@lab-machine                    # REMOTE_DIR defaults to patrol/mission-manager
 pip install --group backend/pyproject.toml:analyzer
-python -m tools.analyzer data/runs/<run>
+python -m tools.analyzer data/runs/<run>           # results/summary.csv and figures
 ```
 
 **Localize** sets the robot's pose by hand, for when GNSS can't: press **Initialize**, press where the robot is, and drag toward where it faces. The robot's marker shows the result; an error under the cards means zenoh_bridge refused it or didn't reply. Use it with the robot stopped. **Pick pose** works the same way and shows the map-frame x, y and yaw (radians), e.g. for an IoT tower's zenoh_bridge config; **Copy** gives the `x`/`y`/`yaw` lines. A click without a drag gives just x, y. Indoors, start Autoware with `localization_gnss_enabled:=false`.

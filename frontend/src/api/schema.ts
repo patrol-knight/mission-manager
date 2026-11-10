@@ -186,8 +186,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Runs */
-        get: operations["list_runs_api_dev_runs_get"];
+        get?: never;
         put?: never;
         /** Start Run */
         post: operations["start_run_api_dev_runs_post"];
@@ -1357,19 +1356,6 @@ export interface components {
             /** Anomaly Id */
             anomaly_id: string;
         };
-        /** StartRun */
-        StartRun: {
-            /**
-             * Label
-             * @default
-             */
-            label?: string;
-            /**
-             * Notes
-             * @default
-             */
-            notes?: string;
-        };
         /** TypeWeights */
         "TypeWeights-Input": {
             /**
@@ -1826,7 +1812,7 @@ export interface operations {
             };
         };
     };
-    list_runs_api_dev_runs_get: {
+    start_run_api_dev_runs_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -1843,42 +1829,7 @@ export interface operations {
                 content: {
                     "application/json": {
                         [key: string]: unknown;
-                    }[];
-                };
-            };
-        };
-    };
-    start_run_api_dev_runs_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["StartRun"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
                     };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

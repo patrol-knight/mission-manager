@@ -137,5 +137,7 @@ def build_services(settings: Settings) -> Services:
         websocket_manager=websocket_manager,
         zenoh_gateway=zenoh_gateway,
         geofences=geofences,
-        devtools=DevtoolsService(settings.runs_dir, settings.runs_owner, zenoh_gateway, device_registry),
+        devtools=DevtoolsService(
+            settings.runs_dir, settings.runs_owner, zenoh_gateway, device_registry, websocket_manager
+        ),
     )

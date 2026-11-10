@@ -1,22 +1,24 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "../../components/ui/Button";
 import { StatusDot } from "../../components/ui/StatusDot";
 import { useRealtimeSubscription } from "../../hooks/useRealtimeSubscription";
 import { useNow } from "../../hooks/useNow";
-import { useDeviceStore } from "../../stores/deviceStore";
-import { devApi, type RunSummary } from "./devApi";
+import { useToast } from "../../components/useToast";
+import { devApi } from "./devApi";
 import { connectDevSocket, type BrowserRowsProvider } from "./devSocket";
 import { useDevStore } from "./devStore";
-import { DeviceCard } from "./DeviceCard";
+import { Segmented } from "./controls";
 import { HeatmapView } from "./heatmap/HeatmapView";
 import { LocalizeView } from "./LocalizeView";
+import { NetworkDevices } from "./NetworkDevices";
 import { fmt, percentile, recent } from "./metrics";
 import { WebrtcPanel } from "./WebrtcPanel";
 import styles from "./DevPage.module.css";
 
-type Tab = "live" | "runs" | "localize" | "heatmap";
+type Tab = "network" | "heatmap" | "localize";
+type NetworkSection = "devices" | "video";
 
-const TAB_LABELS: Record<Tab, string> = { live: "Live", runs: "Runs", localize: "Localize", heatmap: "Heatmap" };
+const TAB_LABELS: Record<Tab, string> = { network: "Network", heatmap: "Heatmap", localize: "Localize" };
 
 function duration(fromIso: string | null, toMs: number): string {
   if (!fromIso) return "";
@@ -24,139 +26,62 @@ function duration(fromIso: string | null, toMs: number): string {
   return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
 }
 
-function RecordBar() {
+/** Records every 1 s window, ping, WebRTC stats and robot pose to
+ * data/runs/<time>/ until stopped. */
+function RecordButton() {
   const status = useDevStore((s) => s.status);
   const now = useNow(1000);
-  const [label, setLabel] = useState("");
+  const { show } = useToast();
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const recording = status?.recording ?? null;
 
-  const run = (action: () => Promise<unknown>) => {
+  const toggle = () => {
     setBusy(true);
-    setError(null);
-    action()
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : "Request failed"))
+    (recording ? devApi.stopRun() : devApi.startRun())
+      .then((r) => {
+        if (recording && r.run_id) show("success", `Saved data/runs/${r.run_id}`, `Plots: python -m tools.analyzer data/runs/${r.run_id}`);
+      })
+      .catch((err: unknown) => show("error", err instanceof Error ? err.message : "Request failed"))
       .finally(() => setBusy(false));
   };
 
-  return (
-    <div className={`${styles.recordBar} ${recording ? styles.recordBarActive : ""}`}>
-      {recording ? (
-        <>
-          <span className={styles.recDot} />
-          <strong>Recording</strong>
-          <span className={styles.mono}>data/runs/{recording}</span>
-          <span className={styles.muted}>{duration(status?.started_at ?? null, now)}</span>
-          <span className={styles.grow} />
-          <Button variant="dangerSolid" disabled={busy} onClick={() => run(devApi.stopRun)}>
-            Stop recording
-          </Button>
-        </>
-      ) : (
-        <>
-          <input
-            className={`${styles.input} ${styles.labelInput}`}
-            placeholder="Run label, e.g. tower-2 at 40 m, robot loop"
-            value={label}
-            maxLength={80}
-            onChange={(e) => setLabel(e.target.value)}
-          />
-          <Button variant="primary" disabled={busy} onClick={() => run(() => devApi.startRun(label.trim(), ""))}>
-            Record
-          </Button>
-          <span className={styles.muted}>
-            Saves every 1 s window, ping, WebRTC stats and robot pose until stopped.
-          </span>
-        </>
-      )}
-      {error && <span className={styles.bad}>{error}</span>}
-    </div>
+  return recording ? (
+    <Button size="sm" variant="dangerSolid" disabled={busy} onClick={toggle}>
+      <span className={styles.recDot} />
+      Stop {duration(status?.started_at ?? null, now)}
+    </Button>
+  ) : (
+    <Button size="sm" disabled={busy} onClick={toggle} title="Record links, pings, WebRTC stats and robot pose to data/runs/">
+      Record
+    </Button>
   );
 }
 
-function LiveView({ registerProvider }: { registerProvider: (p: BrowserRowsProvider | null) => void }) {
-  const links = useDevStore((s) => s.links);
-  const streams = useDevStore((s) => s.streams);
-  const pings = useDevStore((s) => s.pings);
-  const status = useDevStore((s) => s.status);
-  const devices = useDeviceStore((s) => s.devices);
-
-  const deviceIds = useMemo(() => {
-    const ids = new Set([...links.map((l) => l.device_id), ...Object.keys(pings), ...Object.keys(devices)]);
-    Object.keys(streams).forEach((key) => ids.add(key.split("|")[0]));
-    return [...ids].sort();
-  }, [links, pings, devices, streams]);
-
+function NetworkView({ registerProvider }: { registerProvider: (p: BrowserRowsProvider | null) => void }) {
+  const [view, setView] = useState<NetworkSection>("devices");
   return (
     <>
-      {status?.ping_error && <span className={styles.bad}>Ping failed: {status.ping_error}</span>}
-      {deviceIds.length === 0 && <div className={`${styles.card} ${styles.empty}`}>Waiting for devices…</div>}
-      {deviceIds.map((id) => (
-        <DeviceCard
-          key={id}
-          deviceId={id}
-          type={devices[id]?.type ?? null}
-          link={links.find((l) => l.device_id === id)}
-          manualIp={status?.manual_ips[id]}
-          pings={pings[id] ?? []}
-          streams={Object.entries(streams)
-            .filter(([key]) => key.startsWith(`${id}|`))
-            .map(([key, history]) => [key.split("|")[1], history])}
+      <div className={styles.sectionBar}>
+        <Segmented<NetworkSection>
+          options={[["devices", "Devices"], ["video", "Video stream"]]}
+          value={view}
+          onChange={setView}
         />
-      ))}
-      <WebrtcPanel registerProvider={registerProvider} />
+        <span className={styles.grow} />
+        <RecordButton />
+      </div>
+      {view === "devices" && <NetworkDevices />}
+      {/* Kept mounted so a stream and its recorded stats survive switching. */}
+      <div hidden={view !== "video"}>
+        <WebrtcPanel registerProvider={registerProvider} />
+      </div>
     </>
-  );
-}
-
-function RunsView() {
-  const [runs, setRuns] = useState<RunSummary[] | null>(null);
-  const recording = useDevStore((s) => s.status?.recording ?? null);
-
-  useEffect(() => {
-    devApi.listRuns().then(setRuns).catch(() => setRuns([]));
-  }, [recording]);
-
-  return (
-    <section className={styles.card}>
-      <h3 className={styles.cardTitle}>Runs</h3>
-      {runs === null ? (
-        <span className={styles.muted}>Loading…</span>
-      ) : runs.length === 0 ? (
-        <span className={styles.muted}>No runs recorded yet.</span>
-      ) : (
-        <table className={styles.table}>
-          <thead>
-            <tr>
-              <th>Run</th>
-              <th style={{ textAlign: "left" }}>Label</th>
-              <th>Started</th>
-              <th>Duration</th>
-            </tr>
-          </thead>
-          <tbody>
-            {runs.map((r) => (
-              <tr key={r.run_id}>
-                <td className={styles.mono}>{r.run_id}</td>
-                <td style={{ textAlign: "left" }}>{r.label || <span className={styles.faint}>–</span>}</td>
-                <td>{r.started_at ? new Date(r.started_at).toLocaleString() : "–"}</td>
-                <td>{r.ended_at ? duration(r.started_at, Date.parse(r.ended_at)) : "recording"}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-      <span className={styles.note}>
-        Plots: <span className={styles.mono}>python -m tools.analyzer data/runs/&lt;run&gt;</span>
-      </span>
-    </section>
   );
 }
 
 export function DevPage() {
   useRealtimeSubscription();
-  const [tab, setTab] = useState<Tab>("live");
+  const [tab, setTab] = useState<Tab>("network");
   const connected = useDevStore((s) => s.connected);
   const wsRtt = useDevStore((s) => s.wsRtt);
   const providerRef = useRef<BrowserRowsProvider | null>(null);
@@ -176,7 +101,7 @@ export function DevPage() {
           <span className={styles.brandSub}>devtools</span>
         </div>
         <nav className={styles.tabs}>
-          {(["live", "runs", "localize", "heatmap"] as const).map((t) => (
+          {(["network", "heatmap", "localize"] as const).map((t) => (
             <button
               key={t}
               type="button"
@@ -198,9 +123,7 @@ export function DevPage() {
         </div>
       </header>
       <main className={styles.main}>
-        {(tab === "live" || tab === "runs") && <RecordBar />}
-        {tab === "live" && <LiveView registerProvider={registerProvider} />}
-        {tab === "runs" && <RunsView />}
+        {tab === "network" && <NetworkView registerProvider={registerProvider} />}
         {tab === "localize" && <LocalizeView />}
         {tab === "heatmap" && <HeatmapView />}
       </main>

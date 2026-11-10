@@ -90,36 +90,48 @@ t4 browser receive                                     t4 - t3  path C
 - **Cost when idle**: the backend keeps per-stream counters for the samples it already receives, which is negligible. Extra subscriptions, active probes, iperf3 and recording run only while the page asks for them.
 - **Backend**: `/api/dev/*` plus a WebSocket channel (`/api/dev/ws`) that pushes 1 s windows. Windows run on the monotonic clock, so wall-clock corrections (NTP, WSL) don't distort intervals; wall time is only used for timestamps and latency.
 - **Device IPs**: from the zenohd admin space. The bridge subscribes to `devices/{id}/commands`, so `@/*/router/subscriber/devices/*/commands` gives the device's Zenoh session and `@/*/router` gives that session's remote address. Behind NAT or a port proxy that address is wrong; set it by hand on the page.
-- **Recording**: one folder per run, tool-agnostic so a shared analyzer can read it later. Analyzer output goes into the same folder.
+- **Recording**: one folder per run. `record.jsonl` holds every measurement, one JSON object per line with a `type` and an epoch `t` (the same convention as linkscope, so the two can be joined by time). The analyzer writes `results/` next to it.
 
   ```text
-  data/runs/20261031_093000/
-  ├── metadata.yaml   # start/end, label, device IPs
-  ├── windows.csv     # 1 s aggregates per device and stream: rate, jitter, gaps, bandwidth
-  ├── samples.csv     # every received sample
-  ├── ping.csv        # one ping per device per second
-  ├── links.csv       # Zenoh session per device per tick
-  ├── webrtc.csv      # getStats, one row per second
-  ├── ws.csv          # backend -> browser WebSocket RTT
-  ├── robot.csv       # robot pose, to place metrics on the map
-  ├── summary.md      # analyzer
-  └── *.png           # analyzer
+  data/runs/20261110_093000/
+  ├── record.jsonl
+  └── results/        # analyzer: summary.csv and figures
   ```
+
+  | `type` | Every | Fields |
+  |---|---|---|
+  | `meta` / `end` | run | `started_at`, device IPs, `traffic_scope` (`container` or `host`) |
+  | `window` | 1 s, per device and stream | rate, expected rate, jitter, gaps, kbps, payload size, latency* |
+  | `ping` | 1 s, per device | `rtt_ms`, `lost` |
+  | `link` | 1 s, per device | `zenoh_connected`, `ip`, `reconnects` |
+  | `command` | command | `rtt_ms` from sending a command to its first CommandResult |
+  | `clock` | 5 s, per connected device | `offset_ms` (device clock minus the backend's) and `rtt_ms` of a `time_probe` |
+  | `event` | change | `disconnect`, `reconnect` (`downtime_s`), `gap` (`stream`, `gap_ms`) |
+  | `traffic` | 1 s | backend `rx_kbps` / `tx_kbps` (its network interface) and `ui_kbps` (UI WebSocket to browsers) |
+  | `video` | 1 s, from the browser | WebRTC getStats: bitrate, fps, loss, jitter, RTT, freezes |
+  | `ws` | 1 s | browser ↔ backend WebSocket RTT |
+  | `pose` | 1 s, per robot | x, y, yaw, lat, lon |
+
+  \* receive time minus the payload timestamp. Add the device's clock offset to get the real one-way latency; /dev and the analyzer do.
+
+- **Clock offset**: every 5 s the backend sends each connected device a `time_probe` command. zenoh_bridge doesn't know it and rejects it at once, stamping the reply with its own clock (ms resolution), so offset ≈ device time − (send + receive) / 2, good to ±RTT/2. The probe with the shortest round trip is the best estimate. It works whether or not the device runs NTP, and shows whether NTP works. The bridge logs each probe as a rejected command.
+- **NTP**: the `ntp` service in `docker-compose.yml` (chrony, UDP 123) serves the lab machine's clock to the LAN without touching it; the host keeps its own clock synced when online. Devices run chrony on the host with `server <lab machine> iburst prefer`. Setup steps: linkscope `docs/devices.md`.
 
 - **File ownership**: the backend container runs as root, because ICMP ping needs raw sockets. Files it writes into the bind mount would be root-owned, and Docker creates a missing `data/` as root too, so the analyzer (or a shared analyzer submodule) run as the user could not write next to them. The backend `chown`s `data/`, `data/runs/` and everything it records to `RUNS_OWNER`, which compose sets from `HOST_UID:HOST_GID` (default `1000:1000`).
 - **Git**: `/data/` is ignored as a whole. `./data` is mounted into the backend container.
-- **Analyzer**: `python -m tools.analyzer data/runs/<run>` writes `summary.md` (percentiles, delivery, gaps, WebRTC) and plots: one figure per device (ping, rate, jitter, bandwidth), ping CDF, WebRTC, and a coverage map of the robot's ping RTT along its route.
+- **Analyzer**: `python -m tools.analyzer data/runs/<run>` writes `results/summary.csv` (one row per device plus a `backend` row: online %, disconnects, downtime, RTT p50/p95/p99, ping loss, command RTT, data and video bandwidth, backend in/out) and figures: one per device (round trips, data by stream, receive rate, disconnects shaded), backend traffic, RTT CDF, video, and the robot's ping RTT along its route.
+- **Analyzing elsewhere**: `tools/fetch.sh user@lab-machine [run]` copies the recordings (only `record.jsonl`) into this repo's `data/runs/`, so the lab machine needs no plotting libraries.
 
 ## Code
 
 | Where | What |
 |---|---|
-| `backend/core/devtools/service.py` | Passive Zenoh tap, device IPs, ping, `/api/dev/ws` windows |
+| `backend/core/devtools/service.py` | Passive Zenoh tap, device IPs, ping, command round trips, events, backend traffic, `/api/dev/ws` windows |
 | `backend/core/devtools/net_stats.py` | Per-stream rate, jitter, gaps and latency in 1 s windows |
-| `backend/core/devtools/recorder.py` | Run folders under `data/runs/` |
+| `backend/core/devtools/recorder.py` | `data/runs/<run>/record.jsonl` |
 | `backend/api/devtools.py` | `/api/dev/*` routes |
 | `frontend/src/features/devtools/` | The `/dev` page, including WebRTC stats |
-| `tools/analyzer/` | Offline plots and `summary.md` for a run |
+| `tools/analyzer/`, `tools/fetch.sh` | `summary.csv` and figures for a run; copying runs off the lab machine |
 
 The Heatmap tab is documented in [core/heatmap/README.md](../heatmap/README.md).
 

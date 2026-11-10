@@ -1,6 +1,6 @@
 import { Button } from "../../../components/ui/Button";
 import devStyles from "../DevPage.module.css";
-import { Slider, Toggle } from "./controls";
+import { Slider, Toggle } from "../controls";
 import { TYPES, VERDICTS, type BaselineSpec, type HeatmapPreview, type Hotspot } from "./heatmapApi";
 import styles from "./Heatmap.module.css";
 

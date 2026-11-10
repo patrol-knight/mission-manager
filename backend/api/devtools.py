@@ -13,11 +13,6 @@ router = APIRouter()
 INITIAL_POSE_REPLY_TIMEOUT_SEC = 2.0
 
 
-class StartRun(BaseModel):
-    label: str = Field(default="", max_length=80)
-    notes: str = Field(default="", max_length=2000)
-
-
 class PingTarget(BaseModel):
     ip: str | None = Field(default=None, max_length=64)
 
@@ -28,15 +23,10 @@ class InitialPose(BaseModel):
     yaw: float = Field(default=0.0, allow_inf_nan=False)
 
 
-@router.get("/runs")
-def list_runs(services: Services = Depends(get_services)) -> list[dict]:
-    return services.devtools.recorder.list_runs()
-
-
 @router.post("/runs")
-def start_run(body: StartRun, services: Services = Depends(get_services)) -> dict:
+def start_run(services: Services = Depends(get_services)) -> dict:
     try:
-        run_id = services.devtools.start_recording(body.label, body.notes)
+        run_id = services.devtools.start_recording()
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return {"run_id": run_id}

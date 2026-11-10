@@ -1,45 +1,44 @@
-import csv
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
-
-import yaml
-
-
-def _value(text: str):
-    if text == "":
-        return None
-    if text in ("True", "False"):
-        return text == "True"
-    try:
-        return float(text)
-    except ValueError:
-        return text
-
-
-def read_table(path: Path) -> list[dict]:
-    if not path.is_file():
-        return []
-    with path.open(newline="") as f:
-        return [{k: _value(v) for k, v in row.items()} for row in csv.DictReader(f)]
 
 
 @dataclass
 class Run:
     path: Path
     meta: dict
+    end: dict
     t0: float
-    tables: dict[str, list[dict]] = field(default_factory=dict)
+    rows: dict[str, list[dict]] = field(default_factory=dict)
 
-    def __getitem__(self, name: str) -> list[dict]:
-        return self.tables.get(name, [])
+    def __getitem__(self, kind: str) -> list[dict]:
+        return self.rows.get(kind, [])
+
+    @property
+    def results(self) -> Path:
+        return self.path / "results"
+
+    @property
+    def duration_s(self) -> float:
+        times = [r["t"] for rows in self.rows.values() for r in rows]
+        return max(times) - self.t0 if times else 0.0
 
     def devices(self) -> list[str]:
-        ids = {r["device_id"] for name in ("windows", "ping", "links") for r in self[name]}
-        return sorted(str(i) for i in ids)
+        ids = {r["device_id"] for kind in ("window", "ping", "link", "video") for r in self[kind]}
+        return sorted(ids)
+
+    def of(self, kind: str, device: str) -> list[dict]:
+        return [r for r in self[kind] if r.get("device_id") == device]
 
 
 def load_run(path: Path) -> Run:
-    meta = yaml.safe_load((path / "metadata.yaml").read_text()) or {}
-    tables = {p.stem: read_table(p) for p in path.glob("*.csv") if p.stem != "summary"}
-    times = [r["t"] for rows in tables.values() for r in rows if isinstance(r.get("t"), float)]
-    return Run(path, meta, min(times) if times else 0.0, tables)
+    """A run folder (data/runs/<run>) or its record.jsonl."""
+    record = path if path.is_file() else path / "record.jsonl"
+    rows: dict[str, list[dict]] = {}
+    for line in record.read_text().splitlines():
+        if line.strip():
+            row = json.loads(line)
+            rows.setdefault(row.pop("type"), []).append(row)
+    meta = (rows.pop("meta", None) or [{}])[0]
+    end = (rows.pop("end", None) or [{}])[0]
+    return Run(record.parent, meta, end, meta.get("t", 0.0), rows)

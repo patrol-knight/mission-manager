@@ -7,78 +7,6 @@
   gap: 12px;
 }
 
-.segmented {
-  display: inline-flex;
-  gap: 2px;
-  padding: 3px;
-  background: var(--color-bg);
-  border-radius: var(--radius-pill);
-}
-
-.segment {
-  padding: 4px 12px;
-  border: 0;
-  border-radius: var(--radius-pill);
-  background: transparent;
-  color: var(--color-text-muted);
-  font: inherit;
-  font-size: var(--text-sm);
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.segmentActive {
-  background: var(--color-surface);
-  color: var(--color-text);
-  box-shadow: var(--shadow-card);
-}
-
-.full {
-  display: flex;
-}
-
-.full .segment {
-  flex: 1;
-}
-
-.toggle {
-  position: relative;
-  width: 32px;
-  height: 18px;
-  flex: none;
-  border: 0;
-  border-radius: var(--radius-pill);
-  background: var(--color-border-strong);
-  cursor: pointer;
-  transition: background 0.15s;
-}
-
-.toggle::after {
-  content: "";
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: var(--color-surface);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
-  transition: transform 0.15s;
-}
-
-.toggleOn {
-  background: var(--color-primary);
-}
-
-.toggleOn::after {
-  transform: translateX(14px);
-}
-
-.toggle:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
 .row {
   display: flex;
   align-items: center;
@@ -163,28 +91,6 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
-}
-
-.slider {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: var(--text-md);
-}
-
-.slider input {
-  width: 100%;
-  accent-color: var(--color-primary);
-}
-
-.sliderHead {
-  display: flex;
-  justify-content: space-between;
-}
-
-.sliderValue {
-  font-variant-numeric: tabular-nums;
-  color: var(--color-text-muted);
 }
 
 .counts {

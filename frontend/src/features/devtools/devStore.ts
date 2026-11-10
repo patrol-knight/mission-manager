@@ -1,6 +1,7 @@
 import { create } from "zustand";
 
 const HISTORY_SEC = 300;
+const MAX_EVENTS = 100;
 
 export interface StreamWindow {
   device_id: string;
@@ -33,9 +34,41 @@ export interface PingResult {
 export interface DeviceLink {
   device_id: string;
   ip: string | null;
-  zenoh_connected: boolean;
+  /** null until the router has been asked. */
+  zenoh_connected: boolean | null;
   zenoh_session: string | null;
   reconnects: number;
+}
+
+export interface CommandRtt {
+  t: number;
+  device_id: string;
+  command: string;
+  rtt_ms: number;
+}
+
+/** Device clock minus this backend's, from a time_probe round trip; good to ±rtt_ms/2. */
+export interface ClockSample {
+  t: number;
+  device_id: string;
+  offset_ms: number;
+  rtt_ms: number;
+}
+
+export interface LinkEvent {
+  t: number;
+  kind: "disconnect" | "reconnect" | "gap";
+  device_id: string;
+  stream?: string;
+  gap_ms?: number;
+  downtime_s?: number;
+}
+
+/** Backend traffic per second: network in/out and to browsers over the UI WebSocket. */
+export interface Traffic {
+  ui_kbps: number;
+  rx_kbps?: number;
+  tx_kbps?: number;
 }
 
 export interface DevStatus {
@@ -50,6 +83,10 @@ export interface DevWindow {
   streams: StreamWindow[];
   pings: PingResult[];
   links: DeviceLink[];
+  commands: CommandRtt[];
+  clocks: ClockSample[];
+  events: LinkEvent[];
+  traffic: Traffic | null;
   status: DevStatus;
 }
 
@@ -65,6 +102,11 @@ interface DevState {
   /** `${device}|${stream}` -> windows, oldest first. */
   streams: Record<string, Timed<StreamWindow>[]>;
   pings: Record<string, PingResult[]>;
+  commands: Record<string, CommandRtt[]>;
+  clocks: Record<string, ClockSample[]>;
+  /** Newest first. */
+  events: LinkEvent[];
+  traffic: Timed<Traffic>[];
   wsRtt: Timed<number>[];
   setConnected: (connected: boolean) => void;
   addWindow: (window: DevWindow) => void;
@@ -83,6 +125,10 @@ export const useDevStore = create<DevState>((set) => ({
   links: [],
   streams: {},
   pings: {},
+  commands: {},
+  clocks: {},
+  events: [],
+  traffic: [],
   wsRtt: [],
   setConnected: (connected) => set({ connected }),
   addWindow: (w) =>
@@ -96,7 +142,17 @@ export const useDevStore = create<DevState>((set) => ({
       for (const ping of w.pings) {
         pings[ping.device_id] = trim([...(pings[ping.device_id] ?? []), ping], w.t);
       }
-      return { streams, pings, links: w.links, status: w.status };
+      const commands = { ...s.commands };
+      for (const c of w.commands) {
+        commands[c.device_id] = trim([...(commands[c.device_id] ?? []), c], w.t);
+      }
+      const clocks = { ...s.clocks };
+      for (const c of w.clocks) {
+        clocks[c.device_id] = trim([...(clocks[c.device_id] ?? []), c], w.t);
+      }
+      const events = [...[...w.events].reverse(), ...s.events].slice(0, MAX_EVENTS);
+      const traffic = w.traffic ? trim([...s.traffic, { t: w.t, value: w.traffic }], w.t) : s.traffic;
+      return { streams, pings, commands, clocks, events, traffic, links: w.links, status: w.status };
     }),
   addWsRtt: (rtt) =>
     set((s) => {

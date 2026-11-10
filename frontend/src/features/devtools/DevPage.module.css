@@ -91,24 +91,12 @@
   gap: 16px;
 }
 
-.recordBar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 16px;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-card);
-}
 
-.recordBarActive {
-  border-color: var(--color-danger-border);
-}
 
 .recDot {
-  width: 9px;
-  height: 9px;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
   border-radius: 50%;
   background: var(--color-danger);
   animation: blink 1.2s ease-in-out infinite;
@@ -131,13 +119,15 @@
   min-width: 0;
 }
 
-.labelInput {
-  flex: 1;
-  max-width: 360px;
-}
 
 .grow {
   flex: 1;
+}
+
+.sectionBar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .muted {
@@ -311,4 +301,53 @@
   .webrtcBody {
     grid-template-columns: 1fr;
   }
+}
+
+.deviceTable td {
+  vertical-align: middle;
+}
+
+.clickable {
+  cursor: pointer;
+}
+
+.clickable:hover td {
+  background: var(--color-surface-raised);
+}
+
+.deviceName {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.detailRow > td {
+  padding: 0 0 12px;
+  text-align: left;
+}
+
+.detail {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border-radius: var(--radius-md);
+  background: var(--color-surface-raised);
+}
+
+.events {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: var(--text-md);
+}
+
+.events li {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
 }

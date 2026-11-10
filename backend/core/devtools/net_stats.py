@@ -127,8 +127,6 @@ class NetStats:
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._streams: dict[tuple[str, str], _Stream] = {}
-        self._samples: list[Sample] = []
-        self.keep_samples = False
 
     def add(self, sample: Sample) -> None:
         with self._lock:
@@ -137,19 +135,14 @@ class NetStats:
             if stream is None:
                 stream = self._streams[key] = _Stream(sample.stream in PERIODIC_STREAMS)
             stream.add(sample)
-            if self.keep_samples:
-                self._samples.append(sample)
 
-    def collect(self, now: float, window_sec: float) -> tuple[list[dict], list[Sample]]:
+    def collect(self, now: float, window_sec: float) -> list[dict]:
         with self._lock:
-            rows = [
+            return [
                 {"device_id": device_id, "stream": name} | stream.window(now, window_sec)
                 for (device_id, name), stream in sorted(self._streams.items())
             ]
-            samples, self._samples = self._samples, []
-        return rows, samples
 
     def reset(self) -> None:
         with self._lock:
             self._streams.clear()
-            self._samples = []

@@ -1,4 +1,4 @@
-import styles from "./Heatmap.module.css";
+import styles from "./controls.module.css";
 
 export function Segmented<T extends string>({
   options,

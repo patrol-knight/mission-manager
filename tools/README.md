@@ -6,7 +6,8 @@ Developer tools, not part of the deployed app.
 |---|---|
 | `check.sh` | Runs the same checks as CI, so a PR that passes here passes there |
 | `export_openapi.py` | Prints the backend's OpenAPI schema; `check.sh gen-api` turns it into `frontend/src/api/schema.ts` |
-| `analyzer/` | Turns a devtools run in `data/runs/<run>` into plots and `summary.md`: `python -m tools.analyzer data/runs/<run>` |
+| `analyzer/` | Turns a devtools run in `data/runs/<run>` into `results/summary.csv` and figures: `python -m tools.analyzer data/runs/<run>` |
+| `fetch.sh` | Copies runs from the lab machine: `tools/fetch.sh user@lab-machine [run]` (`REMOTE_DIR`, default `patrol/mission-manager`) |
 
 ## Checks
 
