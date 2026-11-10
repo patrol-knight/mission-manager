@@ -4,8 +4,8 @@ from pathlib import Path
 
 import yaml
 
-from core.devtools import ip_from_locator
-from core.net_stats import NetStats, Sample, classify_key, payload_timestamp
+from core.devtools.net_stats import NetStats, Sample, classify_key, payload_timestamp
+from core.devtools.service import ip_from_locator
 
 
 def test_classify_key():

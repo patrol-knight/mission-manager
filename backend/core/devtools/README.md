@@ -108,7 +108,20 @@ t4 browser receive                                     t4 - t3  path C
 
 - **File ownership**: the backend container runs as root, because ICMP ping needs raw sockets. Files it writes into the bind mount would be root-owned, and Docker creates a missing `data/` as root too, so the analyzer (or a shared analyzer submodule) run as the user could not write next to them. The backend `chown`s `data/`, `data/runs/` and everything it records to `RUNS_OWNER`, which compose sets from `HOST_UID:HOST_GID` (default `1000:1000`).
 - **Git**: `/data/` is ignored as a whole. `./data` is mounted into the backend container.
-- **Analyzer**: `python -m scripts.analyzer data/runs/<run>` writes `summary.md` (percentiles, delivery, gaps, WebRTC) and plots: one figure per device (ping, rate, jitter, bandwidth), ping CDF, WebRTC, and a coverage map of the robot's ping RTT along its route.
+- **Analyzer**: `python -m tools.analyzer data/runs/<run>` writes `summary.md` (percentiles, delivery, gaps, WebRTC) and plots: one figure per device (ping, rate, jitter, bandwidth), ping CDF, WebRTC, and a coverage map of the robot's ping RTT along its route.
+
+## Code
+
+| Where | What |
+|---|---|
+| `backend/core/devtools/service.py` | Passive Zenoh tap, device IPs, ping, `/api/dev/ws` windows |
+| `backend/core/devtools/net_stats.py` | Per-stream rate, jitter, gaps and latency in 1 s windows |
+| `backend/core/devtools/recorder.py` | Run folders under `data/runs/` |
+| `backend/api/devtools.py` | `/api/dev/*` routes |
+| `frontend/src/features/devtools/` | The `/dev` page, including WebRTC stats |
+| `tools/analyzer/` | Offline plots and `summary.md` for a run |
+
+The Heatmap tab is documented in [core/heatmap/README.md](../heatmap/README.md).
 
 ## Localize
 

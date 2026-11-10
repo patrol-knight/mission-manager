@@ -8,8 +8,8 @@ import time
 from fastapi import WebSocket
 
 from core.device_registry import DeviceRegistry
-from core.net_stats import NetStats, Sample, classify_key, payload_timestamp
-from core.run_recorder import RunRecorder
+from core.devtools.net_stats import NetStats, Sample, classify_key, payload_timestamp
+from core.devtools.recorder import RunRecorder
 from transport.zenoh_gateway import ZenohGateway
 
 logger = logging.getLogger(__name__)
