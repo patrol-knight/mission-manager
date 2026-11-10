@@ -9,9 +9,6 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    backend_host: str = "0.0.0.0"
-    backend_port: int = 8000
-
     cors_origins: list[str] = ["http://localhost:5173"]
 
     map_osm_path: str = "storage/maps/nsh/lanelet2_map.osm"

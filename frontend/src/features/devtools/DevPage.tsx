@@ -148,7 +148,7 @@ function RunsView() {
         </table>
       )}
       <span className={styles.note}>
-        Plots: <span className={styles.mono}>python -m scripts.analyzer data/runs/&lt;run&gt;</span>
+        Plots: <span className={styles.mono}>python -m tools.analyzer data/runs/&lt;run&gt;</span>
       </span>
     </section>
   );

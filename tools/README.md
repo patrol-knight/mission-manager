@@ -1,12 +1,20 @@
-# Checks
+# Tools
 
-`check.sh` runs the same checks as CI, so a PR that passes here passes there.
+Developer tools, not part of the deployed app.
+
+| Tool | What it does |
+|---|---|
+| `check.sh` | Runs the same checks as CI, so a PR that passes here passes there |
+| `export_openapi.py` | Prints the backend's OpenAPI schema; `check.sh gen-api` turns it into `frontend/src/api/schema.ts` |
+| `analyzer/` | Turns a devtools run in `data/runs/<run>` into plots and `summary.md`: `python -m tools.analyzer data/runs/<run>` |
+
+## Checks
 
 ```bash
-scripts/check.sh                   # backend, frontend and contract
-scripts/check.sh all               # those plus docker
-scripts/check.sh backend frontend  # only the named checks
-scripts/check.sh gen-api           # regenerate frontend/src/api/schema.ts
+tools/check.sh                   # backend, frontend and contract
+tools/check.sh all               # those plus docker
+tools/check.sh backend frontend  # only the named checks
+tools/check.sh gen-api           # regenerate frontend/src/api/schema.ts
 ```
 
 | Check | Runs | Needs |

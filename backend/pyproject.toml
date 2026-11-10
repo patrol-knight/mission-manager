@@ -3,8 +3,8 @@ name = "mission-manager-backend"
 version = "0.1.0"
 requires-python = ">=3.10"
 
-# Install with pip >= 25.1: `pip install --group app` (Docker) or
-# `pip install --group dev` (tests, lint, README figures).
+# Install with pip >= 25.1: `pip install --group app` (Docker), `--group dev`
+# (tests, lint, figures) or `--group analyzer` (tools/analyzer).
 [dependency-groups]
 app = [
     "fastapi>=0.110",
@@ -18,13 +18,17 @@ app = [
     "numpy>=1.26",
     "icmplib>=3.0",
 ]
+analyzer = [
+    "matplotlib>=3.8",
+    "PyYAML>=6.0",
+]
 dev = [
     { include-group = "app" },
+    { include-group = "analyzer" },
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
     "httpx>=0.27",
     "ruff>=0.17",
-    "matplotlib>=3.8",
 ]
 
 [tool.ruff]

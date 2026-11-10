@@ -12,18 +12,15 @@ Then open <http://localhost:5050>. Use `--build` again whenever the source code 
 
 ## Configuration
 
-Set these in the root `.env`. Every one is optional.
+Copy `.env.example` to `.env` and edit it for each deployment. Every setting is optional.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `ZENOH_ENABLED` | `false` | Receive devices and anomalies over Zenoh. With it off, you can still author missions |
-| `ZENOH_ROUTER` | `tcp/zenohd:7447` | Zenoh router the backend connects to |
-| `API_BASE_URL` | `http://localhost:8000` | Backend address **as seen from the browser** |
-| `WS_URL` | `ws://localhost:8000/ws` | WebSocket address as seen from the browser |
-| `CAMERA_MODE` | `mock` | `mock` or `real` camera streams |
-| `MAP_NAME` | map folder name | Name the map's missions, geofences and heatmap are stored under |
+| `PUBLIC_HOST` | `localhost` | IP or hostname other machines use to reach this one. Set it when the UI is opened from another laptop: `http://<PUBLIC_HOST>:5050` |
+| `ZENOH_ENABLED` | `false` | Receive robots, towers and anomalies through the stack's zenohd. With it off, you can still author missions |
+| `MAP` | `nsh` | Site map, a folder under `backend/storage/maps/` |
+| `HOST_UID` / `HOST_GID` | `1000` | Owner of devtools recordings in `data/` |
 
-If you open the UI from another machine, point `API_BASE_URL` / `WS_URL` at the host running Docker instead of `localhost`, and add the page's origin to `CORS_ORIGINS`, e.g. `CORS_ORIGINS=["http://192.168.1.10:5050"]`.
 Data lives in `backend/storage/` on the host, so it survives container rebuilds:
 
 - `maps/<site>/`: one folder per site (currently `ks` and `nsh`), each holding `lanelet2_map.osm` and `map_projector_info.yaml`. The folder name is the map's name.
@@ -31,12 +28,7 @@ Data lives in `backend/storage/` on the host, so it survives container rebuilds:
 - `app_state.yaml`: the active mission and its progress
 - `heatmap/<site>/`: the mission editor's anomaly heatmap. `config.yaml`, `baseline.yaml` and `baseline.jsonl` (dummy history) are tracked; `real.jsonl` (anomalies closed on this machine) is not. See [backend/core/heatmap/README.md](backend/core/heatmap/README.md)
 
-To change the map, point `MAP_OSM_PATH` and `MAP_PROJECTOR_PATH` in `docker-compose.yml` at another site's folder, then recreate the backend. The map is only read at startup.
-
-```yaml
-      - MAP_OSM_PATH=storage/maps/nsh/lanelet2_map.osm
-      - MAP_PROJECTOR_PATH=storage/maps/nsh/map_projector_info.yaml
-```
+To change the map, set `MAP` in `.env` and recreate the backend. The map is only read at startup.
 
 ```bash
 docker compose up -d --force-recreate backend
@@ -49,13 +41,13 @@ If the current mission belongs to a different map, it is cleared on the switch. 
 `http://<host>:5050/dev` measures the device links live: per device, ping RTT and loss and the Zenoh session; per stream, rate, inter-arrival jitter, gaps and bandwidth; and WebRTC stats for one camera. **Record** saves everything to `data/runs/<YYYYMMDD_HHMMSS>/` until stopped. Turn a run into plots and `summary.md`:
 
 ```bash
-pip install -r scripts/analyzer/requirements.txt
-python -m scripts.analyzer data/runs/<run>
+pip install --group backend/pyproject.toml:analyzer
+python -m tools.analyzer data/runs/<run>
 ```
 
 **Localize** sets the robot's pose by hand, for when GNSS can't: press **Initialize**, press where the robot is, and drag toward where it faces. The robot's marker shows the result; an error under the cards means zenoh_bridge refused it or didn't reply. Use it with the robot stopped. **Pick pose** works the same way and shows the map-frame x, y and yaw (radians), e.g. for an IoT tower's zenoh_bridge config; **Copy** gives the `x`/`y`/`yaw` lines. A click without a drag gives just x, y. Indoors, start Autoware with `localization_gnss_enabled:=false`.
 
-Design and metrics: [docs/design.md](docs/design.md).
+Design and metrics: [backend/core/devtools/README.md](backend/core/devtools/README.md).
 
 ## Architecture
 

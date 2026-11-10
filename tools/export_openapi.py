@@ -1,4 +1,4 @@
-"""Prints the OpenAPI schema (see scripts/check.sh gen-api)."""
+"""Prints the OpenAPI schema (see tools/check.sh gen-api)."""
 
 import json
 import sys
@@ -6,7 +6,7 @@ from pathlib import Path
 
 from pydantic.json_schema import models_json_schema
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
 from app import create_app  # noqa: E402
 from config import Settings  # noqa: E402

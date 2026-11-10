@@ -1,5 +1,5 @@
 #!/bin/sh
-# The checks CI runs; usage in scripts/README.md.
+# The checks CI runs; usage in tools/README.md.
 set -eu
 root=$(cd "$(dirname "$0")/.." && pwd)
 if [ -z "${PYTHON:-}" ]; then
@@ -8,7 +8,7 @@ fi
 
 gen_api() {
   tmp=$(mktemp -d)
-  "$PYTHON" "$root/backend/tools/export_openapi.py" > "$tmp/openapi.json"
+  "$PYTHON" "$root/tools/export_openapi.py" > "$tmp/openapi.json"
   (cd "$root/frontend" && npx openapi-typescript "$tmp/openapi.json" --default-non-nullable false -o "$1" > /dev/null)
   rm -rf "$tmp"
 }
@@ -30,7 +30,7 @@ check_contract() {
   out=$(mktemp -d)
   gen_api "$out/schema.ts"
   if ! diff -u "$root/frontend/src/api/schema.ts" "$out/schema.ts"; then
-    echo "frontend/src/api/schema.ts is out of date: run scripts/check.sh gen-api and commit it." >&2
+    echo "frontend/src/api/schema.ts is out of date: run tools/check.sh gen-api and commit it." >&2
     exit 1
   fi
   rm -rf "$out"
@@ -40,7 +40,7 @@ check_contract() {
 check_docker() (
   # Own compose project: your usual stack's containers and volumes are untouched.
   cd "$root"
-  export COMPOSE_PROJECT_NAME=mission-manager-smoke API_BASE_URL=http://smoke.test:8000
+  export COMPOSE_PROJECT_NAME=mission-manager-smoke PUBLIC_HOST=smoke.test
   trap 'status=$?; [ "$status" -ne 0 ] && docker compose logs --no-color backend frontend; docker compose down --volumes --remove-orphans' EXIT
   docker compose up --build --detach --wait
   get() { curl -fsS --retry 30 --retry-all-errors --retry-delay 1 "$1"; }
@@ -48,7 +48,7 @@ check_docker() (
   get http://localhost:8000/api/map/bounds > /dev/null  # 503 if the map didn't load
   get http://localhost:8000/api/missions > /dev/null  # loads with or without a current mission
   get http://localhost:5050/ | grep -q 'id="root"'
-  get http://localhost:5050/config.js | grep -q "$API_BASE_URL"  # envsubst ran
+  get http://localhost:5050/config.js | grep -q "http://smoke.test:8000"  # envsubst ran
   echo "Smoke test passed"
 )
 
@@ -59,7 +59,7 @@ for check in "$@"; do
   case $check in
     gen-api) gen_api "$root/frontend/src/api/schema.ts"; echo "Wrote frontend/src/api/schema.ts"; continue ;;
     backend | frontend | contract | docker) ;;
-    *) echo "Unknown check: $check (see scripts/README.md)" >&2; exit 2 ;;
+    *) echo "Unknown check: $check (see tools/README.md)" >&2; exit 2 ;;
   esac
   printf '\n==> %s\n' "$check"
   "check_$check"

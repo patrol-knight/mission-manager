@@ -1,6 +1,6 @@
 name: CI
 
-# PRs into main (not drafts), merges into main, or manually. Locally: scripts/check.sh.
+# PRs into main (not drafts), merges into main, or manually. Locally: tools/check.sh.
 on:
   pull_request:
     branches: [main]
@@ -27,7 +27,7 @@ jobs:
           cache-dependency-path: backend/pyproject.toml
       - run: pip install -U "pip>=25.1" && pip install --group backend/pyproject.toml:dev
       - name: Ruff and pytest
-        run: scripts/check.sh backend
+        run: tools/check.sh backend
 
   frontend:
     if: ${{ !github.event.pull_request.draft }}
@@ -43,7 +43,7 @@ jobs:
       - run: npm ci
         working-directory: frontend
       - name: Lint, test and build
-        run: scripts/check.sh frontend
+        run: tools/check.sh frontend
 
   contract:
     if: ${{ !github.event.pull_request.draft }}
@@ -65,7 +65,7 @@ jobs:
       - run: npm ci
         working-directory: frontend
       - name: Generated API types match the backend
-        run: scripts/check.sh contract
+        run: tools/check.sh contract
 
   docker:
     if: ${{ !github.event.pull_request.draft }}
@@ -74,4 +74,4 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build images and smoke-test the stack
-        run: scripts/check.sh docker
+        run: tools/check.sh docker
