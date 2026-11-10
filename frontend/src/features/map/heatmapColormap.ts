@@ -28,6 +28,15 @@ export const HEATMAP_LUT: Uint8ClampedArray<ArrayBuffer> = (() => {
   return lut;
 })();
 
+/** A PNG data URL of a base64 grid of uint8 intensities, colored. */
+export function heatmapDataUrl(width: number, height: number, data: string): string {
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  canvas.getContext("2d")!.putImageData(new ImageData(colorizeHeatmap(data), width, height), 0, 0);
+  return canvas.toDataURL("image/png");
+}
+
 /** RGBA pixels for a base64 grid of uint8 intensities. */
 export function colorizeHeatmap(base64: string): Uint8ClampedArray<ArrayBuffer> {
   const values = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));

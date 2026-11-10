@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-export const HISTORY_SEC = 300;
+const HISTORY_SEC = 300;
 
 export interface StreamWindow {
   device_id: string;

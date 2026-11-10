@@ -17,7 +17,7 @@ export function yawBetween(from: { lng: number; lat: number }, to: { lng: number
 /** The point `distanceM` meters from (lon, lat) in map-frame direction
  * `angle` (radians CCW from east). Flat-earth approximation -- exact enough
  * over the few meters a camera sees. */
-export function offsetLngLat(lon: number, lat: number, angle: number, distanceM: number): [number, number] {
+function offsetLngLat(lon: number, lat: number, angle: number, distanceM: number): [number, number] {
   const dx = Math.cos(angle) * distanceM;
   const dy = Math.sin(angle) * distanceM;
   return [lon + dx / (METERS_PER_DEGREE_LAT * Math.cos((lat * Math.PI) / 180)), lat + dy / METERS_PER_DEGREE_LAT];

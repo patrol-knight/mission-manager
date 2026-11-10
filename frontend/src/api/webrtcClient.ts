@@ -6,7 +6,7 @@ import { randomId } from "../utils/randomId";
 
 /** Why a camera session couldn't start or ended -- `code` is the backend's
  * machine-readable reason (camera_busy, session_stopping, gateway_timeout, ...). */
-export class CameraSessionError extends Error {
+class CameraSessionError extends Error {
   readonly code: string;
   readonly status?: number;
 

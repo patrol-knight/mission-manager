@@ -2,24 +2,14 @@ import { useContext, useEffect } from "react";
 import type * as maplibregl from "maplibre-gl";
 import { MapContext } from "./MapContext";
 import { getHeatmap } from "../../api/mapApi";
-import { colorizeHeatmap } from "./heatmapColormap";
+import { heatmapDataUrl } from "./heatmapColormap";
 
 export const HEATMAP_LAYER_ID = "anomaly-heatmap";
 const SOURCE_ID = "anomaly-heatmap";
 const OPACITY = 0.6;
 
-function toDataUrl(width: number, height: number, data: string): string {
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  canvas.getContext("2d")!.putImageData(new ImageData(colorizeHeatmap(data), width, height), 0, 0);
-  return canvas.toDataURL("image/png");
-}
-
 /** Where anomalies happened before, under the lanelets, while editing a
- * mission. Fetched on every mount, so each edit shows the latest history.
- * Draws nothing when the backend has no heatmap (estimator not installed,
- * no database, no history yet). */
+ * mission. Fetched on every mount, so each edit shows the latest history. */
 export function HeatmapLayer() {
   const { map } = useContext(MapContext);
 
@@ -34,7 +24,7 @@ export function HeatmapLayer() {
         const coordinates = image.corners as [
           [number, number], [number, number], [number, number], [number, number],
         ];
-        map.addSource(SOURCE_ID, { type: "image", url: toDataUrl(image.width, image.height, image.data), coordinates });
+        map.addSource(SOURCE_ID, { type: "image", url: heatmapDataUrl(image.width, image.height, image.data), coordinates });
         const layers = map.getStyle().layers;
         const beforeId = map.getLayer("ll-left")
           ? "ll-left"
