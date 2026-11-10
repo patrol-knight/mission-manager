@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Button } from "../../components/ui/Button";
 import { Pill } from "../../components/ui/Pill";
 import { StatusDot } from "../../components/ui/StatusDot";
@@ -118,12 +118,13 @@ function describe(event: LinkEvent): string {
   return `Gap of ${fmt(event.gap_ms, 0)} ms on ${event.stream}`;
 }
 
-function TrafficCard({ online, total }: { online: number; total: number }) {
+function OverviewCard({ online, total }: { online: number; total: number }) {
   const traffic = useDevStore((s) => s.traffic);
+  const events = useDevStore((s) => s.events);
   const spark = recent(traffic, SPARK_SEC);
   const last = traffic[traffic.length - 1]?.value;
   return (
-    <section className={styles.card}>
+    <section className={`${styles.card} ${styles.overview}`}>
       <div className={styles.kpis}>
         <Kpi label="Devices online" value={total ? `${online} / ${total}` : "–"} level={total ? (online < total ? "warn" : "ok") : undefined} />
         <Kpi label="Backend in" value={fmt(last?.rx_kbps)} unit="kbps">
@@ -136,6 +137,79 @@ function TrafficCard({ online, total }: { online: number; total: number }) {
           <Sparkline values={spark.map((h) => h.value.ui_kbps)} />
         </Kpi>
       </div>
+      <div className={styles.eventsPane}>
+        <div className={styles.eventsInner}>
+          <h4 className={styles.sectionTitle}>Events</h4>
+          {events.length === 0 ? (
+            <span className={styles.muted}>No disconnects or gaps since this page opened.</span>
+          ) : (
+            <ul className={styles.events}>
+              {events.slice(0, 30).map((e, i) => (
+                <li key={`${e.t}-${i}`}>
+                  <span className={styles.mono}>{new Date(e.t * 1000).toLocaleTimeString()}</span>
+                  <b>{e.device_id}</b>
+                  <span className={e.kind === "gap" ? styles.warn : styles.bad}>{describe(e)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function DeviceCard({ id }: { id: string }) {
+  const link = useDevStore((s) => s.links.find((l) => l.device_id === id));
+  const allStreams = useDevStore((s) => s.streams);
+  const pings = useDevStore((s) => s.pings[id]);
+  const commands = useDevStore((s) => s.commands[id]);
+  const clocks = useDevStore((s) => s.clocks[id]);
+  const manualIp = useDevStore((s) => s.status?.manual_ips[id]);
+  const type = useDeviceStore((s) => s.devices[id]?.type);
+
+  const streams = Object.entries(allStreams)
+    .filter(([key]) => key.startsWith(`${id}|`))
+    .map(([key, history]) => [key.split("|")[1], history] as [string, Timed<StreamWindow>[]]);
+  const latest = streams.map(([, history]) => history[history.length - 1].value);
+  const silent = latest.flatMap((w) => (w.silent_s === null ? [] : [w.silent_s]));
+  const ping = summarizePings(pings ?? []);
+  const sparkPings = recent(pings ?? [], SPARK_SEC);
+  const clock = bestClock(clocks ?? []);
+  const commandRtt = commands?.[commands.length - 1]?.rtt_ms ?? null;
+  const gaps = latest.reduce((sum, w) => sum + w.total_gaps, 0);
+  const connected = link?.zenoh_connected;
+
+  return (
+    <section className={styles.card}>
+      <div className={styles.cardHeader}>
+        <StatusDot status={connected == null ? "unknown" : connected ? "online" : "offline"} />
+        <h3 className={styles.cardTitle}>{id}</h3>
+        {type && <Pill tone="subtle">{type}</Pill>}
+        <span className={styles.grow} />
+        <IpEditor key={manualIp ?? link?.ip ?? ""} deviceId={id} ip={link?.ip ?? null} manualIp={manualIp} />
+      </div>
+      <div className={styles.kpis}>
+        <Kpi label="Ping RTT (last)" value={fmt(ping.last)} unit="ms" level={rttLevel(ping.last)}>
+          <Sparkline values={sparkPings.map((p) => p.rtt_ms)} marks={sparkPings.map((p) => p.lost)} />
+        </Kpi>
+        <Kpi label="RTT p50 / p95 (60 s)" value={`${fmt(ping.p50)} / ${fmt(ping.p95)}`} unit="ms" level={rttLevel(ping.p95)} />
+        <Kpi label={`Ping loss (${ping.sent} sent)`} value={fmt(ping.lossPct)} unit="%" level={lossLevel(ping.lossPct)} />
+        <Kpi label="Zenoh session" value={link ? (connected ? "Connected" : "Lost") : "–"} level={link ? (connected ? "ok" : "bad") : "idle"}>
+          <span className={link?.reconnects ? styles.warn : styles.muted}>
+            {link ? `${link.reconnects} reconnects` : "not seen on the router"}
+          </span>
+        </Kpi>
+        <Kpi label="Data" value={fmt(latest.reduce((sum, w) => sum + w.kbps, 0))} unit="kbps">
+          <span className={gaps ? styles.warn : styles.muted}>{gaps} gaps</span>
+        </Kpi>
+        <Kpi label="Command RTT" value={fmt(commandRtt)} unit="ms" />
+        <Kpi label="Clock offset" value={clock ? `${clock.offset_ms > 0 ? "+" : ""}${fmt(clock.offset_ms)}` : "–"} unit="ms" level={offsetLevel(clock?.offset_ms ?? null)}>
+          <span className={styles.muted}>{clock ? `±${fmt(clock.rtt_ms / 2)} ms` : "no time_probe reply yet"}</span>
+        </Kpi>
+        <Kpi label="Last heard" value={fmt(silent.length ? Math.min(...silent) : null)} unit="s" />
+      </div>
+      <StreamTable streams={streams} offset={clock?.offset_ms ?? null} />
     </section>
   );
 }
@@ -144,141 +218,24 @@ export function NetworkDevices() {
   const links = useDevStore((s) => s.links);
   const streams = useDevStore((s) => s.streams);
   const pings = useDevStore((s) => s.pings);
-  const commands = useDevStore((s) => s.commands);
-  const clocks = useDevStore((s) => s.clocks);
-  const events = useDevStore((s) => s.events);
-  const status = useDevStore((s) => s.status);
+  const pingError = useDevStore((s) => s.status?.ping_error);
   const devices = useDeviceStore((s) => s.devices);
-  const [open, setOpen] = useState<string | null>(null);
 
   const deviceIds = useMemo(() => {
     const ids = new Set([...links.map((l) => l.device_id), ...Object.keys(pings), ...Object.keys(devices)]);
     Object.keys(streams).forEach((key) => ids.add(key.split("|")[0]));
     return [...ids].sort();
   }, [links, pings, devices, streams]);
-
-  const rows = deviceIds.map((id) => {
-    const link = links.find((l) => l.device_id === id);
-    const own = Object.entries(streams)
-      .filter(([key]) => key.startsWith(`${id}|`))
-      .map(([key, history]) => [key.split("|")[1], history] as [string, Timed<StreamWindow>[]]);
-    const latest = own.map(([, history]) => history[history.length - 1].value);
-    const silent = latest.flatMap((w) => (w.silent_s === null ? [] : [w.silent_s]));
-    const deviceCommands = commands[id] ?? [];
-    return {
-      id,
-      link,
-      streams: own,
-      ping: summarizePings(pings[id] ?? []),
-      kbps: latest.reduce((sum, w) => sum + w.kbps, 0),
-      gaps: latest.reduce((sum, w) => sum + w.total_gaps, 0),
-      commandRtt: deviceCommands[deviceCommands.length - 1]?.rtt_ms ?? null,
-      clock: bestClock(clocks[id] ?? []),
-      lastHeard: silent.length ? Math.min(...silent) : null,
-    };
-  });
-  const online = rows.filter((r) => r.link?.zenoh_connected).length;
+  const online = links.filter((l) => l.zenoh_connected && deviceIds.includes(l.device_id)).length;
 
   return (
     <>
-      <TrafficCard online={online} total={rows.length} />
-      {status?.ping_error && <span className={styles.bad}>Ping failed: {status.ping_error}</span>}
-      <section className={styles.card}>
-        {rows.length === 0 ? (
-          <span className={styles.empty}>Waiting for devices…</span>
-        ) : (
-          <div className={styles.tableWrap}>
-            <table className={`${styles.table} ${styles.deviceTable}`}>
-              <thead>
-                <tr>
-                  <th>Device</th>
-                  <th>Type</th>
-                  <th>RTT (ms)</th>
-                  <th>RTT p95 (60 s)</th>
-                  <th>Ping loss (%)</th>
-                  <th>Data (kbps)</th>
-                  <th>Gaps</th>
-                  <th>Command RTT (ms)</th>
-                  <th>Clock offset (ms)</th>
-                  <th>Reconnects</th>
-                  <th>Last heard (s)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r) => {
-                  const connected = r.link?.zenoh_connected;
-                  return (
-                    <Fragment key={r.id}>
-                      <tr className={styles.clickable} onClick={() => setOpen(open === r.id ? null : r.id)}>
-                        <td>
-                          <span className={styles.deviceName}>
-                            <StatusDot status={connected == null ? "unknown" : connected ? "online" : "offline"} size={7} />
-                            {r.id}
-                          </span>
-                        </td>
-                        <td className={styles.faint}>{devices[r.id]?.type ?? "–"}</td>
-                        <td className={styles[rttLevel(r.ping.last)]}>{fmt(r.ping.last)}</td>
-                        <td className={styles[rttLevel(r.ping.p95)]}>{fmt(r.ping.p95)}</td>
-                        <td className={styles[lossLevel(r.ping.lossPct)]}>{fmt(r.ping.lossPct)}</td>
-                        <td>{fmt(r.kbps)}</td>
-                        <td className={r.gaps ? styles.warn : undefined}>{r.gaps}</td>
-                        <td>{fmt(r.commandRtt)}</td>
-                        <td
-                          className={styles[offsetLevel(r.clock?.offset_ms ?? null)]}
-                          title={r.clock ? `±${fmt(r.clock.rtt_ms / 2)} ms (half the probe's round trip)` : "No time_probe reply yet"}
-                        >
-                          {r.clock ? `${r.clock.offset_ms > 0 ? "+" : ""}${fmt(r.clock.offset_ms)}` : "–"}
-                        </td>
-                        <td className={r.link?.reconnects ? styles.warn : undefined}>{r.link?.reconnects ?? "–"}</td>
-                        <td>{fmt(r.lastHeard)}</td>
-                      </tr>
-                      {open === r.id && (
-                        <tr className={styles.detailRow}>
-                          <td colSpan={11}>
-                            <div className={styles.detail}>
-                              <div className={styles.cardHeader}>
-                                <span className={styles.muted}>Ping RTT, last 2 min</span>
-                                <Sparkline
-                                  values={recent(pings[r.id] ?? [], SPARK_SEC).map((p) => p.rtt_ms)}
-                                  marks={recent(pings[r.id] ?? [], SPARK_SEC).map((p) => p.lost)}
-                                />
-                                <span className={styles.grow} />
-                                <IpEditor
-                                  key={status?.manual_ips[r.id] ?? r.link?.ip ?? ""}
-                                  deviceId={r.id}
-                                  ip={r.link?.ip ?? null}
-                                  manualIp={status?.manual_ips[r.id]}
-                                />
-                              </div>
-                              <StreamTable streams={r.streams} offset={r.clock?.offset_ms ?? null} />
-                            </div>
-                          </td>
-                        </tr>
-                      )}
-                    </Fragment>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
-      <section className={styles.card}>
-        <h3 className={styles.cardTitle}>Events</h3>
-        {events.length === 0 ? (
-          <span className={styles.muted}>No disconnects or gaps since this page opened.</span>
-        ) : (
-          <ul className={styles.events}>
-            {events.slice(0, 30).map((e, i) => (
-              <li key={`${e.t}-${i}`}>
-                <span className={styles.mono}>{new Date(e.t * 1000).toLocaleTimeString()}</span>
-                <b>{e.device_id}</b>
-                <span className={e.kind === "gap" ? styles.warn : styles.bad}>{describe(e)}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      <OverviewCard online={online} total={deviceIds.length} />
+      {pingError && <span className={styles.bad}>Ping failed: {pingError}</span>}
+      {deviceIds.length === 0 && <div className={`${styles.card} ${styles.empty}`}>Waiting for devices…</div>}
+      {deviceIds.map((id) => (
+        <DeviceCard key={id} id={id} />
+      ))}
     </>
   );
 }
