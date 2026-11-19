@@ -4,40 +4,6 @@
  */
 
 export interface paths {
-    "/api/anomalies": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Anomalies */
-        get: operations["list_anomalies_api_anomalies_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/anomalies/{anomaly_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Anomaly */
-        get: operations["get_anomaly_api_anomalies__anomaly_id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/cameras/{device_id}/{camera_id}/stream": {
         parameters: {
             query?: never;
@@ -89,6 +55,108 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/dev/heatmap": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get State */
+        get: operations["get_state_api_dev_heatmap_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/dev/heatmap/baseline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Save Baseline */
+        put: operations["save_baseline_api_dev_heatmap_baseline_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/dev/heatmap/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Save Config */
+        put: operations["save_config_api_dev_heatmap_config_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/dev/heatmap/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Preview */
+        post: operations["preview_api_dev_heatmap_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/dev/heatmap/real": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Clear Real */
+        delete: operations["clear_real_api_dev_heatmap_real_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/dev/heatmap/real/merge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Merge Real */
+        post: operations["merge_real_api_dev_heatmap_real_merge_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/dev/initial-pose": {
         parameters: {
             query?: never;
@@ -118,8 +186,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Runs */
-        get: operations["list_runs_api_dev_runs_get"];
+        get?: never;
         put?: never;
         /** Start Run */
         post: operations["start_run_api_dev_runs_post"];
@@ -146,23 +213,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/dev/status": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Status */
-        get: operations["get_status_api_dev_status_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/dev/targets/{device_id}": {
         parameters: {
             query?: never;
@@ -176,40 +226,6 @@ export interface paths {
          * @description Overrides the IP found from the Zenoh router; null clears it.
          */
         put: operations["set_ping_target_api_dev_targets__device_id__put"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/devices": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Devices */
-        get: operations["list_devices_api_devices_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/devices/{device_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Device */
-        get: operations["get_device_api_devices__device_id__get"];
-        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -246,8 +262,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Investigation */
-        get: operations["get_investigation_api_investigation_get"];
+        get?: never;
         put?: never;
         /**
          * Start Investigation
@@ -345,6 +360,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/map/heatmap": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Heatmap */
+        get: operations["get_heatmap_api_map_heatmap_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/map/lnglat-to-xy": {
         parameters: {
             query?: never;
@@ -431,23 +463,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/missions/current": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Current Mission */
-        get: operations["get_current_mission_api_missions_current_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/missions/current/cancel": {
         parameters: {
             query?: never;
@@ -459,23 +474,6 @@ export interface paths {
         put?: never;
         /** Cancel Mission */
         post: operations["cancel_mission_api_missions_current_cancel_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/missions/current/execution": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Execution State */
-        get: operations["get_execution_state_api_missions_current_execution_get"];
-        put?: never;
-        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -576,11 +574,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /**
-         * Get System Status
-         * @description Curl-able status, so a degraded/unreachable Postgres is discoverable
-         *     rather than only visible in backend logs (see core/anomaly_repository.py).
-         */
+        /** Get System Status */
         get: operations["get_system_status_api_system_status_get"];
         put?: never;
         post?: never;
@@ -598,6 +592,11 @@ export interface components {
         Anomaly: {
             /** Anomaly Id */
             anomaly_id: string;
+            /**
+             * Arrived At
+             * @default null
+             */
+            arrived_at: string | null;
             /** Confidence */
             confidence: number;
             /** Degrade Sec */
@@ -607,6 +606,11 @@ export interface components {
              * Format: date-time
              */
             detected_at: string;
+            /**
+             * Dispatched At
+             * @default null
+             */
+            dispatched_at: string | null;
             /**
              * Expires At
              * Format: date-time
@@ -622,15 +626,30 @@ export interface components {
              * Format: date-time
              */
             last_seen_at: string;
-            /** Lat */
+            /**
+             * Lat
+             * @default null
+             */
             lat: number | null;
-            /** Lon */
+            /**
+             * Lon
+             * @default null
+             */
             lon: number | null;
-            /** Mission Id */
+            /**
+             * Mission Id
+             * @default null
+             */
             mission_id: string | null;
-            /** Resolution */
+            /**
+             * Resolution
+             * @default null
+             */
             resolution: ("true_positive" | "false_positive" | "unclear") | null;
-            /** Resolved At */
+            /**
+             * Resolved At
+             * @default null
+             */
             resolved_at: string | null;
             /** Source Device Id */
             source_device_id: string;
@@ -646,6 +665,88 @@ export interface components {
             /** Y */
             y: number;
         };
+        /**
+         * Background
+         * @description Scattered events along the lanes, away from any hotspot.
+         */
+        "Background-Input": {
+            confidence?: components["schemas"]["ConfidenceRange-Input"];
+            /**
+             * Per Day
+             * @default 0
+             */
+            per_day?: number;
+            /** Types */
+            types?: ("lying_down" | "loitering" | "trespassing")[];
+            verdicts?: components["schemas"]["VerdictShares-Input"];
+        };
+        /**
+         * Background
+         * @description Scattered events along the lanes, away from any hotspot.
+         */
+        "Background-Output": {
+            confidence: components["schemas"]["ConfidenceRange-Output"];
+            /**
+             * Per Day
+             * @default 0
+             */
+            per_day: number;
+            /** Types */
+            types: ("lying_down" | "loitering" | "trespassing")[];
+            verdicts: components["schemas"]["VerdictShares-Output"];
+        };
+        /** BaselineInfo */
+        BaselineInfo: {
+            /** Events */
+            events: number;
+            /** Generated At */
+            generated_at: string | null;
+            /**
+             * Merged Real
+             * @default 0
+             */
+            merged_real: number;
+            /** Stale */
+            stale: boolean;
+        };
+        /**
+         * BaselineSpec
+         * @description What the simulator generates the dummy history from.
+         */
+        "BaselineSpec-Input": {
+            background?: components["schemas"]["Background-Input"];
+            /**
+             * Days
+             * @default 30
+             */
+            days?: number;
+            /** Hotspots */
+            hotspots?: components["schemas"]["Hotspot-Input"][];
+            /**
+             * Seed
+             * @default 1
+             */
+            seed?: number;
+        };
+        /**
+         * BaselineSpec
+         * @description What the simulator generates the dummy history from.
+         */
+        "BaselineSpec-Output": {
+            background: components["schemas"]["Background-Output"];
+            /**
+             * Days
+             * @default 30
+             */
+            days: number;
+            /** Hotspots */
+            hotspots: components["schemas"]["Hotspot-Output"][];
+            /**
+             * Seed
+             * @default 1
+             */
+            seed: number;
+        };
         /** CameraSessionInfo */
         CameraSessionInfo: {
             /** Camera Id */
@@ -660,6 +761,42 @@ export interface components {
              */
             session_state: "idle" | "starting" | "negotiating" | "streaming" | "stopping";
         };
+        /** ConfidenceRange */
+        "ConfidenceRange-Input": {
+            /**
+             * High
+             * @default 0.95
+             */
+            high?: number;
+            /**
+             * Low
+             * @default 0.5
+             */
+            low?: number;
+        };
+        /** ConfidenceRange */
+        "ConfidenceRange-Output": {
+            /**
+             * High
+             * @default 0.95
+             */
+            high: number;
+            /**
+             * Low
+             * @default 0.5
+             */
+            low: number;
+        };
+        /**
+         * DemoEvent
+         * @description A what-if true positive placed in /dev, never saved.
+         */
+        DemoEvent: {
+            /** Lat */
+            lat: number;
+            /** Lon */
+            lon: number;
+        };
         /**
          * DeviceType
          * @enum {string}
@@ -667,7 +804,10 @@ export interface components {
         DeviceType: "robot" | "iot";
         /** DeviceView */
         DeviceView: {
-            /** Battery */
+            /**
+             * Battery
+             * @default null
+             */
             battery: number | null;
             /** Connected */
             connected: boolean;
@@ -675,8 +815,12 @@ export interface components {
             device_id: string;
             /** Last Seen */
             last_seen: number;
+            /** @default null */
             pose: components["schemas"]["Pose2D"] | null;
-            /** Speed */
+            /**
+             * Speed
+             * @default null
+             */
             speed: number | null;
             /** Status */
             status: {
@@ -715,6 +859,161 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /**
+         * HeatmapConfig
+         * @description How events turn into heat; backend/core/heatmap/README.md has the math.
+         */
+        "HeatmapConfig-Input": {
+            /**
+             * Bandwidth M
+             * @default 4
+             */
+            bandwidth_m?: number;
+            /** Confidence For */
+            confidence_for?: ("true_positive" | "unclear" | "false_positive" | "expired")[];
+            /**
+             * Full At
+             * @default 4
+             */
+            full_at?: number;
+            /**
+             * Half Life Days
+             * @default 7
+             */
+            half_life_days?: number;
+            type_weights?: components["schemas"]["TypeWeights-Input"];
+            verdict_weights?: components["schemas"]["VerdictWeights-Input"];
+        };
+        /**
+         * HeatmapConfig
+         * @description How events turn into heat; backend/core/heatmap/README.md has the math.
+         */
+        "HeatmapConfig-Output": {
+            /**
+             * Bandwidth M
+             * @default 4
+             */
+            bandwidth_m: number;
+            /** Confidence For */
+            confidence_for: ("true_positive" | "unclear" | "false_positive" | "expired")[];
+            /**
+             * Full At
+             * @default 4
+             */
+            full_at: number;
+            /**
+             * Half Life Days
+             * @default 7
+             */
+            half_life_days: number;
+            type_weights: components["schemas"]["TypeWeights-Output"];
+            verdict_weights: components["schemas"]["VerdictWeights-Output"];
+        };
+        /** HeatmapImage */
+        HeatmapImage: {
+            /** Corners */
+            corners: number[][];
+            /** Data */
+            data: string;
+            /** Height */
+            height: number;
+            /** Record Count */
+            record_count: number;
+            /** Width */
+            width: number;
+        };
+        /** HeatmapPreview */
+        HeatmapPreview: {
+            /** Counts */
+            counts: {
+                [key: string]: number;
+            };
+            /** Elapsed Ms */
+            elapsed_ms: number;
+            /** Hotspots */
+            hotspots: components["schemas"]["HotspotLevel"][];
+            image: components["schemas"]["HeatmapImage"] | null;
+            /** Peak Level */
+            peak_level: number;
+            /** Points */
+            points: components["schemas"]["PreviewPoint"][];
+        };
+        /** HeatmapState */
+        HeatmapState: {
+            baseline: components["schemas"]["BaselineInfo"];
+            config: components["schemas"]["HeatmapConfig-Output"];
+            defaults: components["schemas"]["HeatmapConfig-Output"];
+            /** Map Name */
+            map_name: string;
+            /** Real Events */
+            real_events: number;
+            spec: components["schemas"]["BaselineSpec-Output"];
+        };
+        /** HeatmapView */
+        HeatmapView: {
+            /** Available */
+            available: boolean;
+            image: components["schemas"]["HeatmapImage"] | null;
+        };
+        /** Hotspot */
+        "Hotspot-Input": {
+            confidence?: components["schemas"]["ConfidenceRange-Input"];
+            /** Name */
+            name: string;
+            /**
+             * Per Day
+             * @default 1
+             */
+            per_day?: number;
+            /**
+             * Radius M
+             * @default 3
+             */
+            radius_m?: number;
+            /** Types */
+            types?: ("lying_down" | "loitering" | "trespassing")[];
+            verdicts?: components["schemas"]["VerdictShares-Input"];
+            /** X */
+            x: number;
+            /** Y */
+            y: number;
+        };
+        /** Hotspot */
+        "Hotspot-Output": {
+            confidence: components["schemas"]["ConfidenceRange-Output"];
+            /** Name */
+            name: string;
+            /**
+             * Per Day
+             * @default 1
+             */
+            per_day: number;
+            /**
+             * Radius M
+             * @default 3
+             */
+            radius_m: number;
+            /** Types */
+            types: ("lying_down" | "loitering" | "trespassing")[];
+            verdicts: components["schemas"]["VerdictShares-Output"];
+            /** X */
+            x: number;
+            /** Y */
+            y: number;
+        };
+        /** HotspotLevel */
+        HotspotLevel: {
+            /** Lat */
+            lat: number;
+            /** Level */
+            level: number;
+            /** Level After True */
+            level_after_true: number;
+            /** Lon */
+            lon: number;
+            /** Name */
+            name: string;
         };
         /** InitialPose */
         InitialPose: {
@@ -966,9 +1265,15 @@ export interface components {
              * @default map
              */
             frame_id: string;
-            /** Lat */
+            /**
+             * Lat
+             * @default null
+             */
             lat: number | null;
-            /** Lon */
+            /**
+             * Lon
+             * @default null
+             */
             lon: number | null;
             /** X */
             x: number;
@@ -979,6 +1284,38 @@ export interface components {
              * @default 0
              */
             yaw: number;
+        };
+        /** PreviewPoint */
+        PreviewPoint: {
+            /** Lat */
+            lat: number;
+            /** Lon */
+            lon: number;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "baseline" | "real" | "demo";
+            /**
+             * Verdict
+             * @enum {string}
+             */
+            verdict: "true_positive" | "unclear" | "false_positive" | "expired";
+            /** Weight */
+            weight: number;
+        };
+        /** PreviewRequest */
+        PreviewRequest: {
+            config: components["schemas"]["HeatmapConfig-Input"];
+            /** Demo */
+            demo?: components["schemas"]["DemoEvent"][];
+            spec?: components["schemas"]["BaselineSpec-Input"] | null;
+            /**
+             * View
+             * @default all
+             * @enum {string}
+             */
+            view?: "baseline" | "all";
         };
         /** RoutePreviewRequest */
         RoutePreviewRequest: {
@@ -1019,18 +1356,41 @@ export interface components {
             /** Anomaly Id */
             anomaly_id: string;
         };
-        /** StartRun */
-        StartRun: {
+        /** TypeWeights */
+        "TypeWeights-Input": {
             /**
-             * Label
-             * @default
+             * Loitering
+             * @default 1
              */
-            label?: string;
+            loitering?: number;
             /**
-             * Notes
-             * @default
+             * Lying Down
+             * @default 1
              */
-            notes?: string;
+            lying_down?: number;
+            /**
+             * Trespassing
+             * @default 1
+             */
+            trespassing?: number;
+        };
+        /** TypeWeights */
+        "TypeWeights-Output": {
+            /**
+             * Loitering
+             * @default 1
+             */
+            loitering: number;
+            /**
+             * Lying Down
+             * @default 1
+             */
+            lying_down: number;
+            /**
+             * Trespassing
+             * @default 1
+             */
+            trespassing: number;
         };
         /** ValidationError */
         ValidationError: {
@@ -1044,6 +1404,104 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+        };
+        /**
+         * VerdictShares
+         * @description Relative shares; normalized when simulating.
+         */
+        "VerdictShares-Input": {
+            /**
+             * Expired
+             * @default 0.5
+             */
+            expired?: number;
+            /**
+             * False Positive
+             * @default 0.2
+             */
+            false_positive?: number;
+            /**
+             * True Positive
+             * @default 0.2
+             */
+            true_positive?: number;
+            /**
+             * Unclear
+             * @default 0.1
+             */
+            unclear?: number;
+        };
+        /**
+         * VerdictShares
+         * @description Relative shares; normalized when simulating.
+         */
+        "VerdictShares-Output": {
+            /**
+             * Expired
+             * @default 0.5
+             */
+            expired: number;
+            /**
+             * False Positive
+             * @default 0.2
+             */
+            false_positive: number;
+            /**
+             * True Positive
+             * @default 0.2
+             */
+            true_positive: number;
+            /**
+             * Unclear
+             * @default 0.1
+             */
+            unclear: number;
+        };
+        /** VerdictWeights */
+        "VerdictWeights-Input": {
+            /**
+             * Expired
+             * @default 0.3
+             */
+            expired?: number;
+            /**
+             * False Positive
+             * @default 0.15
+             */
+            false_positive?: number;
+            /**
+             * True Positive
+             * @default 1
+             */
+            true_positive?: number;
+            /**
+             * Unclear
+             * @default 0.5
+             */
+            unclear?: number;
+        };
+        /** VerdictWeights */
+        "VerdictWeights-Output": {
+            /**
+             * Expired
+             * @default 0.3
+             */
+            expired: number;
+            /**
+             * False Positive
+             * @default 0.15
+             */
+            false_positive: number;
+            /**
+             * True Positive
+             * @default 1
+             */
+            true_positive: number;
+            /**
+             * Unclear
+             * @default 0.5
+             */
+            unclear: number;
         };
         /** Waypoint */
         Waypoint: {
@@ -1099,57 +1557,6 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    list_anomalies_api_anomalies_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Anomaly"][];
-                };
-            };
-        };
-    };
-    get_anomaly_api_anomalies__anomaly_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                anomaly_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Anomaly"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     start_camera_stream_api_cameras__device_id___camera_id__stream_post: {
         parameters: {
             query?: never;
@@ -1217,6 +1624,163 @@ export interface operations {
             };
         };
     };
+    get_state_api_dev_heatmap_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HeatmapState"];
+                };
+            };
+        };
+    };
+    save_baseline_api_dev_heatmap_baseline_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BaselineSpec-Input"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HeatmapState"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_config_api_dev_heatmap_config_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HeatmapConfig-Input"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_api_dev_heatmap_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HeatmapPreview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    clear_real_api_dev_heatmap_real_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HeatmapState"];
+                };
+            };
+        };
+    };
+    merge_real_api_dev_heatmap_real_merge_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HeatmapState"];
+                };
+            };
+        };
+    };
     set_initial_pose_api_dev_initial_pose_post: {
         parameters: {
             query?: never;
@@ -1248,28 +1812,6 @@ export interface operations {
             };
         };
     };
-    list_runs_api_dev_runs_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    }[];
-                };
-            };
-        };
-    };
     start_run_api_dev_runs_post: {
         parameters: {
             query?: never;
@@ -1277,41 +1819,6 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["StartRun"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    stop_run_api_dev_runs_stop_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
         requestBody?: never;
         responses: {
             /** @description Successful Response */
@@ -1327,7 +1834,7 @@ export interface operations {
             };
         };
     };
-    get_status_api_dev_status_get: {
+    stop_run_api_dev_runs_stop_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -1373,57 +1880,6 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_devices_api_devices_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DeviceView"][];
-                };
-            };
-        };
-    };
-    get_device_api_devices__device_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                device_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DeviceView"];
                 };
             };
             /** @description Validation Error */
@@ -1486,26 +1942,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_investigation_api_investigation_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["InvestigationState"] | null;
                 };
             };
         };
@@ -1652,6 +2088,26 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    get_heatmap_api_map_heatmap_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HeatmapView"];
                 };
             };
         };
@@ -1845,47 +2301,7 @@ export interface operations {
             };
         };
     };
-    get_current_mission_api_missions_current_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MissionGeo"];
-                };
-            };
-        };
-    };
     cancel_mission_api_missions_current_cancel_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MissionExecutionState"];
-                };
-            };
-        };
-    };
-    get_execution_state_api_missions_current_execution_get: {
         parameters: {
             query?: never;
             header?: never;

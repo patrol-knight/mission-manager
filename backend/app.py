@@ -5,10 +5,9 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from api import anomaly as anomaly_api
 from api import camera as camera_api
-from api import device as device_api
 from api import devtools as devtools_api
+from api import devtools_heatmap as devtools_heatmap_api
 from api import geofence as geofence_api
 from api import investigation as investigation_api
 from api import map as map_api
@@ -22,7 +21,6 @@ from core.monitor import run_monitor
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     """`settings` defaults to the environment / .env; tests pass their own
@@ -86,14 +84,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     register_error_handlers(fastapi_app)
 
     fastapi_app.include_router(mission_api.router, prefix="/api/missions", tags=["missions"])
-    fastapi_app.include_router(device_api.router, prefix="/api/devices", tags=["devices"])
-    fastapi_app.include_router(anomaly_api.router, prefix="/api/anomalies", tags=["anomalies"])
     fastapi_app.include_router(investigation_api.router, prefix="/api/investigation", tags=["investigation"])
     fastapi_app.include_router(map_api.router, prefix="/api/map", tags=["map"])
     fastapi_app.include_router(geofence_api.router, prefix="/api/geofences", tags=["geofences"])
     fastapi_app.include_router(camera_api.router, prefix="/api/cameras", tags=["cameras"])
     fastapi_app.include_router(system_api.router, prefix="/api/system", tags=["system"])
     fastapi_app.include_router(devtools_api.router, prefix="/api/dev", tags=["devtools"])
+    fastapi_app.include_router(devtools_heatmap_api.router, prefix="/api/dev/heatmap", tags=["devtools"])
     fastapi_app.include_router(websocket_api.router, tags=["websocket"])
 
     return fastapi_app

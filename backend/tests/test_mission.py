@@ -6,7 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from models.mission import Mission
-from tests.conftest import LANE_YAW, MISSION_ID, Sim
+from tests.conftest import LANE_YAW, MISSION_ID, Sim, current_mission
 
 NEW_MISSION = {
     "mission_id": "test-m",
@@ -16,7 +16,7 @@ NEW_MISSION = {
 }
 
 
-def test_mission_crud(client: TestClient):
+def test_mission_crud(client: TestClient, services):
     assert client.post("/api/missions", json=NEW_MISSION).status_code == 200
     assert client.post("/api/missions", json=NEW_MISSION).status_code == 409  # already exists
     assert client.post("/api/missions", json={**NEW_MISSION, "mission_id": "bad id!"}).status_code == 422
@@ -24,19 +24,19 @@ def test_mission_crud(client: TestClient):
     assert updated.status_code == 200 and updated.json()["name"] == "Renamed"
     assert client.put("/api/missions/nope", json={**NEW_MISSION, "mission_id": "nope"}).status_code == 404
     assert client.post("/api/missions/test-m/activate").json()["mission_id"] == "test-m"
-    assert client.get("/api/missions/current").json()["mission_id"] == "test-m"
+    assert current_mission(services)["mission_id"] == "test-m"
     assert client.delete("/api/missions/test-m").status_code == 204
     assert client.delete("/api/missions/test-m").status_code == 404
 
 
-def test_save_can_activate_and_fills_in_the_map_name(client: TestClient):
+def test_save_can_activate_and_fills_in_the_map_name(client: TestClient, services):
     unnamed = {k: v for k, v in NEW_MISSION.items() if k != "map_name"}
     saved = client.post("/api/missions?activate=true", json=unnamed).json()
-    assert saved["map_name"] and client.get("/api/missions/current").json()["mission_id"] == "test-m"
+    assert saved["map_name"] and current_mission(services)["mission_id"] == "test-m"
 
     client.post("/api/missions/mission-2-tdpjxe/activate")
     client.put("/api/missions/test-m?activate=true", json={**unnamed, "name": "Renamed"})
-    assert client.get("/api/missions/current").json()["name"] == "Renamed"
+    assert current_mission(services)["name"] == "Renamed"
 
 
 def test_execution_lifecycle(sim: Sim):
@@ -50,7 +50,7 @@ def test_execution_lifecycle(sim: Sim):
     assert pause.status_code == 409 and pause.json()["detail"] == "Cannot pause from status ready"
 
     assert client.post("/api/missions/current/start").json()["status"] == "running"
-    current = client.get("/api/missions/current").json()
+    current = sim.current()
     assert client.put(f"/api/missions/{MISSION_ID}", json=current).status_code == 409  # locked while running
     assert client.post("/api/missions/current/pause").json()["status"] == "paused"
     assert client.post("/api/missions/current/resume").json()["status"] == "running"
@@ -133,7 +133,7 @@ def test_pausing_keeps_the_target(sim: Sim):
 def test_an_infinite_mission_keeps_looping_until_cancelled(sim: Sim):
     client = sim.client
     w = sim.waypoints
-    current = client.get("/api/missions/current").json()
+    current = sim.current()
     saved = client.put(f"/api/missions/{MISSION_ID}", json={**current, "infinite_loop": True})
     assert saved.json()["infinite_loop"] is True and saved.json()["loop_count"] == 1  # count kept
 
@@ -297,7 +297,7 @@ def test_losing_the_robot_stops_everything_until_the_operator_starts_again(sim: 
     sim.services.mission_service.abort_if_robot_lost(grace_sec=-1)
     assert sim.investigation() is None
     assert sim.mission_status() == "not_ready"
-    assert sim.client.get("/api/anomalies/a").json()["resolution"] is None  # no verdict
+    assert sim.anomaly_record("a")["resolution"] is None  # no verdict
 
     sent_before = len(sim.commands)
     sim.robot(*w[0])  # the robot reports in again
@@ -407,7 +407,7 @@ def test_only_missions_made_on_the_loaded_map_are_loaded(tmp_path):
 
 
 def test_saving_heads_every_waypoint_along_its_lane_and_goals_use_it(sim: Sim):
-    current = sim.client.get("/api/missions/current").json()
+    current = sim.current()
     assert all(wp["yaw"] is None for wp in current["waypoints"])  # fixture saved without a map
     saved = sim.client.put(f"/api/missions/{MISSION_ID}", json=current).json()
     assert all(wp["yaw"] == LANE_YAW for wp in saved["waypoints"])
@@ -422,7 +422,7 @@ def test_saving_heads_every_waypoint_along_its_lane_and_goals_use_it(sim: Sim):
 
 def test_an_unlocalized_robot_has_no_pose(sim: Sim):
     sim.robot(None, None, "notready")
-    robot = sim.client.get("/api/devices/robot-1").json()
+    robot = sim.device("robot-1")
     assert robot["pose"] is None and robot["status"]["state"] == "notready"
     assert sim.client.post("/api/missions/current/start").status_code == 409
 

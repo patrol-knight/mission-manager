@@ -12,6 +12,7 @@ import { GeofenceCard } from "../geofences/GeofenceCard";
 import { GeofenceLayer } from "../geofences/GeofenceLayer";
 import { useGeofenceEditor } from "../geofences/useGeofenceEditor";
 import { headingDegrees, yawBetween } from "../map/geo";
+import { copyText } from "../../utils/copyText";
 import { LaneletLayer } from "../map/LaneletLayer";
 import { MapContext } from "../map/MapContext";
 import { useMarkerList, type UseMarkerListOptions } from "../map/mapMarkers";
@@ -46,16 +47,17 @@ interface Pose {
   yaw: number;
 }
 
-interface PickedPoint {
+interface PickedPose {
   lng: number;
   lat: number;
   x: number;
   y: number;
+  yaw: number | null;
 }
 
 /** The dragged arrow, in screen pixels: from the press toward the pointer,
  * growing up to MAX_ARROW_PX. */
-function DragArrow({ drag: { start, current } }: { drag: Drag }) {
+function DragArrow({ drag: { start, current }, color }: { drag: Drag; color: string }) {
   const dx = current.x - start.x;
   const dy = current.y - start.y;
   const length = Math.hypot(dx, dy);
@@ -77,19 +79,19 @@ function DragArrow({ drag: { start, current } }: { drag: Drag }) {
         y1={start.y}
         x2={tip.x}
         y2={tip.y}
-        stroke={mapPalette.poseArrow}
+        stroke={color}
         strokeWidth={3}
         strokeLinecap="round"
       />
       <polygon
         points={`${tip.x},${tip.y} ${left.x},${left.y} ${right.x},${right.y}`}
-        fill={mapPalette.poseArrow}
+        fill={color}
       />
       <circle
         cx={start.x}
         cy={start.y}
         r={6}
-        fill={mapPalette.poseArrow}
+        fill={color}
         stroke={mapPalette.markerBorder}
         strokeWidth={2}
       />
@@ -97,48 +99,69 @@ function DragArrow({ drag: { start, current } }: { drag: Drag }) {
   );
 }
 
-function buildPoint(): HTMLElement {
+function buildPose(): HTMLElement {
   const el = document.createElement("div");
-  el.style.cssText = `width:14px;height:14px;border-radius:50%;pointer-events:none;background:${mapPalette.mapPoint};
-    border:2px solid ${mapPalette.markerBorder};box-shadow:0 1px 3px rgba(0,0,0,0.4);`;
+  el.style.cssText = "width:36px;height:36px;pointer-events:none;";
+  el.innerHTML = `
+    <svg width="100%" height="100%" viewBox="0 0 36 36" style="display:block;overflow:visible">
+      <path data-heading d="M18 1 L24 12 L12 12 Z" fill="${mapPalette.mapPoint}" stroke="${mapPalette.markerBorder}"
+        stroke-width="1.5" stroke-linejoin="round" />
+      <circle cx="18" cy="18" r="6" fill="${mapPalette.mapPoint}" stroke="${mapPalette.markerBorder}" stroke-width="2" />
+    </svg>`;
   return el;
 }
 
-/** One marker, shown at `at`, or hidden without it. */
-function useSingleMarker(build: () => HTMLElement, at: { lng: number; lat: number } | null): void {
+function PickedPoseMarker({ pose }: { pose: PickedPose | null }) {
   const { map } = useContext(MapContext);
   const markerRef = useRef<maplibregl.Marker | null>(null);
 
   useEffect(() => {
     if (!map) return;
-    const marker = new maplibregl.Marker({ element: build() });
+    const marker = new maplibregl.Marker({ element: buildPose(), rotationAlignment: "map" });
     markerRef.current = marker;
     return () => {
       marker.remove();
     };
-  }, [map, build]);
+  }, [map]);
 
   useEffect(() => {
     const marker = markerRef.current;
     if (!map || !marker) return;
-    if (!at) {
+    if (!pose) {
       marker.remove();
       return;
     }
-    marker.setLngLat([at.lng, at.lat]);
+    const pointer = marker.getElement().querySelector<SVGElement>("[data-heading]");
+    if (pointer) pointer.style.display = pose.yaw === null ? "none" : "";
+    marker.setRotation(pose.yaw === null ? 0 : headingDegrees(pose.yaw));
+    marker.setLngLat([pose.lng, pose.lat]);
     // Only once: addTo() removes the marker first.
     if (!marker.getElement().isConnected) marker.addTo(map);
-  }, [map, at]);
+  }, [map, pose]);
+
+  return null;
 }
 
 /** While active: the map is frozen, and a press and drag draws the arrow.
- * Releasing finishes it, anywhere on the page. */
-function InitializeLayer({ active, onRelease }: { active: boolean; onRelease: (pose: Pose) => void }) {
+ * Releasing finishes it, anywhere on the page; a press without a drag is a click. */
+function PoseDragLayer({
+  active,
+  color,
+  onRelease,
+  onClick,
+}: {
+  active: boolean;
+  color: string;
+  onRelease: (pose: Pose) => void;
+  onClick?: (at: { lng: number; lat: number }) => void;
+}) {
   const { map } = useContext(MapContext);
   const [drag, setDrag] = useState<Drag | null>(null);
   const onReleaseRef = useRef(onRelease);
+  const onClickRef = useRef(onClick);
   useEffect(() => {
     onReleaseRef.current = onRelease;
+    onClickRef.current = onClick;
   });
 
   useEffect(() => {
@@ -173,10 +196,12 @@ function InitializeLayer({ active, onRelease }: { active: boolean; onRelease: (p
     const up = (e: PointerEvent) => {
       if (!start) return;
       const end = pointAt(e);
+      const from = map.unproject([start.x, start.y]);
       if (Math.hypot(end.x - start.x, end.y - start.y) >= MIN_DRAG_PX) {
-        const from = map.unproject([start.x, start.y]);
         const yaw = yawBetween(from, map.unproject([end.x, end.y]));
         onReleaseRef.current({ lng: from.lng, lat: from.lat, yaw });
+      } else {
+        onClickRef.current?.({ lng: from.lng, lat: from.lat });
       }
       start = null;
       setDrag(null);
@@ -195,39 +220,7 @@ function InitializeLayer({ active, onRelease }: { active: boolean; onRelease: (p
     };
   }, [map, active]);
 
-  return map && active && drag ? createPortal(<DragArrow drag={drag} />, map.getContainer()) : null;
-}
-
-/** While active, a click picks a point. The map still moves, to find the spot. */
-function PickPointLayer({
-  active,
-  point,
-  onPick,
-}: {
-  active: boolean;
-  point: PickedPoint | null;
-  onPick: (at: { lng: number; lat: number }) => void;
-}) {
-  const { map } = useContext(MapContext);
-  useSingleMarker(buildPoint, point);
-  const onPickRef = useRef(onPick);
-  useEffect(() => {
-    onPickRef.current = onPick;
-  });
-
-  useEffect(() => {
-    if (!map || !active) return;
-    const canvas = map.getCanvas();
-    canvas.style.cursor = "crosshair";
-    const click = (e: maplibregl.MapMouseEvent) => onPickRef.current({ lng: e.lngLat.lng, lat: e.lngLat.lat });
-    map.on("click", click);
-    return () => {
-      map.off("click", click);
-      canvas.style.cursor = "";
-    };
-  }, [map, active]);
-
-  return null;
+  return map && active && drag ? createPortal(<DragArrow drag={drag} color={color} />, map.getContainer()) : null;
 }
 
 /** The robot's pose, as on the main map. Without one, no marker. */
@@ -256,7 +249,7 @@ export function LocalizeView() {
   const containerRef = useRef<HTMLDivElement>(null);
   const { map, ready } = useMapInstance(containerRef);
   const [mode, setMode] = useState<Mode>("idle");
-  const [point, setPoint] = useState<PickedPoint | null>(null);
+  const [pose, setPose] = useState<PickedPose | null>(null);
   const [error, setError] = useState<string | null>(null);
   const { show } = useToast();
   const geofences = useGeofenceEditor();
@@ -277,11 +270,19 @@ export function LocalizeView() {
       .catch(report);
   };
 
-  const pick = (at: { lng: number; lat: number }) => {
+  const pick = (at: { lng: number; lat: number; yaw?: number }) => {
     setMode("idle");
     lngLatToXy(at.lat, at.lng)
-      .then(({ x, y }) => setPoint({ ...at, x, y }))
+      .then(({ x, y }) => setPose({ lng: at.lng, lat: at.lat, x, y, yaw: at.yaw ?? null }))
       .catch(report);
+  };
+
+  const copy = (picked: PickedPose) => {
+    const lines = [`x: ${picked.x.toFixed(2)}`, `y: ${picked.y.toFixed(2)}`];
+    if (picked.yaw !== null) lines.push(`yaw: ${picked.yaw.toFixed(4)}`);
+    void copyText(lines.join("\n")).then((ok) =>
+      ok ? show("success", "Copied", "Paste into the tower's zenoh_bridge.yaml") : show("error", "Clipboard unavailable"),
+    );
   };
 
   return (
@@ -292,8 +293,9 @@ export function LocalizeView() {
             <LaneletLayer />
             <GeofenceLayer editor={geofences} />
             <RobotLayer robot={robot} />
-            <InitializeLayer active={mode === "initialize"} onRelease={initialize} />
-            <PickPointLayer active={mode === "pick"} point={point} onPick={pick} />
+            <PoseDragLayer active={mode === "initialize"} color={mapPalette.poseArrow} onRelease={initialize} />
+            <PoseDragLayer active={mode === "pick"} color={mapPalette.mapPoint} onRelease={pick} onClick={pick} />
+            <PickedPoseMarker pose={pose} />
           </MapWorkspace>
         </MapContext.Provider>
       </div>
@@ -322,17 +324,27 @@ export function LocalizeView() {
         </section>
 
         <section className={styles.card}>
-          <h3 className={styles.title}>Map point</h3>
-          {point ? (
-            <span className={styles.location}>
-              {point.x.toFixed(2)}, {point.y.toFixed(2)}
-            </span>
+          <h3 className={styles.title}>Map pose</h3>
+          {pose ? (
+            <>
+              <span className={styles.location}>
+                {pose.x.toFixed(2)}, {pose.y.toFixed(2)}
+              </span>
+              <span className={styles.location}>
+                {pose.yaw === null
+                  ? "No heading"
+                  : `yaw ${pose.yaw.toFixed(4)} rad (${((pose.yaw * 180) / Math.PI).toFixed(1)}°)`}
+              </span>
+            </>
           ) : (
-            <span className={styles.muted}>No point</span>
+            <span className={styles.muted}>{mode === "pick" ? "Drag for heading, click for a point" : "No pose"}</span>
           )}
-          <Button block disabled={editingGeofences} onClick={() => toggle("pick")}>
-            {mode === "pick" ? "Cancel" : "Pick point"}
-          </Button>
+          <div style={{ display: "flex", gap: 8 }}>
+            <Button block disabled={editingGeofences} onClick={() => toggle("pick")}>
+              {mode === "pick" ? "Cancel" : "Pick pose"}
+            </Button>
+            {pose && <Button onClick={() => copy(pose)}>Copy</Button>}
+          </div>
         </section>
 
         <GeofenceCard editor={geofences} disabled={mode !== "idle"} />

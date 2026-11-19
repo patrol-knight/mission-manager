@@ -5,7 +5,7 @@ export type LngLatBoundsLike = [[number, number], [number, number]];
 
 /** Anomalies are reported 5-8 m in front of a tower's fixed camera, so this
  * margin around every device keeps them in view without tracking them. */
-export const DEVICE_MARGIN_M = 10;
+const DEVICE_MARGIN_M = 10;
 
 const METERS_PER_DEGREE_LAT = 111_320;
 

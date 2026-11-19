@@ -38,9 +38,10 @@ export const mapPalette = {
   /** A tower camera's field of view. */
   fovFill: "rgba(90,79,207,0.08)",
   fovLine: "rgba(90,79,207,0.45)",
-  /** A restricted zone, drawn in the anomaly red; stronger while selected. */
-  geofenceFill: "rgba(197,30,58,0.12)",
-  geofenceFillSelected: "rgba(197,30,58,0.24)",
+  /** A restricted zone; stronger while selected. */
+  geofenceLine: "#16a34a",
+  geofenceFill: "rgba(22,163,74,0.12)",
+  geofenceFillSelected: "rgba(22,163,74,0.24)",
   /** The dot on a zone's edge that inserts a point. */
   geofenceMidpoint: "rgba(169,122,159,0.6)",
 } as const;

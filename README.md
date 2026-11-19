@@ -8,34 +8,27 @@ Mission Manager is the operator console for the `husky` patrol robot. It shows a
 docker compose up --build
 ```
 
-Then open <http://localhost:5050>. Use `--build` again whenever the source code changes. Compose starts three services. The **frontend** is nginx serving the built UI on port 5050. The **backend** serves the REST and WebSocket API on port 8000. **zenohd** is the Zenoh router that robots, towers and the anomaly detector connect to, on port 7447. A fourth service, **postgres**, starts only when anomaly history is enabled (see below).
+Then open <http://localhost:5050>. Use `--build` again whenever the source code changes. Compose starts four services. The **frontend** is nginx serving the built UI on port 5050. The **backend** serves the REST and WebSocket API on port 8000. **zenohd** is the Zenoh router that robots, towers and the anomaly detector connect to, on port 7447. **ntp** serves this machine's clock to the devices on UDP 123, so their clocks agree with Mission Manager's.
 
 ## Configuration
 
-Set these in the root `.env`. Every one is optional.
+Copy `.env.example` to `.env` and edit it for each deployment. Every setting is optional.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `ZENOH_ENABLED` | `false` | Receive devices and anomalies over Zenoh. With it off, you can still author missions |
-| `ZENOH_ROUTER` | `tcp/zenohd:7447` | Zenoh router the backend connects to |
-| `API_BASE_URL` | `http://localhost:8000` | Backend address **as seen from the browser** |
-| `WS_URL` | `ws://localhost:8000/ws` | WebSocket address as seen from the browser |
-| `CAMERA_MODE` | `mock` | `mock` or `real` camera streams |
-| `COMPOSE_PROFILES` + `DATABASE_URL` | unset | Set both to start Postgres and record anomaly history |
+| `PUBLIC_HOST` | `localhost` | IP or hostname other machines use to reach this one. Set it when the UI is opened from another laptop: `http://<PUBLIC_HOST>:5050` |
+| `ZENOH_ENABLED` | `false` | Receive robots, towers and anomalies through the stack's zenohd. With it off, you can still author missions |
+| `MAP` | `nsh` | Site map, a folder under `backend/storage/maps/` |
+| `HOST_UID` / `HOST_GID` | `1000` | Owner of devtools recordings in `data/` |
 
-If you open the UI from another machine, point `API_BASE_URL` / `WS_URL` at the host running Docker instead of `localhost`, and add the page's origin to `CORS_ORIGINS`, e.g. `CORS_ORIGINS=["http://192.168.1.10:5050"]`.
 Data lives in `backend/storage/` on the host, so it survives container rebuilds:
 
 - `maps/<site>/`: one folder per site (currently `ks` and `nsh`), each holding `lanelet2_map.osm` and `map_projector_info.yaml`. The folder name is the map's name.
 - `missions/`: saved missions (YAML). Each one records the map it was made on, and only missions for the loaded map are shown. Missions for other maps stay on disk and come back when you switch to their map.
 - `app_state.yaml`: the active mission and its progress
+- `heatmap/<site>/`: the mission editor's anomaly heatmap. `config.yaml`, `baseline.yaml` and `baseline.jsonl` (dummy history) are tracked; `real.jsonl` (anomalies closed on this machine) is not. See [backend/core/heatmap/README.md](backend/core/heatmap/README.md)
 
-To change the map, point `MAP_OSM_PATH` and `MAP_PROJECTOR_PATH` in `docker-compose.yml` at another site's folder, then recreate the backend. The map is only read at startup.
-
-```yaml
-      - MAP_OSM_PATH=storage/maps/nsh/lanelet2_map.osm
-      - MAP_PROJECTOR_PATH=storage/maps/nsh/map_projector_info.yaml
-```
+To change the map, set `MAP` in `.env` and recreate the backend. The map is only read at startup.
 
 ```bash
 docker compose up -d --force-recreate backend
@@ -45,20 +38,21 @@ If the current mission belongs to a different map, it is cleared on the switch. 
 
 ## Devtools
 
-`http://<host>:5050/dev` measures the device links live: per device, ping RTT and loss and the Zenoh session; per stream, rate, inter-arrival jitter, gaps and bandwidth; and WebRTC stats for one camera. **Record** saves everything to `data/runs/<YYYYMMDD_HHMMSS>/` until stopped. Turn a run into plots and `summary.md`:
+`http://<host>:5050/dev` › **Network** shows the links between the devices and Mission Manager. **Devices**: backend traffic, then one row per device (ping RTT and loss, data bandwidth, gaps, command round trip, reconnects; click for per-stream detail) and a log of disconnects and gaps. **Video stream**: one camera's WebRTC stats. **Record** saves everything to `data/runs/<YYYYMMDD_HHMMSS>/record.jsonl` until stopped. Copy runs to your computer and analyze them there:
 
 ```bash
-pip install -r scripts/analyzer/requirements.txt
-python -m scripts.analyzer data/runs/<run>
+tools/fetch.sh user@lab-machine                    # REMOTE_DIR defaults to patrol/mission-manager
+pip install --group backend/pyproject.toml:analyzer
+python -m tools.analyzer data/runs/<run>           # results/summary.csv and figures
 ```
 
-**Localize** sets the robot's pose by hand, for when GNSS can't: press **Initialize**, press where the robot is, and drag toward where it faces. The robot's marker shows the result; an error under the cards means zenoh_bridge refused it or didn't reply. Use it with the robot stopped. **Pick point** shows the map-frame x/y of a clicked point, e.g. to place an IoT tower. Indoors, start Autoware with `localization_gnss_enabled:=false`.
+**Localize** sets the robot's pose by hand, for when GNSS can't: press **Initialize**, press where the robot is, and drag toward where it faces. The robot's marker shows the result; an error under the cards means zenoh_bridge refused it or didn't reply. Use it with the robot stopped. **Pick pose** works the same way and shows the map-frame x, y and yaw (radians), e.g. for an IoT tower's zenoh_bridge config; **Copy** gives the `x`/`y`/`yaw` lines. A click without a drag gives just x, y. Indoors, start Autoware with `localization_gnss_enabled:=false`.
 
-Design and metrics: [docs/design.md](docs/design.md).
+Design and metrics: [backend/core/devtools/README.md](backend/core/devtools/README.md).
 
 ## Architecture
 
-The browser sends commands over REST and receives all live state over a single WebSocket. Only the backend talks to Zenoh: the gateway turns device and anomaly messages into registry updates, and mission drive and investigation send robot goals back out through it. The map server computes every route and waypoint snap from the Lanelet2 map. Missions and maps are files in `backend/storage/`, and resolved anomalies go to Postgres when it is enabled.
+The browser sends commands over REST and receives all live state over a single WebSocket. Only the backend talks to Zenoh: the gateway turns device and anomaly messages into registry updates, and mission drive and investigation send robot goals back out through it. The map server computes every route and waypoint snap from the Lanelet2 map. Missions, maps and the heatmap are files in `backend/storage/`; every closed anomaly is appended to the heatmap's `real.jsonl`.
 
 ```mermaid
 flowchart TB
@@ -79,8 +73,7 @@ flowchart TB
         GW["Zenoh gateway"]
     end
 
-    Files[("storage/<br/>maps · missions")]
-    DB[("Postgres<br/>anomaly history")]
+    Files[("storage/<br/>maps · missions · heatmap")]
     Z["zenohd"]
     Robot["Robot"]
     Tower["IoT towers"]
@@ -97,7 +90,7 @@ flowchart TB
     Reg <-- states --> GW
     MapS -.- Files
     MS -.- Files
-    Reg -.-> DB
+    Reg -.-> Files
     GW <--> Z
     Z <-- "devices/{id}/state · events<br/>devices/{id}/commands<br/>devices/{id}/cameras/*" --> Robot
     Z <-- "devices/{id}/state<br/>devices/{id}/cameras/*" --> Tower

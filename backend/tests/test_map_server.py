@@ -1,5 +1,5 @@
 """The real KS lanelet2 map in storage/maps/ks. Skipped where lanelet2 isn't installed
-(it is in CI, from requirements.txt)."""
+(it is in CI, from pyproject.toml)."""
 
 import math
 from pathlib import Path

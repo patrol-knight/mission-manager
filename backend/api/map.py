@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends
 
 from api.deps import get_services
 from bootstrap import Services
+from models.heatmap import HeatmapView
 from models.map import (
     XY,
     LatLon,
@@ -22,6 +23,11 @@ def get_geojson(services: Services = Depends(get_services)) -> dict:
 @router.get("/bounds")
 def get_bounds(services: Services = Depends(get_services)) -> dict:
     return {"bounds": services.map_server.get_bounds()}
+
+
+@router.get("/heatmap", response_model=HeatmapView)
+def get_heatmap(services: Services = Depends(get_services)) -> HeatmapView:
+    return services.heatmap.get()
 
 
 @router.post("/place-waypoint", response_model=MapPoint | None)

@@ -80,7 +80,7 @@ export function formatConfidence(confidence: number): string {
 }
 
 /** First 8 characters of the UUID -- enough to tell anomalies apart on screen. */
-export function shortAnomalyId(anomalyId: string): string {
+function shortAnomalyId(anomalyId: string): string {
   return anomalyId.slice(0, 8);
 }
 

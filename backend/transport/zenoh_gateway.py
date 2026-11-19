@@ -2,6 +2,7 @@ import json
 import logging
 import re
 import time
+from collections.abc import Callable
 from concurrent.futures import Future
 from concurrent.futures import TimeoutError as FutureTimeoutError
 from datetime import datetime, timezone
@@ -32,6 +33,9 @@ if TYPE_CHECKING:
     from core.mission_drive import MissionDriveCoordinator
 
 logger = logging.getLogger(__name__)
+
+# Commands awaiting a first result, for devtools' round-trip time; oldest dropped.
+MAX_PENDING_COMMANDS = 200
 
 
 class ZenohGateway:
@@ -75,6 +79,10 @@ class ZenohGateway:
         self._last_projection: dict[str, tuple[tuple[float, float, str], tuple[float, float] | None]] = {}
         self._camera_sessions: CameraStreamService | None = None
         self._awaited_results: dict[str, Future[CommandResult]] = {}
+        # request_id -> (wall, monotonic) send time, until its first result.
+        self._sent_commands: dict[str, tuple[float, float]] = {}
+        # Devtools: called with (result, wall send time, round trip in ms) on a command's first result.
+        self.command_result_listener: Callable[[CommandResult, float, float], None] | None = None
 
     def bind_camera_sessions(self, camera_sessions: "CameraStreamService") -> None:
         """Late-bound for the same reason as bind_coordinators: the service
@@ -297,6 +305,10 @@ class ZenohGateway:
         except Exception as exc:
             logger.warning("Discarding malformed command result payload: %s", exc)
             return False
+        sent = self._sent_commands.pop(result.request_id, None)
+        if sent is not None and self.command_result_listener is not None:
+            sent_wall, sent_mono = sent
+            self.command_result_listener(result, sent_wall, (time.monotonic() - sent_mono) * 1000)
         if result.status not in ("accepted", "running"):
             awaited = self._awaited_results.pop(result.request_id, None)
             if awaited is not None:
@@ -381,7 +393,13 @@ class ZenohGateway:
         """Sends a GatewayCommand-shaped payload to the device's commands key."""
         payload = {"command": command, "request_id": request_id, **(fields or {})}
         key = self._settings.zenoh_device_commands_keyexpr.format(device_id=device_id)
-        return self._put(key, json.dumps(payload).encode("utf-8"), f"command {command!r} to {device_id}")
+        sent = (time.time(), time.monotonic())
+        if not self._put(key, json.dumps(payload).encode("utf-8"), f"command {command!r} to {device_id}"):
+            return False
+        if len(self._sent_commands) >= MAX_PENDING_COMMANDS:
+            self._sent_commands.pop(next(iter(self._sent_commands)))
+        self._sent_commands[request_id] = sent
+        return True
 
     def request_command(
         self, device_id: str, command: str, request_id: str, fields: dict | None, timeout_sec: float

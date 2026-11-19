@@ -61,6 +61,7 @@ def register_error_handlers(app: FastAPI) -> None:
         return JSONResponse(status_code=exc.status_code, content={"detail": str(exc), "code": exc.code})
 
     app.add_exception_handler(CameraSessionError, camera_session_handler)
+
     for error_type, status_code in _STATUS_BY_ERROR.items():
 
         async def handler(_: Request, exc: Exception, status_code: int = status_code) -> JSONResponse:

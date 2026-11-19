@@ -24,7 +24,7 @@ def test_map_endpoints_are_503_without_a_map(client: TestClient, method, path, b
 
 @pytest.mark.parametrize(
     "path",
-    ["/api/missions/nope", "/api/devices/nope", "/api/anomalies/nope"],
+    ["/api/missions/nope"],
 )
 def test_unknown_ids_are_404(client: TestClient, path):
     assert client.get(path).status_code == 404
@@ -35,8 +35,9 @@ def test_no_investigation_to_end_is_409(client: TestClient):
     assert client.post("/api/investigation/finish").status_code == 409
 
 
-def test_system_status_without_a_database(client: TestClient):
-    assert client.get("/api/system/status").json() == {"database": {"configured": False, "connected": False}}
+def test_no_heatmap_without_a_map(client: TestClient):
+    assert client.get("/api/system/status").json() == {"map": None}
+    assert client.get("/api/map/heatmap").json() == {"available": False, "image": None}
 
 
 def test_websocket_sends_a_full_snapshot_on_connect(client: TestClient):

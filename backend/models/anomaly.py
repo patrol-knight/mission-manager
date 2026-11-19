@@ -91,6 +91,9 @@ class Anomaly(WireModel):
     resolved_at: datetime | None = None
     # The current mission when the verdict was given, if any.
     mission_id: str | None = None
+    # When the robot was first sent to it, and first reached it.
+    dispatched_at: datetime | None = None
+    arrived_at: datetime | None = None
 
     @property
     def is_closed(self) -> bool:

@@ -20,17 +20,6 @@ def create_mission(
     return services.mission_service.create_mission(mission, activate)
 
 
-# Literal path before "/{mission_id}" so it isn't captured as an id.
-@router.get("/current", response_model=MissionGeo)
-def get_current_mission(services: Services = Depends(get_services)) -> MissionGeo:
-    return services.mission_service.get_current()
-
-
-@router.get("/current/execution", response_model=MissionExecutionState)
-def get_execution_state(services: Services = Depends(get_services)) -> MissionExecutionState:
-    return services.mission_service.get_execution()
-
-
 @router.post("/current/start", response_model=MissionExecutionState)
 def start_mission(services: Services = Depends(get_services)) -> MissionExecutionState:
     return services.mission_service.start()

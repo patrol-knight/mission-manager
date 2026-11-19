@@ -28,3 +28,10 @@ msg/*.idl
 src/*/msg/lisp/
 
 /data/
+
+# Real anomalies recorded for the heatmap; local to each machine.
+backend/storage/heatmap/*/real.jsonl
+
+# Missions and the active mission change with every test run.
+backend/storage/missions/
+backend/storage/app_state.yaml

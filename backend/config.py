@@ -9,13 +9,12 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    backend_host: str = "0.0.0.0"
-    backend_port: int = 8000
-
     cors_origins: list[str] = ["http://localhost:5173"]
 
     map_osm_path: str = "storage/maps/nsh/lanelet2_map.osm"
     map_projector_path: str = "storage/maps/nsh/map_projector_info.yaml"
+    # Defaults to the map's folder name (storage/maps/<name>/).
+    map_name: str | None = None
 
     mission_folder: str = "storage/missions"
     app_state_path: str = "storage/app_state.yaml"
@@ -29,12 +28,7 @@ class Settings(BaseSettings):
     robot_lost_grace_sec: float = 10.0
     device_monitor_interval_sec: float = 1.0
 
-    # Durable anomaly-detection history (backend/core/anomaly_repository.py).
-    # None means persistence is skipped entirely -- e.g. bare `uvicorn` local
-    # dev with no Postgres running -- same optional-service posture as
-    # zenoh_enabled/map loading below. Example:
-    # postgresql://mission_manager:mission_manager@localhost:5432/mission_manager
-    database_url: str | None = None
+    heatmap_dir: str = "storage/heatmap"
 
     # Devtools recordings, one folder per run.
     runs_dir: str = "../data/runs"

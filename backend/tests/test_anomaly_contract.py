@@ -30,7 +30,7 @@ def at(seconds: float) -> datetime:
     return datetime.fromtimestamp(T0 + seconds, timezone.utc)
 
 
-class FakeRepository:
+class FakeRecorder:
     def __init__(self):
         self.rows = []
 
@@ -61,12 +61,12 @@ class FakeSession:
 
 @pytest.fixture
 def repo():
-    return FakeRepository()
+    return FakeRecorder()
 
 
 @pytest.fixture
 def registry(repo):
-    return AnomalyRegistry(repository=repo)
+    return AnomalyRegistry(recorder=repo)
 
 
 @pytest.fixture

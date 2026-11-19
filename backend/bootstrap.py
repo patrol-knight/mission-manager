@@ -3,7 +3,6 @@ from dataclasses import dataclass
 
 from config import Settings
 from core.anomaly_registry import AnomalyRegistry
-from core.anomaly_repository import AnomalyRepository
 from core.camera_registry import CameraRegistry
 from core.camera_stream import CameraStreamService
 from core.device_registry import DeviceRegistry
@@ -11,6 +10,7 @@ from core.devtools import DevtoolsService
 from core.errors import MapUnavailableError
 from core.geofence_server import GeofenceServer
 from core.goal_result import PAUSE_CODES
+from core.heatmap import HeatmapService
 from core.investigation import InvestigationCoordinator
 from core.map_server import MapServer
 from core.mission_drive import MissionDriveCoordinator
@@ -36,7 +36,7 @@ class Services:
     device_registry: DeviceRegistry
     camera_registry: CameraRegistry
     anomaly_registry: AnomalyRegistry
-    anomaly_repository: AnomalyRepository | None
+    heatmap: HeatmapService
     investigation: InvestigationCoordinator
     mission_drive_coordinator: MissionDriveCoordinator
     mission_service: MissionService
@@ -50,7 +50,8 @@ class Services:
 def build_services(settings: Settings) -> Services:
     map_server = MapServer()
     try:
-        map_server.load(settings.map_osm_path, settings.map_projector_path)
+        # MAP_NAME overrides; otherwise MapServer names the map after its folder.
+        map_server.load(settings.map_osm_path, settings.map_projector_path, settings.map_name)
     except MapUnavailableError as exc:
         logger.warning("%s; map endpoints will return 503", exc)
 
@@ -63,14 +64,8 @@ def build_services(settings: Settings) -> Services:
     device_registry = DeviceRegistry()
     camera_registry = CameraRegistry()
 
-    anomaly_repository: AnomalyRepository | None = None
-    if settings.database_url:
-        anomaly_repository = AnomalyRepository(settings.database_url)
-        try:
-            anomaly_repository.init_schema()
-        except Exception:
-            logger.warning("Failed to initialize anomaly history schema; continuing without it", exc_info=True)
-    anomaly_registry = AnomalyRegistry(repository=anomaly_repository)
+    heatmap = HeatmapService(settings.heatmap_dir, map_server)
+    anomaly_registry = AnomalyRegistry(recorder=heatmap)
     websocket_manager = WebSocketManager()
 
     mission_execution_manager = MissionExecutionManager(mission_server, websocket_manager, device_registry)
@@ -134,7 +129,7 @@ def build_services(settings: Settings) -> Services:
         device_registry=device_registry,
         camera_registry=camera_registry,
         anomaly_registry=anomaly_registry,
-        anomaly_repository=anomaly_repository,
+        heatmap=heatmap,
         investigation=investigation,
         mission_drive_coordinator=mission_drive_coordinator,
         mission_service=mission_service,
@@ -142,5 +137,7 @@ def build_services(settings: Settings) -> Services:
         websocket_manager=websocket_manager,
         zenoh_gateway=zenoh_gateway,
         geofences=geofences,
-        devtools=DevtoolsService(settings.runs_dir, settings.runs_owner, zenoh_gateway, device_registry),
+        devtools=DevtoolsService(
+            settings.runs_dir, settings.runs_owner, zenoh_gateway, device_registry, websocket_manager
+        ),
     )

@@ -7,11 +7,6 @@ from models.investigation import InvestigationState, SetVerdictRequest, StartInv
 router = APIRouter()
 
 
-@router.get("", response_model=InvestigationState | None)
-def get_investigation(services: Services = Depends(get_services)) -> InvestigationState | None:
-    return services.investigation.get_state()
-
-
 @router.post("", response_model=InvestigationState)
 def start_investigation(
     request: StartInvestigationRequest, services: Services = Depends(get_services)

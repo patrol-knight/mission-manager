@@ -2,8 +2,9 @@ FROM python:3.10-slim
 
 WORKDIR /app
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY pyproject.toml .
+# Dependency groups need pip >= 25.1.
+RUN pip install --no-cache-dir -U "pip>=25.1" && pip install --no-cache-dir --group app
 
 COPY . .
 

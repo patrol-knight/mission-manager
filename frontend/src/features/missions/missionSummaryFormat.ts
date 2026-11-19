@@ -4,7 +4,7 @@
  * doesn't expose via any API; the simulator's own speed constant is
  * deliberately not reused here since it's simulator-only).
  */
-export const ASSUMED_SPEED_MPS = 1.0;
+const ASSUMED_SPEED_MPS = 1.0;
 
 export function formatDistance(meters: number | null): string {
   if (meters === null) return "—";

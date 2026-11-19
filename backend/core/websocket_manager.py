@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import threading
 import uuid
@@ -19,6 +20,8 @@ class WebSocketManager:
         self._ids_lock = threading.Lock()
         self._by_id: dict[str, WebSocket] = {}
         self._ids: dict[WebSocket, str] = {}
+        # Everything sent to browsers, for devtools' bandwidth.
+        self.bytes_sent = 0
 
     def bind_loop(self, loop: asyncio.AbstractEventLoop) -> None:
         self._loop = loop
@@ -57,7 +60,7 @@ class WebSocketManager:
         if websocket is None:
             return False
         try:
-            await websocket.send_json(message)
+            await self._send(websocket, message)
         except Exception:
             logger.warning("Failed to send WebSocket message to %s; dropping connection", connection_id)
             await self.disconnect(websocket)
@@ -70,9 +73,14 @@ class WebSocketManager:
             return
         asyncio.run_coroutine_threadsafe(self.send_to(connection_id, message), self._loop)
 
+    async def _send(self, websocket: WebSocket, message: dict) -> None:
+        text = json.dumps(message, separators=(",", ":"), ensure_ascii=False)
+        self.bytes_sent += len(text.encode("utf-8"))
+        await websocket.send_text(text)
+
     async def send_json(self, websocket: WebSocket, message: dict) -> None:
         try:
-            await websocket.send_json(message)
+            await self._send(websocket, message)
         except Exception:
             logger.warning("Failed to send WebSocket message; dropping connection")
             await self.disconnect(websocket)
