@@ -57,8 +57,11 @@ const investigation: Investigation = {
   anomalyId: anomaly.anomalyId,
   robotDeviceId: "robot-1",
   phase: "en_route",
+  kind: "anomaly",
+  lookAt: { x: 10, y: 0, frameId: "map", lat: 1, lon: 2 },
   target: { x: 10, y: 0, frameId: "map", lat: 1, lon: 2 },
   route: { type: "Feature", geometry: { type: "LineString", coordinates: [] }, properties: {} },
+  etaSec: null,
   draftVerdict: null,
   startedAt: new Date().toISOString(),
   arrivedAt: null,
@@ -133,7 +136,10 @@ describe("InvestigateCard", () => {
         currentWaypointIndex: 0,
         targetWaypointIndex: null,
         joining: false,
-        updatedAt: null,
+        dwellSec: null,
+    dwellRemainingSec: null,
+    receivedAt: 0,
+    updatedAt: null,
       },
     });
     useInvestigationStore.setState({ investigation, selectedAnomalyId: null, verifyOpen: false });

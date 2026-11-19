@@ -240,6 +240,11 @@ class ZenohGateway:
             )
             if view is not None and self._mission_drive_coordinator is not None:
                 self._mission_drive_coordinator.on_device_state(view)
+        # Every sample, changed or not: a robot standing blocked only repeats itself.
+        if self._investigation is not None:
+            view = self._device_registry.get(state.device_id)
+            if view is not None:
+                self._investigation.on_device_state(view)
         return changed
 
     def ingest_anomaly_payload(

@@ -143,6 +143,7 @@ function MissionActions({ execution, onEdit }: { execution: MissionExecutionStat
       Cancel
     </Button>
   );
+  // Outside the ButtonRow, which makes a column per child; the dialog is a fixed overlay anyway.
   const cancelDialog = confirmCancel && (
     <ConfirmDialog
       title="Cancel the mission?"
@@ -157,25 +158,29 @@ function MissionActions({ execution, onEdit }: { execution: MissionExecutionStat
   switch (execution?.status) {
     case "running":
       return (
-        <ButtonRow>
-          <Button block disabled={pending} onClick={() => run(pauseMission, "Pause")}>
-            Pause
-          </Button>
-          {cancelButton}
+        <>
+          <ButtonRow>
+            <Button block disabled={pending} onClick={() => run(pauseMission, "Pause")}>
+              Pause
+            </Button>
+            {cancelButton}
+          </ButtonRow>
           {cancelDialog}
-        </ButtonRow>
+        </>
       );
     case "paused":
       return (
-        <ButtonRow>
-          <span style={{ display: "flex", flex: 1 }} data-hint={unavailable ?? undefined}>
-            <Button variant="primary" block disabled={pending || unavailable !== null} onClick={() => run(resumeMission, "Resume")}>
-              Resume
-            </Button>
-          </span>
-          {cancelButton}
+        <>
+          <ButtonRow>
+            <span style={{ display: "flex", flex: 1 }} data-hint={unavailable ?? undefined}>
+              <Button variant="primary" block disabled={pending || unavailable !== null} onClick={() => run(resumeMission, "Resume")}>
+                Resume
+              </Button>
+            </span>
+            {cancelButton}
+          </ButtonRow>
           {cancelDialog}
-        </ButtonRow>
+        </>
       );
     default: {
       // "completed" is only broadcast for a moment before the backend resets to idle.

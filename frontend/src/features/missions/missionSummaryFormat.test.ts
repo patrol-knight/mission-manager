@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatDistance, formatDuration, estimateEtaSeconds } from "./missionSummaryFormat";
+import { formatDistance, formatDuration } from "./missionSummaryFormat";
 
 describe("formatDistance", () => {
   it("returns an em dash for null", () => {
@@ -12,20 +12,6 @@ describe("formatDistance", () => {
 
   it("formats distances >= 1000m in kilometers", () => {
     expect(formatDistance(1234)).toBe("1.2 km");
-  });
-});
-
-describe("estimateEtaSeconds", () => {
-  it("returns null when distance is null", () => {
-    expect(estimateEtaSeconds(null, 1)).toBeNull();
-  });
-
-  it("scales by loop count and divides by speed", () => {
-    expect(estimateEtaSeconds(100, 2, 1)).toBe(200);
-  });
-
-  it("returns null for a non-positive speed", () => {
-    expect(estimateEtaSeconds(100, 1, 0)).toBeNull();
   });
 });
 

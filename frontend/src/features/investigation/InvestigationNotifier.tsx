@@ -24,10 +24,11 @@ export function InvestigationNotifier() {
     previousRef.current = investigation;
     const arrived =
       investigation?.phase === "on_site" &&
-      previous?.anomalyId === investigation.anomalyId &&
+      previous?.startedAt === investigation.startedAt &&
       previous.phase === "en_route";
     if (arrived) {
-      show("warning", "Arrived at the anomaly. Please verify.");
+      if (investigation.kind === "manual") show("info", "Arrived. Have a look around.");
+      else show("warning", "Arrived at the anomaly. Please verify.");
       openVerify();
     }
   }, [investigation, openVerify, show]);

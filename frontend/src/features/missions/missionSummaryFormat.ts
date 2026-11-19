@@ -1,24 +1,7 @@
-/**
- * Nominal patrol speed used only to estimate an ETA in the Mission Library —
- * an approximation, not the real robot's speed profile (which the backend
- * doesn't expose via any API; the simulator's own speed constant is
- * deliberately not reused here since it's simulator-only).
- */
-const ASSUMED_SPEED_MPS = 1.0;
-
 export function formatDistance(meters: number | null): string {
   if (meters === null) return "—";
   if (meters >= 1000) return `${(meters / 1000).toFixed(1)} km`;
   return `${Math.round(meters)} m`;
-}
-
-export function estimateEtaSeconds(
-  distanceM: number | null,
-  loopCount: number,
-  speedMps: number = ASSUMED_SPEED_MPS,
-): number | null {
-  if (distanceM === null || speedMps <= 0) return null;
-  return (distanceM * loopCount) / speedMps;
 }
 
 export function formatDuration(seconds: number | null): string {
@@ -35,3 +18,19 @@ export function formatDuration(seconds: number | null): string {
 export function formatLoopTotal(mission: { loopCount: number; infiniteLoop: boolean }): string {
   return mission.infiniteLoop ? "inf" : String(mission.loopCount);
 }
+
+/** A dwell: "30 s", "1 min 30 s", "2 min". */
+export function formatDwell(seconds: number): string {
+  const s = Math.round(seconds);
+  if (s < 60) return `${s} s`;
+  const minutes = Math.floor(s / 60);
+  const rest = s % 60;
+  return rest === 0 ? `${minutes} min` : `${minutes} min ${rest} s`;
+}
+
+/** A countdown: "0:18", "1:05". */
+export function formatCountdown(seconds: number): string {
+  const s = Math.ceil(seconds);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+

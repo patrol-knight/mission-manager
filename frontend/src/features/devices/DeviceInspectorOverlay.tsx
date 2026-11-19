@@ -4,6 +4,7 @@ import { useInvestigationStore } from "../../stores/investigationStore";
 import { useMissionStore } from "../../stores/missionStore";
 import { useCameraSession } from "./useCameraSession";
 import { useApiConnection } from "../../hooks/useApiConnection";
+import { useNow } from "../../hooks/useNow";
 import { CameraStreamView } from "../cameras/CameraStreamView";
 import { DeviceStatusPanel } from "./DeviceStatusPanel";
 import { Modal, ModalHeader } from "../../components/ui/Modal";
@@ -36,12 +37,13 @@ export function DeviceInspectorOverlay() {
   const investigation = useInvestigationStore((s) => s.investigation);
   const execution = useMissionStore((s) => s.execution);
   const state = useSettledRobotState(device ?? null);
+  const now = useNow(execution?.dwellSec != null ? 250 : 60_000);
 
   if (!inspectorOpen || !device) return null;
 
   const connectivity = deviceConnectivity(device, wsStatus === "connected");
   const mode = device.type === "robot" ? robotMode(device) : null;
-  const activity = device.type === "robot" ? robotStatus(connectivity.status === "online", investigation, execution, state) : null;
+  const activity = device.type === "robot" ? robotStatus(connectivity.status === "online", investigation, execution, state, now) : null;
 
   return (
     <Modal label={`${device.deviceId} inspector`} onClose={closeInspector} variant="fullscreen">

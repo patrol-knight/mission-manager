@@ -15,7 +15,13 @@ vi.mock("../../api/realtimeClient", () => ({
   }),
 }));
 
-const enRoute = { anomalyId: "a1", phase: "en_route", draftVerdict: null } as Investigation;
+const enRoute = {
+  kind: "anomaly",
+  anomalyId: "a1",
+  phase: "en_route",
+  draftVerdict: null,
+  startedAt: "2026-11-18T00:00:00Z",
+} as Investigation;
 
 describe("InvestigationNotifier", () => {
   beforeEach(() => {
@@ -31,8 +37,17 @@ describe("InvestigationNotifier", () => {
 
   it("doesn't treat switching to an anomaly already on site as an arrival", () => {
     render(<ToastProvider><InvestigationNotifier /></ToastProvider>);
-    act(() => useInvestigationStore.getState().setInvestigation({ ...enRoute, anomalyId: "a2", phase: "on_site" }));
+    act(() => useInvestigationStore.getState().setInvestigation({ ...enRoute, anomalyId: "a2", phase: "on_site", startedAt: "2026-11-18T00:01:00Z" }));
     expect(useInvestigationStore.getState().verifyOpen).toBe(false);
+  });
+
+  it("opens the observe window when Explore arrives", () => {
+    const exploring = { ...enRoute, kind: "manual", anomalyId: null } as Investigation;
+    useInvestigationStore.setState({ investigation: exploring });
+    render(<ToastProvider><InvestigationNotifier /></ToastProvider>);
+    act(() => useInvestigationStore.getState().setInvestigation({ ...exploring, phase: "on_site" }));
+    expect(useInvestigationStore.getState().verifyOpen).toBe(true);
+    expect(screen.getByText("Arrived. Have a look around.")).toBeInTheDocument();
   });
 
   it("announces autonomy being aborted", () => {

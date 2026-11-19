@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import type { PillTone } from "../../components/ui/Pill";
 import type { Investigation } from "../investigation/investigationTypes";
-import type { MissionExecutionState } from "../missions/missionTypes";
+import { dwellLeft, type MissionExecutionState } from "../missions/missionTypes";
+import { formatCountdown } from "../missions/missionSummaryFormat";
 import type { Device } from "../../types/domain";
 
 export const FAILURE_HINT = "Please adjust the robot";
@@ -81,35 +82,32 @@ export function robotUnavailableHint(robot: Device | null): string | null {
   return hint ?? (state === "failure" ? FAILURE_HINT : "The robot is not ready");
 }
 
-/** What autonomy is doing right now, for its status pill -- colored by
- * the mode it's in (orange mission, yellow investigation). Who drives is
- * robotMode's pill. */
+/** What the robot is doing right now, for its status pill -- colored by
+ * the mode it's in (orange mission, yellow investigation; Explore is an
+ * investigation too). No live dot: whether the robot is up is the
+ * connection pill's job. Who drives is robotMode's pill. Dwelling at a
+ * waypoint counts down, as of `now`. */
 export function robotStatus(
   robotConnected: boolean,
   investigation: Investigation | null,
   execution: MissionExecutionState | null,
   state: string | null,
+  now: number = Date.now(),
 ): StatusLabel {
-  if (!robotConnected) return { label: "Offline", tone: "danger", live: false };
-  if (state === "failure") return { label: "Failure", tone: "danger", live: false };
-  if (state === null || !AVAILABLE_STATES.includes(state)) {
-    return { label: "Not ready", tone: "muted", live: false };
-  }
-  if (state === "blocked") return { label: "Blocked", tone: "warning", live: false };
-  if (investigation) {
-    return investigation.phase === "en_route"
-      ? { label: "En route", tone: "investigate", live: true }
-      : { label: "On site", tone: "investigate", live: true };
-  }
+  const label = (text: string, tone: PillTone): StatusLabel => ({ label: text, tone, live: false });
+  if (!robotConnected) return label("Offline", "danger");
+  if (state === "failure") return label("Failure", "danger");
+  if (state === null || !AVAILABLE_STATES.includes(state)) return label("Not ready", "muted");
+  if (state === "blocked") return label("Blocked", "warning");
+  if (investigation) return label(investigation.phase === "en_route" ? "En route" : "On site", "investigate");
   switch (execution?.status) {
-    case "running":
-      return state === "ready"
-        ? { label: "Waiting", tone: "missionSoft", live: false }
-        : { label: "Patrolling", tone: "mission", live: true };
+    case "running": {
+      const left = dwellLeft(execution, now);
+      if (left !== null) return label(`Dwell ${formatCountdown(left)}`, "mission");
+      return state === "ready" ? label("Waiting", "missionSoft") : label("Patrolling", "mission");
+    }
     case "paused":
-      return { label: "Holding", tone: "missionSoft", live: false };
+      return label("Holding", "missionSoft");
   }
-  return state === "navigating"
-    ? { label: "Patrolling", tone: "mission", live: true }
-    : { label: "Ready", tone: "success", live: false };
+  return state === "navigating" ? label("Patrolling", "mission") : label("Ready", "success");
 }

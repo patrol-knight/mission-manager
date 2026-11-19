@@ -37,3 +37,18 @@ export function towerFov(device: Device): { fovRad: number; rangeM: number } | n
   if (!(fovDeg > 0 && rangeM > 0)) return null;
   return { fovRad: (Math.min(fovDeg, 360) * Math.PI) / 180, rangeM };
 }
+
+/** Live towers whose field of view covers map point (x, y), nearest first. */
+export function towersSeeing(devices: Device[], x: number, y: number): Device[] {
+  return devices
+    .filter((d) => {
+      const fov = isLiveTower(d) ? towerFov(d) : null;
+      if (!fov || !d.pose) return false;
+      const dx = x - d.pose.x;
+      const dy = y - d.pose.y;
+      if (Math.hypot(dx, dy) > fov.rangeM) return false;
+      const off = Math.atan2(Math.sin(Math.atan2(dy, dx) - d.pose.yaw), Math.cos(Math.atan2(dy, dx) - d.pose.yaw));
+      return Math.abs(off) <= fov.fovRad / 2;
+    })
+    .sort((a, b) => Math.hypot(x - a.pose!.x, y - a.pose!.y) - Math.hypot(x - b.pose!.x, y - b.pose!.y));
+}

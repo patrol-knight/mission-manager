@@ -28,6 +28,8 @@ const summaries: MissionSummary[] = [
     homeX: 1.5,
     homeY: -2.25,
     distanceM: 142,
+    dwellSec: 30,
+    loopSec: 290,
     infiniteLoop: false,
     isCurrent: true,
     updatedAt: null,
@@ -42,6 +44,8 @@ const summaries: MissionSummary[] = [
     homeX: null,
     homeY: null,
     distanceM: null,
+    dwellSec: 0,
+    loopSec: null,
     infiniteLoop: true,
     isCurrent: false,
     updatedAt: null,
@@ -107,6 +111,11 @@ describe("MissionLibraryPanel", () => {
     await selectRow("Patrol B");
     expect(useLibraryStore.getState().selectedMissionId).toBe("other-mission");
     expect(screen.getByText("ETA / loop")).toBeInTheDocument();
+  });
+
+  it("shows the backend's loop estimate times the loops", async () => {
+    render(<Harness />); // Patrol A, the active one, opens on its own
+    expect(await screen.findByText("10 min")).toBeInTheDocument(); // 2 loops × 290 s
   });
 
   it("calls onBack when Back is clicked", async () => {

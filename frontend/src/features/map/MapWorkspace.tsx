@@ -28,6 +28,8 @@ interface MapWorkspaceProps {
   containerRef: RefObject<HTMLDivElement | null>;
   map: maplibregl.Map | null;
   ready: boolean;
+  /** Map controls shown bottom left, before Overview (e.g. Explore). */
+  controls?: ReactNode;
   children?: ReactNode;
 }
 
@@ -40,7 +42,7 @@ interface MapWorkspaceProps {
  * set underneath changes — which is what preserves map position/zoom with no
  * special-casing.
  */
-export function MapWorkspace({ containerRef, map, ready, children }: MapWorkspaceProps) {
+export function MapWorkspace({ containerRef, map, ready, controls, children }: MapWorkspaceProps) {
   // "F" recenters on the overview, animated. The first view is an instant
   // overview fit, redone once when the first devices arrive (they usually
   // come a moment after the map loads) -- never again after that, so it
@@ -128,16 +130,19 @@ export function MapWorkspace({ containerRef, map, ready, children }: MapWorkspac
       )}
       {ready && children}
       {ready && (
-        <button
-          type="button"
-          className={styles.overview}
-          data-visible={awayFromOverview}
-          tabIndex={awayFromOverview ? 0 : -1}
-          onClick={() => void fitToMap()}
-          data-hint="Show the whole site (F)"
-        >
-          Overview
-        </button>
+        <div className={styles.controls}>
+          {controls}
+          <button
+            type="button"
+            className={styles.overview}
+            data-visible={awayFromOverview}
+            tabIndex={awayFromOverview ? 0 : -1}
+            onClick={() => void fitToMap()}
+            data-hint="Show the whole site (F)"
+          >
+            Overview
+          </button>
+        </div>
       )}
     </div>
   );

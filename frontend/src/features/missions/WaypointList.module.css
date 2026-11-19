@@ -16,11 +16,16 @@
 
 .item {
   display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-sm);
+  transition: background var(--duration-fast);
+}
+
+.line {
+  display: flex;
   align-items: center;
   gap: 4px;
   padding-right: 4px;
-  border-radius: var(--radius-sm);
-  transition: background var(--duration-fast);
 }
 
 .item:hover {
@@ -71,4 +76,78 @@
   font-family: var(--font-mono);
   font-size: var(--text-sm);
   color: var(--color-text-muted);
+}
+
+.dwell {
+  margin-left: auto;
+  font-size: var(--text-sm);
+  color: var(--color-text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The selected waypoint's dwell, under its row. */
+.dwellField {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 8px 10px 40px;
+}
+
+.dwellLabel {
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
+.stepper {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--color-surface);
+}
+
+.stepButton {
+  width: 26px;
+  height: 26px;
+  border: none;
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.stepButton:hover:not(:disabled) {
+  background: var(--color-surface-hover);
+}
+
+.stepButton:disabled {
+  cursor: not-allowed;
+  color: var(--color-text-disabled);
+}
+
+.stepInput {
+  width: 40px;
+  height: 26px;
+  border: none;
+  border-left: 1px solid var(--color-border-strong);
+  border-right: 1px solid var(--color-border-strong);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  -moz-appearance: textfield;
+}
+
+.stepInput::-webkit-outer-spin-button,
+.stepInput::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.stepInput:focus {
+  outline: none;
 }

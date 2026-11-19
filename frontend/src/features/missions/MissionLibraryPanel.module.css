@@ -89,11 +89,20 @@
 }
 
 .details {
-  padding: 4px 14px 14px;
+  padding: 0 14px 14px;
   background: var(--color-surface-selected);
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+/* A hairline between the mission's summary row and its details, inset to
+   the text; the details then sit as close under it as the rows to each other. */
+.details::before {
+  content: "";
+  height: 1px;
+  margin-bottom: -2px;
+  background: var(--color-border);
 }
 
 .actions {

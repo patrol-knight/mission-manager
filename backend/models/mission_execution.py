@@ -35,4 +35,9 @@ class MissionExecutionState(WireModel):
     # Heading to where the robot joins the route (Start, or after an
     # investigation): reaching it finishes no loop, even at waypoint 0.
     joining: bool = False
+    # Holding at current_waypoint_index: its dwell, and how much of it is
+    # left as of this message (frozen while PAUSED). Counted down by the
+    # receiver: no absolute time, as the browser's clock isn't synced.
+    dwell_sec: float | None = None
+    dwell_remaining_sec: float | None = None
     updated_at: datetime | None = None

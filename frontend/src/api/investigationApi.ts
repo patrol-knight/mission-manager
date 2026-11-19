@@ -1,8 +1,11 @@
 import { http } from "./httpClient";
 import type { AnomalyVerdict } from "../features/anomalies/anomalyTypes";
 import {
+  explorePreviewFromRaw,
   investigationFromRaw,
+  type ExplorePreview,
   type Investigation,
+  type RawExplorePreview,
   type RawInvestigation,
 } from "../features/investigation/investigationTypes";
 
@@ -23,4 +26,14 @@ export async function cancelInvestigation(): Promise<void> {
 /** On site; commits the verdict. */
 export async function finishInvestigation(): Promise<void> {
   await http.post<void>("/api/investigation/finish");
+}
+
+/** Where Explore would send the robot to look at this point; sends nothing. */
+export async function previewExplore(lat: number, lon: number): Promise<ExplorePreview> {
+  return explorePreviewFromRaw(await http.post<RawExplorePreview>("/api/investigation/goto/preview", { lat, lon }));
+}
+
+/** Explore: sends the robot to look at this point, or retargets it. */
+export async function explore(lat: number, lon: number): Promise<Investigation> {
+  return investigationFromRaw(await http.post<RawInvestigation>("/api/investigation/goto", { lat, lon }));
 }

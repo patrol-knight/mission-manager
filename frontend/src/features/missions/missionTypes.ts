@@ -9,6 +9,8 @@ export interface Waypoint {
   y: number;
   /** Goal heading; null = along the lane (the backend fills it in). */
   yaw: number | null;
+  /** Seconds the robot holds here before heading on; 0 = none. */
+  dwellSec: number;
   /** From the backend (never saved back); null when the map was unavailable. */
   lat?: number | null;
   lon?: number | null;
@@ -47,6 +49,12 @@ export interface MissionExecutionState {
   targetWaypointIndex: number | null;
   /** Heading to where the robot joins the route (Start, or after an investigation). */
   joining: boolean;
+  /** Holding at currentWaypointIndex: its full dwell, null when not holding. */
+  dwellSec: number | null;
+  /** Seconds of the dwell left as of `receivedAt` (frozen while paused). */
+  dwellRemainingSec: number | null;
+  /** When this state arrived (browser clock): the dwell counts down from here. */
+  receivedAt: number;
   updatedAt: string | null;
 }
 
@@ -61,8 +69,18 @@ export function missionExecutionStateFromRaw(raw: RawMissionExecutionState): Mis
     currentWaypointIndex: raw.current_waypoint_index,
     targetWaypointIndex: raw.target_waypoint_index,
     joining: raw.joining,
+    dwellSec: raw.dwell_sec ?? null,
+    dwellRemainingSec: raw.dwell_remaining_sec ?? null,
+    receivedAt: Date.now(),
     updatedAt: raw.updated_at,
   };
+}
+
+/** Seconds left of the current dwell at `now`; null when not dwelling. */
+export function dwellLeft(execution: MissionExecutionState | null, now: number): number | null {
+  if (!execution || execution.dwellSec === null || execution.dwellRemainingSec === null) return null;
+  if (execution.status !== "running") return execution.dwellRemainingSec;
+  return Math.max(0, execution.dwellRemainingSec - (now - execution.receivedAt) / 1000);
 }
 
 export interface ValidationIssue {
@@ -93,6 +111,7 @@ export function missionDefinitionFromRaw(raw: RawMission): MissionDefinition {
       x: wp.x,
       y: wp.y,
       yaw: wp.yaw,
+      dwellSec: wp.dwell_sec ?? 0,
       lat: wp.lat,
       lon: wp.lon,
     })),
@@ -116,6 +135,10 @@ export interface MissionSummary {
   homeY: number | null;
   /** Loop-closed, lanelet-routed path length in meters; null if unroutable or <2 waypoints. */
   distanceM: number | null;
+  /** Seconds of dwell per loop. */
+  dwellSec: number;
+  /** Estimated seconds for one loop (driving, a stop per waypoint, dwells); null without a route. */
+  loopSec: number | null;
   isCurrent: boolean;
   updatedAt: string | null;
 }
@@ -134,6 +157,8 @@ export function missionSummaryFromRaw(raw: RawMissionSummary): MissionSummary {
     homeX: raw.home_x,
     homeY: raw.home_y,
     distanceM: raw.distance_m,
+    dwellSec: raw.dwell_sec ?? 0,
+    loopSec: raw.loop_sec ?? null,
     isCurrent: raw.is_current,
     updatedAt: raw.updated_at,
   };
@@ -164,6 +189,7 @@ export function missionDraftToRawPayload(draft: ResolvedMissionDraft): Schemas["
       x: wp.x,
       y: wp.y,
       yaw: wp.yaw,
+      dwell_sec: wp.dwellSec,
     })),
     loop_count: draft.loopCount,
     infinite_loop: draft.infiniteLoop,

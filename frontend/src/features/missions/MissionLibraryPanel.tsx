@@ -11,7 +11,7 @@ import { Note } from "../../components/ui/Note";
 import { Pill } from "../../components/ui/Pill";
 import { useToast } from "../../components/useToast";
 import { cx } from "../../components/ui/cx";
-import { formatDistance, formatDuration, formatLoopTotal, estimateEtaSeconds } from "./missionSummaryFormat";
+import { formatDistance, formatDuration, formatLoopTotal } from "./missionSummaryFormat";
 import type { MissionSummary } from "./missionTypes";
 import styles from "./MissionLibraryPanel.module.css";
 
@@ -139,7 +139,7 @@ export function MissionLibraryPanel({ onBack, onEnterEditor }: MissionLibraryPan
             const selected = m.missionId === selectedId;
             const busy = busyId === m.missionId;
             // An infinite mission has no end, so show the time for one loop instead.
-            const eta = estimateEtaSeconds(m.distanceM, m.infiniteLoop ? 1 : m.loopCount);
+            const eta = m.loopSec === null ? null : m.loopSec * (m.infiniteLoop ? 1 : m.loopCount);
             return (
               <li key={m.missionId} className={cx(styles.item, selected && styles.selected)}>
                 <button

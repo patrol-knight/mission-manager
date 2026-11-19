@@ -3,6 +3,7 @@ import time
 import uuid
 from typing import TYPE_CHECKING
 
+from config import Settings
 from core.device_registry import DeviceRegistry
 from core.errors import (
     InvalidExecutionTransitionError,
@@ -50,7 +51,9 @@ class MissionService:
         device_registry: DeviceRegistry,
         zenoh_gateway: ZenohGateway,
         websocket_manager: WebSocketManager,
+        settings: Settings,
     ) -> None:
+        self._settings = settings
         self._missions = mission_server
         self._map = map_server
         self._execution = execution_manager
@@ -63,7 +66,16 @@ class MissionService:
     # -- Mission definitions -------------------------------------------------
 
     def list_missions(self) -> list[MissionSummary]:
-        return self._missions.list_missions(self._map)
+        return [
+            s.model_copy(update={"loop_sec": self._loop_sec(s)}) for s in self._missions.list_missions(self._map)
+        ]
+
+    def _loop_sec(self, summary: MissionSummary) -> float | None:
+        """Estimated time for one loop: driving, a stop at every waypoint, dwells."""
+        if summary.distance_m is None:
+            return None
+        s = self._settings
+        return summary.distance_m / s.patrol_speed_mps + summary.waypoint_count * s.waypoint_stop_sec + summary.dwell_sec
 
     def get_mission(self, mission_id: str) -> MissionGeo:
         mission = self._missions.get_mission(mission_id)
@@ -129,7 +141,13 @@ class MissionService:
         its goal: it rejoins where it now is rather than turning back."""
         self._assert_not_investigating()
         self._execution.resume()
-        self._drive.rejoin()
+        if self._execution.is_dwelling():
+            # Paused while holding at a waypoint: it is still there, so finish
+            # the dwell. rejoin() would count it as on the leg into that
+            # waypoint and start the whole dwell again.
+            self._drive.advance()
+        else:
+            self._drive.rejoin()
         return self._execution.get_state()
 
     def cancel(self) -> MissionExecutionState:

@@ -16,6 +16,9 @@ function execution(status: MissionStatus, completedLoops = 0): MissionExecutionS
     currentWaypointIndex: 0,
     targetWaypointIndex: null,
     joining: false,
+    dwellSec: null,
+    dwellRemainingSec: null,
+    receivedAt: 0,
     updatedAt: null,
   };
 }

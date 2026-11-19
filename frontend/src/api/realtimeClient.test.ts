@@ -138,6 +138,8 @@ describe("realtimeClient", () => {
       current_waypoint_index: 2,
       target_waypoint_index: 0,
       joining: false,
+      dwell_sec: 10,
+      dwell_remaining_sec: 4,
       updated_at: null,
     };
     socket.emitMessage({ type: "mission.execution", data: raw });
@@ -152,6 +154,9 @@ describe("realtimeClient", () => {
         currentWaypointIndex: 2,
         targetWaypointIndex: 0,
         joining: false,
+        dwellSec: 10,
+        dwellRemainingSec: 4,
+        receivedAt: expect.any(Number),
         updatedAt: null,
       },
       null,

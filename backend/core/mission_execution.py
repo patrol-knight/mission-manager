@@ -1,5 +1,7 @@
 import logging
 import threading
+import time
+from collections.abc import Callable
 from datetime import datetime, timezone
 
 from core.device_registry import DeviceRegistry
@@ -30,13 +32,22 @@ class MissionExecutionManager:
     persisted to YAML, unlike `Mission` itself (see models/mission.py)."""
 
     def __init__(
-        self, mission_server: MissionServer, websocket_manager: WebSocketManager, device_registry: DeviceRegistry
+        self,
+        mission_server: MissionServer,
+        websocket_manager: WebSocketManager,
+        device_registry: DeviceRegistry,
+        clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self._mission_server = mission_server
         self._websocket_manager = websocket_manager
         self._device_registry = device_registry
+        self._clock = clock
         self._lock = threading.RLock()
         self._state: MissionExecutionState | None = None
+        # A dwell runs until _dwell_deadline (clock time); while PAUSED its
+        # remaining time is frozen in _dwell_frozen instead.
+        self._dwell_deadline: float | None = None
+        self._dwell_frozen: float | None = None
 
     def sync_with_current(self) -> None:
         """Call once at startup, after MissionServer.load()."""
@@ -64,7 +75,17 @@ class MissionExecutionManager:
 
     def get_state(self) -> MissionExecutionState | None:
         with self._lock:
-            return self._state.model_copy(deep=True) if self._state else None
+            return self._public(self._state) if self._state else None
+
+    def _public(self, state: MissionExecutionState) -> MissionExecutionState:
+        """A copy with the dwell's remaining time as of now."""
+        remaining = None
+        if state.dwell_sec is not None:
+            if self._dwell_deadline is not None:
+                remaining = max(0.0, self._dwell_deadline - self._clock())
+            else:
+                remaining = self._dwell_frozen
+        return state.model_copy(update={"dwell_remaining_sec": remaining}, deep=True)
 
     def _require_state(self) -> MissionExecutionState:
         if self._state is None:
@@ -72,9 +93,12 @@ class MissionExecutionManager:
         return self._state
 
     def _apply(self, state: MissionExecutionState) -> MissionExecutionState:
+        if state.status not in ACTIVE_STATUSES or state.dwell_sec is None:
+            self._dwell_deadline = self._dwell_frozen = None
+            state = state.model_copy(update={"dwell_sec": None})
         self._state = state
         self._broadcast(state)
-        return state.model_copy(deep=True)
+        return self._public(state)
 
     def _update(self, state: MissionExecutionState, **fields) -> MissionExecutionState:
         return self._apply(state.model_copy(update={**fields, "updated_at": datetime.now(timezone.utc)}))
@@ -83,7 +107,7 @@ class MissionExecutionManager:
         self._websocket_manager.broadcast_threadsafe(
             {
                 "type": "mission.execution",
-                "data": state.model_dump(mode="json") if state else None,
+                "data": self._public(state).model_dump(mode="json") if state else None,
             }
         )
 
@@ -127,6 +151,9 @@ class MissionExecutionManager:
             state = self._require_state()
             if state.status != MissionStatus.RUNNING:
                 raise InvalidExecutionTransitionError(f"Cannot pause from status {state.status.value}")
+            if self._dwell_deadline is not None:
+                self._dwell_frozen = max(0.0, self._dwell_deadline - self._clock())
+                self._dwell_deadline = None
             return self._update(state, status=MissionStatus.PAUSED)
 
     def resume(self) -> MissionExecutionState:
@@ -135,6 +162,9 @@ class MissionExecutionManager:
             if state.status != MissionStatus.PAUSED:
                 raise InvalidExecutionTransitionError(f"Cannot resume from status {state.status.value}")
             self._require_robot_ready("resume")
+            if self._dwell_frozen is not None:
+                self._dwell_deadline = self._clock() + self._dwell_frozen
+                self._dwell_frozen = None
             return self._update(state, status=MissionStatus.RUNNING)
 
     def cancel(self) -> MissionExecutionState:
@@ -163,7 +193,7 @@ class MissionExecutionManager:
                 return None
             if state.status == MissionStatus.PAUSED:
                 return self._update(state, status=MissionStatus.RUNNING)
-            return state.model_copy(deep=True)
+            return self._public(state)
 
     def join_at(self, waypoint_index: int) -> None:
         with self._lock:
@@ -171,7 +201,32 @@ class MissionExecutionManager:
             # The same target is no join: its arrival still counts a loop.
             if state is None or state.status != MissionStatus.RUNNING or state.target_waypoint_index == waypoint_index:
                 return
-            self._update(state, target_waypoint_index=waypoint_index, joining=True)
+            self._update(state, target_waypoint_index=waypoint_index, joining=True, dwell_sec=None)
+
+    # -- Dwell -----------------------------------------------------------------
+
+    def is_dwelling(self) -> bool:
+        """Holding at a waypoint, running or paused."""
+        with self._lock:
+            return self._state is not None and self._state.dwell_sec is not None
+
+    def dwell_left(self) -> float | None:
+        """Seconds left of a running dwell; None when there is none."""
+        with self._lock:
+            if self._state is None or self._state.status != MissionStatus.RUNNING or self._dwell_deadline is None:
+                return None
+            return max(0.0, self._dwell_deadline - self._clock())
+
+    def end_dwell(self) -> None:
+        """The dwell is over (or dropped): the robot heads on."""
+        with self._lock:
+            state = self._state
+            if state is not None and state.dwell_sec is not None:
+                self._update(state, dwell_sec=None)
+
+    def drop_dwell(self) -> None:
+        """Something else took the robot (an investigation, Go here)."""
+        self.end_dwell()
 
     def record_waypoint_reached(self, waypoint_index: int) -> MissionExecutionState | None:
         """No-op unless RUNNING towards this waypoint: an arrival racing a
@@ -181,11 +236,11 @@ class MissionExecutionManager:
                 return None
             state = self._state
             if state.status != MissionStatus.RUNNING or state.target_waypoint_index != waypoint_index:
-                return state.model_copy(deep=True)
+                return self._public(state)
 
             mission = self._mission_server.get_mission(state.mission_id)
             if mission is None or not mission.waypoints:
-                return state.model_copy(deep=True)
+                return self._public(state)
 
             completed_loops = state.completed_loops
             current_loop = state.current_loop
@@ -211,6 +266,13 @@ class MissionExecutionManager:
             )
             if status == MissionStatus.COMPLETED:
                 return self._finish_mission(new_state)
+            dwell = mission.waypoints[waypoint_index].dwell_sec
+            if dwell > 0:
+                self._dwell_deadline = self._clock() + dwell
+                self._dwell_frozen = None
+                new_state = new_state.model_copy(update={"dwell_sec": dwell})
+            else:
+                new_state = new_state.model_copy(update={"dwell_sec": None})
             return self._apply(new_state)
 
     def _finish_mission(self, completed_state: MissionExecutionState) -> MissionExecutionState:

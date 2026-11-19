@@ -36,6 +36,9 @@ function execution(status: MissionStatus, targetWaypointIndex: number | null = n
     currentWaypointIndex: 0,
     targetWaypointIndex,
     joining: targetWaypointIndex !== null,
+    dwellSec: null,
+    dwellRemainingSec: null,
+    receivedAt: 0,
     updatedAt: null,
   };
 }

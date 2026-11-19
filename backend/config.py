@@ -78,3 +78,16 @@ class Settings(BaseSettings):
     # waypoint goal (a "running" result) before sending it again. Once it has
     # it, only the goal's own result ends it.
     navigation_timeout_sec: float = 10.0
+
+    # An investigation whose robot reports `blocked` this close to its goal
+    # for this long counts as arrived (state_machine pauses not_moving while
+    # blocked, so the goal would never end on its own).
+    arrive_blocked_within_m: float = 4.0
+    arrive_blocked_after_sec: float = 5.0
+
+    # The mission library's time estimate (MissionService.list_missions):
+    # route length at the robot's average driving speed (turns and speeding
+    # up included), a stop and restart at every waypoint (Autoware ends each
+    # goal at a standstill), plus the waypoints' dwells. Rough until measured.
+    patrol_speed_mps: float = 0.7
+    waypoint_stop_sec: float = 5.0

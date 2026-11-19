@@ -11,7 +11,7 @@ import { SectionLabel } from "../../components/ui/SectionLabel";
 import { useToast } from "../../components/useToast";
 import { useMissionStore } from "../../stores/missionStore";
 import { validateRoute, saveMission } from "../../api/missionApi";
-import { formatDistance } from "./missionSummaryFormat";
+import { formatDistance, formatDwell } from "./missionSummaryFormat";
 import styles from "./MissionEditorPanel.module.css";
 
 /** Wait this long after the last waypoint edit before checking the route,
@@ -224,9 +224,11 @@ function RouteStatus({ state }: { state: MissionEditorState }) {
     );
   }
   const length = state.validationResult.route?.properties?.length_m;
+  const dwell = state.waypoints.reduce((sum, wp) => sum + wp.dwellSec, 0);
   return (
     <Note tone="success" size="sm">
       Route OK{typeof length === "number" ? ` · ${formatDistance(length)} per loop` : ""}
+      {dwell > 0 ? ` · ${formatDwell(dwell)} dwell` : ""}
     </Note>
   );
 }

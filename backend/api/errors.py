@@ -23,6 +23,7 @@ from core.errors import (
     NoCurrentMissionError,
     NoRouteError,
     NotOnSiteError,
+    NoVerdictError,
     RobotNotReadyError,
     VerdictRequiredError,
 )
@@ -50,6 +51,7 @@ _STATUS_BY_ERROR: dict[type[Exception], int] = {
     NotOnSiteError: 409,
     AlreadyOnSiteError: 409,
     NoRouteError: 409,
+    NoVerdictError: 409,
     MapUnavailableError: 503,
     DeviceUnreachableError: 503,
 }

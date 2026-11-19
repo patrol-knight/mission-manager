@@ -24,12 +24,14 @@ const VERDICT_TONES: Record<AnomalyVerdict, PillTone> = {
  * anomaly, so switching targets slides a fresh card in. */
 export function InvestigateCard() {
   const investigation = useInvestigationStore((s) => s.investigation);
-  if (!investigation) return null;
-  return <InvestigateCardBody key={investigation.anomalyId} investigation={investigation} />;
+  if (!investigation?.anomalyId) return null;
+  return (
+    <InvestigateCardBody key={investigation.anomalyId} investigation={investigation} anomalyId={investigation.anomalyId} />
+  );
 }
 
-function InvestigateCardBody({ investigation }: { investigation: Investigation }) {
-  const anomaly = useDeviceStore((s) => s.anomalies[investigation.anomalyId]);
+function InvestigateCardBody({ investigation, anomalyId }: { investigation: Investigation; anomalyId: string }) {
+  const anomaly = useDeviceStore((s) => s.anomalies[anomalyId]);
   const execution = useMissionStore((s) => s.execution);
   const definition = useMissionStore((s) => s.definition);
   const setInvestigation = useInvestigationStore((s) => s.setInvestigation);
@@ -60,7 +62,7 @@ function InvestigateCardBody({ investigation }: { investigation: Investigation }
   return (
     <Card
       enter
-      title={anomalyTitle(investigation.anomalyId)}
+      title={anomalyTitle(anomalyId)}
       aside={verdict ? <Pill tone={VERDICT_TONES[verdict]}>{VERDICT_LABELS[verdict]}</Pill> : undefined}
       aria-label="Investigation"
     >

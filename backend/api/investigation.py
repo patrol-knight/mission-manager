@@ -2,7 +2,13 @@ from fastapi import APIRouter, Depends, Response, status
 
 from api.deps import get_services
 from bootstrap import Services
-from models.investigation import InvestigationState, SetVerdictRequest, StartInvestigationRequest
+from models.investigation import (
+    GoToPreview,
+    GoToRequest,
+    InvestigationState,
+    SetVerdictRequest,
+    StartInvestigationRequest,
+)
 
 router = APIRouter()
 
@@ -30,3 +36,15 @@ def cancel_investigation(services: Services = Depends(get_services)) -> Response
 def finish_investigation(services: Services = Depends(get_services)) -> Response:
     services.investigation.finish()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/goto/preview", response_model=GoToPreview)
+def preview_go_to(request: GoToRequest, services: Services = Depends(get_services)) -> GoToPreview:
+    """Where Go here would send the robot, without sending it."""
+    return services.investigation.preview_go_to(request.lat, request.lon)
+
+
+@router.post("/goto", response_model=InvestigationState)
+def go_to(request: GoToRequest, services: Services = Depends(get_services)) -> InvestigationState:
+    """Go here: sends the robot to look at a point, or retargets it."""
+    return services.investigation.go_to(request.lat, request.lon)

@@ -28,6 +28,13 @@ export function targetWaypointIndex(execution: MissionExecutionState | null, way
   return execution.targetWaypointIndex;
 }
 
+/** The waypoint the robot is actually driving to: none while it dwells,
+ * since the next goal goes out only when the dwell ends. */
+export function headingWaypointIndex(execution: MissionExecutionState | null, waypointCount: number): number | null {
+  if (execution?.dwellSec != null) return null;
+  return targetWaypointIndex(execution, waypointCount);
+}
+
 export interface ProgressRow {
   /** Number of steps; null for an open-ended run. */
   total: number | null;

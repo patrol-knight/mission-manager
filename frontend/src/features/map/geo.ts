@@ -74,3 +74,15 @@ export function remainingRoute(route: LngLatPair[], position: LngLatPair): LngLa
   }
   return [best.point, ...route.slice(best.segment + 1)];
 }
+
+/** Length of a [lon, lat] line in meters (flat-earth: fine for a site). */
+export function lineLengthM(coords: LngLatPair[]): number {
+  let total = 0;
+  for (let i = 1; i < coords.length; i++) {
+    const k = Math.cos((coords[i][1] * Math.PI) / 180);
+    const dx = (coords[i][0] - coords[i - 1][0]) * k;
+    const dy = coords[i][1] - coords[i - 1][1];
+    total += Math.hypot(dx, dy) * 111_320;
+  }
+  return total;
+}

@@ -76,6 +76,10 @@ class MissionSummary(WireModel):
     home_x: float | None = None
     home_y: float | None = None
     distance_m: float | None = None
+    # Seconds of dwell per loop, and the estimated time for one loop (None
+    # without a route); see Settings.patrol_speed_mps.
+    dwell_sec: float = 0.0
+    loop_sec: float | None = None
     infinite_loop: bool = False
     is_current: bool = False
     updated_at: datetime | None = None

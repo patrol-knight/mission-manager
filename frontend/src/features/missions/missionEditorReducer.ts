@@ -50,10 +50,18 @@ export type MissionEditorAction =
   | { type: "MOVE_WAYPOINT"; id: string; x: number; y: number; lat?: number | null; lon?: number | null }
   | { type: "SELECT_WAYPOINT"; id: string | null }
   | { type: "DELETE_WAYPOINT"; id: string }
+  | { type: "SET_WAYPOINT_DWELL"; id: string; dwellSec: number }
   | { type: "UNDO" }
   | { type: "REDO" }
   | { type: "SET_VALIDATION_RESULT"; result: RouteValidationResult; revision: number }
   | { type: "MARK_SAVED" };
+
+/** The backend accepts 0..600 s. */
+export const MAX_DWELL_SEC = 600;
+
+function clampDwell(seconds: number): number {
+  return Number.isFinite(seconds) ? Math.min(MAX_DWELL_SEC, Math.max(0, Math.round(seconds))) : 0;
+}
 
 /** A waypoint edit: one undo step, and the route needs checking again. */
 function withWaypoints(state: MissionEditorState, waypoints: Waypoint[], history: Waypoint[][], future: Waypoint[][]) {
@@ -105,6 +113,7 @@ export function missionEditorReducer(
         x: action.x,
         y: action.y,
         yaw: null,
+        dwellSec: 0,
         lat: action.lat,
         lon: action.lon,
       };
@@ -123,6 +132,15 @@ export function missionEditorReducer(
 
     case "SELECT_WAYPOINT":
       return { ...state, selectedWaypointId: action.id };
+
+    case "SET_WAYPOINT_DWELL": {
+      const dwellSec = clampDwell(action.dwellSec);
+      const current = state.waypoints.find((wp) => wp.waypointId === action.id);
+      if (!current || current.dwellSec === dwellSec) return state;
+      const waypoints = state.waypoints.map((wp) => (wp.waypointId === action.id ? { ...wp, dwellSec } : wp));
+      // An undo step, but the route is unchanged: no new route check.
+      return { ...state, waypoints, history: [...state.history, state.waypoints], future: [], dirty: true };
+    }
 
     case "DELETE_WAYPOINT": {
       if (!state.waypoints.some((wp) => wp.waypointId === action.id)) return state;

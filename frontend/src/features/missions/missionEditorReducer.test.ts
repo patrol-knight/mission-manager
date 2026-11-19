@@ -39,8 +39,8 @@ describe("missionEditorReducer", () => {
       frameId: "map",
       infiniteLoop: false,
       waypoints: [
-        { waypointId: "wp1", x: 0, y: 0, yaw: null },
-        { waypointId: "wp2", x: 1, y: 1, yaw: null },
+        { waypointId: "wp1", x: 0, y: 0, yaw: null, dwellSec: 0 },
+        { waypointId: "wp2", x: 1, y: 1, yaw: null, dwellSec: 0 },
       ],
       loopCount: 3,
       createdAt: null,
@@ -51,6 +51,23 @@ describe("missionEditorReducer", () => {
     expect(state.loopCountInput).toBe("3");
     expect(state.waypoints).toHaveLength(2);
     expect(state.dirty).toBe(false);
+  });
+
+  it("sets a waypoint's dwell, clamped, as one undo step that needs no new route check", () => {
+    let state = validated(addWaypoint(addWaypoint(BLANK_STATE, 0, 0), 1, 1));
+    const id = state.waypoints[1].waypointId;
+    state = missionEditorReducer(state, { type: "SET_WAYPOINT_DWELL", id, dwellSec: 30 });
+    expect(state.waypoints[1].dwellSec).toBe(30);
+    expect(state.dirty).toBe(true);
+    expect(state.validationStale).toBe(false);
+
+    expect(missionEditorReducer(state, { type: "SET_WAYPOINT_DWELL", id, dwellSec: -5 }).waypoints[1].dwellSec).toBe(0);
+    expect(missionEditorReducer(state, { type: "SET_WAYPOINT_DWELL", id, dwellSec: 9999 }).waypoints[1].dwellSec).toBe(600);
+    expect(missionEditorReducer(state, { type: "UNDO" }).waypoints[1].dwellSec).toBe(0);
+  });
+
+  it("new waypoints have no dwell", () => {
+    expect(addWaypoint(BLANK_STATE, 0, 0).waypoints[0].dwellSec).toBe(0);
   });
 
   it("selects a waypoint as it is added", () => {

@@ -98,3 +98,7 @@ class AlreadyOnSiteError(Exception):
 
 class NoRouteError(Exception):
     pass
+
+
+class NoVerdictError(Exception):
+    """Go here has nothing to verify."""

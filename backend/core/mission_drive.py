@@ -48,8 +48,9 @@ class MissionDriveCoordinator:
 
     advance() is the only entry point that starts something, and it's always
     safe to call speculatively: it re-checks every precondition (mission
-    RUNNING, a connected robot, no investigation or goal in flight)
-    and is a no-op if any fails."""
+    RUNNING, a connected robot, no investigation or goal in flight, no dwell
+    still running) and is a no-op if any fails. A running dwell schedules
+    advance() again for when it ends."""
 
     def __init__(
         self,
@@ -77,6 +78,8 @@ class MissionDriveCoordinator:
         # (see cancel_on_reconnect()).
         self._cancel_on_reconnect: set[str] = set()
         self._next_token = 0
+        # Only the latest scheduled end of a dwell may advance the mission.
+        self._dwell_token = 0
 
     def bind_investigation(self, investigation: "InvestigationCoordinator") -> None:
         """Late-bound: the investigation coordinator needs this class too
@@ -123,6 +126,14 @@ class MissionDriveCoordinator:
             mission = self._mission_server.get_mission(exec_state.mission_id)
             if mission is None or next_index >= len(mission.waypoints):
                 return
+
+            dwell_left = self._mission_execution_manager.dwell_left()
+            if dwell_left is not None and dwell_left > 0:
+                self._dwell_token += 1
+                self._websocket_manager.run_coroutine_threadsafe(self._dwell_then_advance(self._dwell_token, dwell_left))
+                return
+            if dwell_left is not None:
+                self._mission_execution_manager.end_dwell()
             target = mission.waypoints[next_index]
 
             token = self._next_token = self._next_token + 1
@@ -237,10 +248,18 @@ class MissionDriveCoordinator:
         logger.warning("Mission drive: no answer to navigate_to_goal; sending it again")
         self.advance()
 
+    async def _dwell_then_advance(self, token: int, delay: float) -> None:
+        await asyncio.sleep(delay)
+        with self._lock:
+            if token != self._dwell_token:
+                return
+        self.advance()
+
     def abort(self) -> None:
         """Call when the mission is paused/cancelled/switched, or an
         investigation is about to take over the robot -- clears any in-flight
         goal bookkeeping so a stale arrival can't advance a mission that's no
-        longer running."""
+        longer running, and any scheduled end of a dwell."""
         with self._lock:
             self._active = None
+            self._dwell_token += 1

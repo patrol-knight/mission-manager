@@ -7,8 +7,8 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 const waypoints: Waypoint[] = [
-  { waypointId: "wp1", x: 0, y: 0, yaw: null },
-  { waypointId: "wp2", x: 1, y: 1, yaw: null },
+  { waypointId: "wp1", x: 0, y: 0, yaw: null, dwellSec: 0 },
+  { waypointId: "wp2", x: 1, y: 1, yaw: null, dwellSec: 0 },
 ];
 
 const rawMission = {
@@ -18,8 +18,8 @@ const rawMission = {
   frame_id: "map",
   infinite_loop: false,
   waypoints: [
-    { waypoint_id: "wp1", x: 0, y: 0, yaw: null },
-    { waypoint_id: "wp2", x: 1, y: 1, yaw: null },
+    { waypoint_id: "wp1", x: 0, y: 0, yaw: null, dwell_sec: 0 },
+    { waypoint_id: "wp2", x: 1, y: 1, yaw: null, dwell_sec: 0 },
   ],
   loop_count: 2,
   created_at: null,
@@ -116,6 +116,8 @@ const rawSummary = {
   home_x: 0,
   home_y: 0,
   distance_m: 12.5,
+  dwell_sec: 30,
+  loop_sec: 58,
   infinite_loop: false,
   is_current: true,
   updated_at: "2026-07-19T00:00:00Z",
@@ -140,6 +142,8 @@ describe("missionApi mission library calls", () => {
         homeX: 0,
         homeY: 0,
         distanceM: 12.5,
+        dwellSec: 30,
+        loopSec: 58,
         infiniteLoop: false,
         isCurrent: true,
         updatedAt: "2026-07-19T00:00:00Z",

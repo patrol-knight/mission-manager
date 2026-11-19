@@ -9,6 +9,7 @@ import { useConnectedRobot } from "./useConnectedRobot";
 import { useDeviceInspector } from "./useDeviceInspector";
 import { robotMode, robotStatus, useSettledRobotState } from "./robotStatus";
 import { Speed } from "./Speed";
+import { useNow } from "../../hooks/useNow";
 
 /** The robot: what it's doing, its name, then the two live readings an
  * operator acts on -- battery (when to stop) and speed (moving, stuck, or
@@ -20,6 +21,8 @@ export function RobotCard() {
   const investigation = useInvestigationStore((s) => s.investigation);
   const execution = useMissionStore((s) => s.execution);
   const state = useSettledRobotState(robot);
+  // Ticks only while the robot dwells, for the countdown in its pill.
+  const now = useNow(execution?.dwellSec != null ? 250 : 60_000);
   const { openInspector } = useDeviceInspector();
   const setHoveredDevice = useMapHighlightStore((s) => s.setHoveredDevice);
   useEffect(() => () => setHoveredDevice(null), [setHoveredDevice]);
@@ -32,7 +35,7 @@ export function RobotCard() {
     );
   }
 
-  const status = robotStatus(connected, investigation, execution, state);
+  const status = robotStatus(connected, investigation, execution, state, now);
   const mode = robotMode(robot);
   const name = robot.deviceId;
   return (

@@ -2,7 +2,7 @@ import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import { robotMode, robotStatus, robotUnavailableHint, useSettledRobotState } from "./robotStatus";
 import type { Device } from "../../types/domain";
-import { missionProgress, missionStatus, targetWaypointIndex } from "../missions/missionStatus";
+import { headingWaypointIndex, missionProgress, missionStatus, targetWaypointIndex } from "../missions/missionStatus";
 import type { MissionExecutionState, MissionStatus } from "../missions/missionTypes";
 import type { Investigation } from "../investigation/investigationTypes";
 
@@ -15,11 +15,14 @@ function execution(status: MissionStatus, targetWaypointIndex: number | null = 2
     currentWaypointIndex: 0,
     targetWaypointIndex,
     joining,
+    dwellSec: null,
+    dwellRemainingSec: null,
+    receivedAt: 0,
     updatedAt: null,
   };
 }
 
-const investigation = { anomalyId: "a1", phase: "en_route" } as Investigation;
+const investigation = { kind: "anomaly", anomalyId: "a1", phase: "en_route" } as Investigation;
 
 describe("robotStatus", () => {
   it("reports an offline robot before anything else", () => {
@@ -53,6 +56,21 @@ describe("robotStatus", () => {
     expect(robotStatus(true, investigation, execution("running"), "blocked").label).toBe("Blocked");
     expect(robotStatus(true, null, execution("running"), "blocked").label).toBe("Blocked");
     expect(robotStatus(true, null, null, "blocked").label).toBe("Blocked");
+  });
+
+  it("counts down a dwell in place of patrolling, and Explore is an investigation like any other", () => {
+    const dwelling = { ...execution("running"), dwellSec: 30, dwellRemainingSec: 18, receivedAt: 1_000 };
+    expect(robotStatus(true, null, dwelling, "arrived", 1_000).label).toBe("Dwell 0:18");
+    expect(robotStatus(true, null, dwelling, "arrived", 6_000).label).toBe("Dwell 0:13");
+    const exploring = { ...investigation, kind: "manual", anomalyId: null } as Investigation;
+    expect(robotStatus(true, exploring, null, "navigating").label).toBe("En route");
+  });
+
+  it("never shows a live dot: being up is the connection pill's job", () => {
+    for (const state of ["navigating", "arrived", "ready", "blocked"]) {
+      expect(robotStatus(true, investigation, execution("running"), state).live).toBe(false);
+      expect(robotStatus(true, null, execution("running"), state).live).toBe(false);
+    }
   });
 
   it("is not ready when the robot reports no state or an unknown one", () => {
@@ -202,5 +220,13 @@ describe("robotMode", () => {
     expect(robotMode(robot({ mode: "none" }))).toBeNull();
     expect(robotMode(robot({}))).toBeNull();
     expect(robotMode(null)).toBeNull();
+  });
+});
+
+describe("headingWaypointIndex", () => {
+  it("is the target while driving, and none while dwelling", () => {
+    expect(headingWaypointIndex(execution("running", 2), 3)).toBe(2);
+    expect(headingWaypointIndex({ ...execution("running", 2), dwellSec: 10, dwellRemainingSec: 5 }, 3)).toBeNull();
+    expect(targetWaypointIndex({ ...execution("running", 2), dwellSec: 10, dwellRemainingSec: 5 }, 3)).toBe(2); // progress still counts it
   });
 });

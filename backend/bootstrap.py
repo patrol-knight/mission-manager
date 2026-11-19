@@ -85,6 +85,7 @@ def build_services(settings: Settings) -> Services:
         device_registry=device_registry,
         zenoh_gateway=zenoh_gateway,
         websocket_manager=websocket_manager,
+        settings=settings,
     )
     mission_drive_coordinator = MissionDriveCoordinator(
         mission_execution_manager=mission_execution_manager,
@@ -111,6 +112,7 @@ def build_services(settings: Settings) -> Services:
         device_registry=device_registry,
         zenoh_gateway=zenoh_gateway,
         websocket_manager=websocket_manager,
+        settings=settings,
     )
 
     def on_goal_failed(reason: str) -> None:

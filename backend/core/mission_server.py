@@ -140,6 +140,7 @@ class MissionServer:
                     home_x=home_x,
                     home_y=home_y,
                     distance_m=distance_m,
+                    dwell_sec=sum(w.dwell_sec for w in m.waypoints),
                     is_current=(m.mission_id == current_id),
                     updated_at=m.updated_at,
                 )

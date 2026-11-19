@@ -12,13 +12,23 @@ export interface InvestigationTarget {
   lon: number | null;
 }
 
+/** "anomaly": sent to an anomaly, ends with a verdict. "manual": Explore,
+ * sent by the operator to look at a point, ends when dismissed. */
+export type InvestigationKind = "anomaly" | "manual";
+
 export interface Investigation {
-  anomalyId: string;
+  kind: InvestigationKind;
+  /** Set exactly for "anomaly". */
+  anomalyId: string | null;
   robotDeviceId: string;
   phase: InvestigationPhase;
-  /** The anomaly's position snapped to the lanelet network, frozen at start. */
+  /** What the robot is sent to look at: the anomaly, or the clicked point. */
+  lookAt: InvestigationTarget;
+  /** Where it stops to look, frozen at start. */
   target: InvestigationTarget;
   route: GeoJSON.Feature<GeoJSON.LineString>;
+  /** Estimated seconds from start to arrival. */
+  etaSec: number | null;
   /** null until the operator picks one on site; committed when the robot leaves. */
   draftVerdict: AnomalyVerdict | null;
   startedAt: string;
@@ -30,13 +40,22 @@ export type RawInvestigation = Omit<components["schemas"]["InvestigationState"],
   route: GeoJSON.Feature<GeoJSON.LineString>;
 };
 
+type RawPoint = components["schemas"]["MapPoint"];
+
+function targetFromRaw(raw: RawPoint): InvestigationTarget {
+  return { x: raw.x, y: raw.y, frameId: raw.frame_id, lat: raw.lat ?? null, lon: raw.lon ?? null };
+}
+
 export function investigationFromRaw(raw: RawInvestigation): Investigation {
   return {
-    anomalyId: raw.anomaly_id,
+    kind: raw.kind ?? "anomaly",
+    anomalyId: raw.anomaly_id ?? null,
     robotDeviceId: raw.robot_device_id,
     phase: raw.phase,
-    target: { x: raw.target.x, y: raw.target.y, frameId: raw.target.frame_id, lat: raw.target.lat, lon: raw.target.lon },
+    lookAt: targetFromRaw(raw.look_at),
+    target: targetFromRaw(raw.target),
     route: raw.route,
+    etaSec: raw.eta_sec ?? null,
     draftVerdict: raw.draft_verdict,
     startedAt: raw.started_at,
     arrivedAt: raw.arrived_at,
@@ -93,7 +112,37 @@ export function describePause(raw: RawAutonomyPaused): { title: string; hint: st
       };
 }
 
-/** On site without a verdict: the robot can't leave and other anomalies can't be picked yet. */
+/** On site at an anomaly without a verdict: the robot can't leave for another anomaly yet. */
 export function needsVerdict(investigation: Investigation | null): boolean {
-  return investigation !== null && investigation.phase === "on_site" && investigation.draftVerdict === null;
+  return (
+    investigation !== null &&
+    investigation.kind === "anomaly" &&
+    investigation.phase === "on_site" &&
+    investigation.draftVerdict === null
+  );
+}
+
+/** Where Explore would send the robot (POST /api/investigation/goto/preview). */
+export interface ExplorePreview {
+  lookAt: InvestigationTarget;
+  /** Where the robot would stop to look. */
+  target: InvestigationTarget;
+  /** From the robot, as it stood when previewed, to `target`. */
+  route: GeoJSON.Feature<GeoJSON.LineString>;
+  lengthM: number;
+  etaSec: number;
+}
+
+export type RawExplorePreview = Omit<components["schemas"]["GoToPreview"], "route"> & {
+  route: GeoJSON.Feature<GeoJSON.LineString>;
+};
+
+export function explorePreviewFromRaw(raw: RawExplorePreview): ExplorePreview {
+  return {
+    lookAt: targetFromRaw(raw.look_at),
+    target: targetFromRaw(raw.target),
+    route: raw.route,
+    lengthM: raw.length_m,
+    etaSec: raw.eta_sec,
+  };
 }

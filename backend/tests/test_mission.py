@@ -451,3 +451,135 @@ def test_taking_the_joystick_mid_mission_aborts_it_without_a_cancel(sim: Sim):
     sim.services.mission_service.abort_if_robot_unavailable()
     assert sim.mission_status() == "not_ready"
     assert sim.commands[sent_before:] == []
+
+
+# -- Dwell ---------------------------------------------------------------------------
+
+
+def set_dwell(sim: Sim, index: int, seconds: float) -> None:
+    mission = sim.current()
+    mission["waypoints"][index]["dwell_sec"] = seconds
+    assert sim.client.put(f"/api/missions/{MISSION_ID}", json=mission).status_code == 200
+
+
+@pytest.fixture
+def dwell_clock(sim: Sim, monkeypatch) -> list[float]:
+    now = [1000.0]
+    monkeypatch.setattr(sim.services.mission_execution_manager, "_clock", lambda: now[0])
+    return now
+
+
+def goals(sim: Sim) -> list[tuple[float, float]]:
+    return [(f["x"], f["y"]) for c, f in sim.commands if c == "navigate_to_goal"]
+
+
+def test_a_dwell_holds_the_robot_before_the_next_waypoint(sim: Sim, dwell_clock: list[float]):
+    w = sim.waypoints
+    set_dwell(sim, 1, 10)
+    sim.robot(*w[0])
+    sim.client.post("/api/missions/current/start")
+    sim.drive_to(*w[0])
+    sim.drive_to(*w[1])
+
+    sent = len(goals(sim))
+    execution = sim.execution()
+    assert execution["dwell_sec"] == 10 and execution["dwell_remaining_sec"] == 10
+    assert execution["current_waypoint_index"] == 1
+
+    dwell_clock[0] += 4
+    sim.services.mission_drive_coordinator.advance()
+    assert len(goals(sim)) == sent and sim.execution()["dwell_remaining_sec"] == 6
+
+    dwell_clock[0] += 6
+    sim.services.mission_drive_coordinator.advance()  # what the scheduled end of the dwell calls
+    assert goals(sim)[-1] == w[2]
+    assert sim.execution()["dwell_sec"] is None and sim.execution()["dwell_remaining_sec"] is None
+
+
+def test_a_waypoint_without_a_dwell_heads_on_at_once(sim: Sim, dwell_clock: list[float]):
+    w = sim.waypoints
+    sim.robot(*w[0])
+    sim.client.post("/api/missions/current/start")
+    sim.drive_to(*w[0])
+    assert sim.goal() == w[1] and sim.execution()["dwell_sec"] is None
+
+
+def test_pausing_while_dwelling_freezes_it_and_resume_finishes_it_in_place(sim: Sim, dwell_clock: list[float]):
+    w = sim.waypoints
+    set_dwell(sim, 1, 10)
+    sim.robot(*w[0])
+    sim.client.post("/api/missions/current/start")
+    sim.drive_to(*w[0])
+    sim.drive_to(*w[1])
+
+    dwell_clock[0] += 4
+    paused = sim.client.post("/api/missions/current/pause").json()
+    assert paused["dwell_remaining_sec"] == 6
+    dwell_clock[0] += 100
+    assert sim.execution()["dwell_remaining_sec"] == 6  # frozen
+
+    sent = len(goals(sim))
+    resumed = sim.client.post("/api/missions/current/resume").json()
+    assert resumed["status"] == "running" and resumed["dwell_remaining_sec"] == 6
+    assert len(goals(sim)) == sent  # no goal back to the waypoint it stands on
+
+    dwell_clock[0] += 6
+    sim.services.mission_drive_coordinator.advance()
+    assert goals(sim)[-1] == w[2]
+    assert sim.execution()["current_waypoint_index"] == 1  # no second arrival, no second dwell
+
+
+def test_an_investigation_drops_the_dwell(sim: Sim, dwell_clock: list[float]):
+    w = sim.waypoints
+    set_dwell(sim, 1, 10)
+    sim.robot(*w[0])
+    sim.client.post("/api/missions/current/start")
+    sim.drive_to(*w[0])
+    sim.drive_to(*w[1])
+
+    sim.go_here(4, 3)
+    assert sim.execution()["dwell_sec"] is None
+    sim.drive_to(4, 3)
+    sim.finish_investigation()
+    assert sim.mission_status() == "running" and sim.execution()["dwell_sec"] is None
+    assert sim.last_command()[0] == "navigate_to_goal"
+
+
+def test_cancelling_drops_the_dwell(sim: Sim, dwell_clock: list[float]):
+    w = sim.waypoints
+    set_dwell(sim, 1, 10)
+    sim.robot(*w[0])
+    sim.client.post("/api/missions/current/start")
+    sim.drive_to(*w[0])
+    sim.drive_to(*w[1])
+    cancelled = sim.client.post("/api/missions/current/cancel").json()
+    assert cancelled["dwell_sec"] is None and cancelled["dwell_remaining_sec"] is None
+
+
+def test_the_dwell_ends_on_its_own(sim: Sim):
+    w = sim.waypoints
+    set_dwell(sim, 1, 0.05)
+    sim.robot(*w[0])
+    sim.client.post("/api/missions/current/start")
+    sim.drive_to(*w[0])
+    sim.drive_to(*w[1])
+
+    deadline = time.monotonic() + 3
+    while goals(sim)[-1] != w[2] and time.monotonic() < deadline:
+        time.sleep(0.02)
+    assert goals(sim)[-1] == w[2]
+
+
+def test_waypoints_without_a_dwell_load_with_none():
+    mission = Mission(mission_id="m", name="M", waypoints=[{"waypoint_id": "a", "x": 0, "y": 0}])
+    assert mission.waypoints[0].dwell_sec == 0
+
+
+def test_the_library_estimates_a_loop_from_distance_stops_and_dwells(sim: Sim, settings):
+    settings.patrol_speed_mps = 0.5
+    settings.waypoint_stop_sec = 4
+    set_dwell(sim, 1, 30)
+    summary = next(m for m in sim.client.get("/api/missions").json() if m["mission_id"] == MISSION_ID)
+    assert summary["dwell_sec"] == 30
+    expected = summary["distance_m"] / 0.5 + summary["waypoint_count"] * 4 + 30
+    assert summary["loop_sec"] == pytest.approx(expected)

@@ -17,6 +17,8 @@
   line-height: 1.4;
   white-space: nowrap;
   flex-shrink: 0;
+  /* Counts and countdowns keep their width as their digits change. */
+  font-variant-numeric: tabular-nums;
 }
 
 .dot {
