@@ -24,6 +24,7 @@ import type { Investigation } from "./investigationTypes";
 import { Button } from "../../components/ui/Button";
 import { towersSeeing } from "../devices/towers";
 import { useEndExplore } from "./explore";
+import { ReasonRow } from "../anomalies/AnomalyInfoRows";
 
 const VERDICTS: AnomalyVerdict[] = ["true_positive", "false_positive", "unclear"];
 const VERDICT_HINTS: Record<AnomalyVerdict, string> = {
@@ -42,6 +43,7 @@ export function VerifyModal() {
   if (!verifyOpen || investigation?.phase !== "on_site") return null;
   // Mounted only while open, so the camera stream starts and stops with it.
   if (!investigation.anomalyId) return <ObserveDialog investigation={investigation} />;
+  if (investigation.kind === "camera") return <CameraCheckDialog investigation={investigation} anomalyId={investigation.anomalyId} />;
   return <VerifyDialog investigation={investigation} anomalyId={investigation.anomalyId} />;
 }
 
@@ -187,6 +189,59 @@ function ObserveDialog({ investigation }: { investigation: Investigation }) {
                 {label}
               </Button>
             </div>
+          </section>
+        </aside>
+      </div>
+    </Modal>
+  );
+}
+
+/** On site at a tower whose camera is unhealthy: the robot's cameras (three,
+ * picked from thumbnails) or the tower's own, side by side through the
+ * switcher. Nothing to verify, and no action here: the investigation card's
+ * Back to route / Done ends it. */
+function CameraCheckDialog({ investigation, anomalyId }: { investigation: Investigation; anomalyId: string }) {
+  const closeVerify = useInvestigationStore((s) => s.closeVerify);
+  const anomaly = useDeviceStore((s) => s.anomalies[anomalyId]);
+  const sourceId = anomaly?.sourceDeviceId ?? null;
+  const [view, setView] = useState<"robot" | "source">("robot");
+  const cameraDeviceId = view === "source" && sourceId ? sourceId : investigation.robotDeviceId;
+  const { camera, stream, error } = useCameraSession(cameraDeviceId, true);
+  const now = useNow();
+
+  return (
+    <Modal label="Camera check" onClose={closeVerify} variant="fullscreen">
+      <ModalHeader title={`Camera check ${sourceId ?? anomalyId}`} onClose={closeVerify} />
+      <div className={layout.body}>
+        <div className={layout.stage}>
+          {sourceId && (
+            <div className={layout.switcher} role="tablist" aria-label="Camera">
+              <SwitchButton on={view === "robot"} onClick={() => setView("robot")} name={investigation.robotDeviceId} role="Robot" />
+              <SwitchButton on={view === "source"} onClick={() => setView("source")} name={sourceId} role="Source" />
+            </div>
+          )}
+          <div className={layout.feed}>
+            {error ? <Note tone="danger">{error}</Note> : <CameraStreamView camera={camera} stream={stream} />}
+          </div>
+        </div>
+
+        <aside className={layout.sidebar}>
+          <section className={layout.section}>
+            <h3 className={layout.sectionTitle}>Anomaly</h3>
+            <InfoList gap={8}>
+              {anomaly && (
+                <>
+                  <InfoRow label="Type" value={formatAnomalyTypes(anomaly.types)} />
+                  <ReasonRow deviceId={anomaly.sourceDeviceId} />
+                  <InfoRow label="Detected" value={`${formatAge(anomaly.detectedAt, now)} ago`} />
+                  <InfoRow label="Source" value={anomaly.sourceDeviceId} />
+                </>
+              )}
+            </InfoList>
+          </section>
+
+          <section className={cx(layout.section, layout.footer)}>
+            <Note size="sm">Nothing to verify. The anomaly clears once the tower's camera recovers.</Note>
           </section>
         </aside>
       </div>

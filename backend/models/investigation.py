@@ -18,6 +18,10 @@ class InvestigationKind(str, Enum):
     ANOMALY = "anomaly"
     # Go here: sent by the operator to look at a point; no verdict.
     MANUAL = "manual"
+    # Sent to a tower whose camera is unhealthy (a camera_unhealthy anomaly),
+    # to look in its place; no verdict, and nothing goes back to Anomaly
+    # Detection.
+    CAMERA = "camera"
 
 
 class InvestigationState(WireModel):
@@ -28,7 +32,7 @@ class InvestigationState(WireModel):
     model_config = ConfigDict(extra="forbid")
 
     kind: InvestigationKind = InvestigationKind.ANOMALY
-    # Set exactly when kind is ANOMALY.
+    # Set exactly when kind isn't MANUAL.
     anomaly_id: str | None = None
     robot_device_id: str
     phase: InvestigationPhase
@@ -44,15 +48,15 @@ class InvestigationState(WireModel):
     # Estimated seconds from start to arrival (Settings.patrol_speed_mps).
     eta_sec: float | None = None
     # The operator's verdict while ON_SITE; None until one is chosen. It is
-    # committed only when the robot leaves the anomaly. Always None for MANUAL.
+    # committed only when the robot leaves the anomaly. Only for ANOMALY.
     draft_verdict: AnomalyVerdict | None = None
     started_at: datetime
     arrived_at: datetime | None = None
 
     @model_validator(mode="after")
     def _anomaly_matches_kind(self) -> "InvestigationState":
-        if (self.anomaly_id is not None) != (self.kind == InvestigationKind.ANOMALY):
-            raise ValueError("anomaly_id is set exactly for anomaly investigations")
+        if (self.anomaly_id is not None) != (self.kind != InvestigationKind.MANUAL):
+            raise ValueError("anomaly_id is set exactly for anomaly and camera investigations")
         return self
 
 

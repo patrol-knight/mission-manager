@@ -1,6 +1,6 @@
 import type { components } from "../../api/schema";
 /** See ../anomaly_detection/docs/topics_format.md section 2.1. */
-export type AnomalyType = "lying_down" | "loitering" | "trespassing";
+export type AnomalyType = "lying_down" | "loitering" | "trespassing" | "camera_unhealthy";
 
 /** The operator's on-site verdict. Only true/false positive are final; an
  * "unclear" anomaly stays on the map and can be investigated again. */
@@ -69,7 +69,14 @@ const TYPE_LABELS: Record<AnomalyType, string> = {
   lying_down: "Lying down",
   loitering: "Loitering",
   trespassing: "Trespassing",
+  camera_unhealthy: "Camera unhealthy",
 };
+
+/** A tower's camera can't be trusted: shown on the tower's own marker, not
+ * as an anomaly marker. */
+export function isCameraUnhealthy(anomaly: Anomaly): boolean {
+  return anomaly.types.includes("camera_unhealthy");
+}
 
 export function formatAnomalyTypes(types: AnomalyType[]): string {
   return types.map((t) => TYPE_LABELS[t]).join(", ");

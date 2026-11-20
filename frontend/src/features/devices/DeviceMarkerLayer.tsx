@@ -3,7 +3,7 @@ import * as maplibregl from "maplibre-gl";
 import { useShallow } from "zustand/react/shallow";
 import { MapContext } from "../map/MapContext";
 import { useMarkerList, type UseMarkerListOptions } from "../map/mapMarkers";
-import { useDeviceStore, selectDeviceList } from "../../stores/deviceStore";
+import { useDeviceStore, selectCameraAlarms, selectDeviceList } from "../../stores/deviceStore";
 import { useDeviceInspector } from "./useDeviceInspector";
 import { useApiConnection } from "../../hooks/useApiConnection";
 import type { Device } from "../../types/domain";
@@ -11,6 +11,8 @@ import { mapPalette } from "../map/mapPalette";
 import { useMapHighlightStore } from "../../stores/mapHighlightStore";
 import { useInvestigationStore } from "../../stores/investigationStore";
 import { setMarkerGlyph } from "../map/markerGlyph";
+import { useToast } from "../../components/useToast";
+import { needsVerdict } from "../investigation/investigationTypes";
 
 /** Zoom a badge click goes to first (as for anomaly clusters). */
 const COMFORT_ZOOM = 21;
@@ -56,6 +58,8 @@ function buildTowerElement(): HTMLElement {
     background:${mapPalette.device.iot};
     border:2px solid ${mapPalette.markerBorder};
     box-shadow:${mapPalette.markerShadow};
+    display:flex;align-items:center;justify-content:center;
+    color:${mapPalette.markerText};font:800 12px/1 system-ui,sans-serif;
     cursor:pointer;
     transition:width 150ms ease-out, height 150ms ease-out, box-shadow 150ms ease-out;
     z-index:${DEVICE_Z_INDEX.iot};
@@ -63,15 +67,29 @@ function buildTowerElement(): HTMLElement {
   return el;
 }
 
-/** The tower's row is hovered in the towers list: grow and ring it, so it
- * can be found on the map even when anomalies crowd it. */
-function applyTowerHighlight(el: HTMLElement, highlighted: boolean): void {
+/** The tower's row is hovered in the towers list (or its camera anomaly is
+ * selected): grow and ring it, so it can be found on the map even when
+ * anomalies crowd it. The ring is red on a tower drawn as an anomaly. */
+function applyTowerHighlight(el: HTMLElement, highlighted: boolean, alarm: boolean): void {
   const size = highlighted ? 28 : 22;
   el.style.width = `${size}px`;
   el.style.height = `${size}px`;
   el.style.boxShadow = highlighted
-    ? `0 0 0 6px ${mapPalette.towerHalo}, ${mapPalette.markerShadow}`
+    ? `0 0 0 6px ${alarm ? mapPalette.anomalyHalo : mapPalette.towerHalo}, ${mapPalette.markerShadow}`
     : mapPalette.markerShadow;
+}
+
+/** A tower whose camera is unhealthy is that anomaly's marker: red with a
+ * white "!" in the tower's shape, yellow and pulsing while the robot is sent
+ * there. Before applyHiddenBadge: setting the first glyph clears the
+ * marker's children. */
+function applyCameraAlarm(el: HTMLElement, alarm: "alarm" | "target" | null): void {
+  el.style.background =
+    alarm === "target" ? mapPalette.investigation : alarm === "alarm" ? mapPalette.anomaly : mapPalette.device.iot;
+  el.style.animation = alarm === "target" ? "investigation-target-pulse 1.4s ease-out infinite" : "none";
+  el.style.textShadow = alarm === "target" ? "0 0 2px rgba(120,90,0,0.6)" : "none";
+  if (alarm) setMarkerGlyph(el, "!");
+  else el.querySelector(":scope > .marker-glyph")?.remove();
 }
 
 /** Which corner of a tower faces away from the investigated anomaly --
@@ -143,6 +161,10 @@ export function DeviceMarkerLayer() {
   const hiddenByTower = useMapHighlightStore((s) => s.hiddenByTower);
   const targetId = useInvestigationStore((s) => s.investigation?.anomalyId ?? null);
   const target = useDeviceStore((s) => (targetId ? s.anomalies[targetId] : undefined));
+  const alarms = useDeviceStore(useShallow(selectCameraAlarms));
+  const selectedId = useInvestigationStore((s) => s.selectedAnomalyId);
+  const selectAnomaly = useInvestigationStore((s) => s.selectAnomaly);
+  const { show } = useToast();
 
   // Fit the hidden anomalies (and the investigated one they sit under) far
   // enough in that they come out from under it.
@@ -177,20 +199,54 @@ export function DeviceMarkerLayer() {
           applyRobotHighlight(el, d.deviceId === hoveredDeviceId);
           return;
         }
-        applyTowerHighlight(el, d.deviceId === hoveredDeviceId);
+        const alarmId = alarms[d.deviceId] ?? null;
+        const alarm = alarmId === null ? null : alarmId === targetId ? "target" : "alarm";
+        applyTowerHighlight(el, d.deviceId === hoveredDeviceId || (alarmId !== null && alarmId === selectedId), alarm !== null);
+        applyCameraAlarm(el, alarm);
+        if (alarm) {
+          el.dataset.hint = `${d.deviceId} · Camera unhealthy · ${alarm === "target" ? "Investigating" : "Click for details"}`;
+        }
         const hidden = hiddenByTower[d.deviceId] ?? [];
         applyHiddenBadge(el, hidden, cornerAwayFrom(d, target), zoomToHidden);
-        // With a badge, the tower rises above nearby anomalies (still under
-        // the investigated one), so the badge stays clickable.
-        el.style.zIndex = String(hidden.length > 0 ? DEVICE_Z_INDEX_WITH_BADGE : DEVICE_Z_INDEX.iot);
+        // With an alarm or a badge, the tower rises above nearby anomalies
+        // (the investigated one only when it is the target).
+        el.style.zIndex = String(
+          alarm === "target" ? 8 : alarm || hidden.length > 0 ? DEVICE_Z_INDEX_WITH_BADGE : DEVICE_Z_INDEX.iot,
+        );
       },
       // Towers don't rotate; their facing is drawn by TowerFovLayer.
       rotationOf: (d) => (d.type === "robot" ? headingDegrees(d.pose?.yaw ?? 0) : 0),
-      onClick: (d) => openInspector(d.deviceId),
+      // An unhealthy tower is an anomaly: its card. The towers list's "i"
+      // still opens the device window.
+      onClick: (d) => {
+        const alarmId = alarms[d.deviceId];
+        if (!alarmId) {
+          openInspector(d.deviceId);
+          return;
+        }
+        const investigation = useInvestigationStore.getState().investigation;
+        if (needsVerdict(investigation) && alarmId !== investigation?.anomalyId) {
+          show("warning", "Please verify the current anomaly first");
+          return;
+        }
+        selectAnomaly(alarmId);
+      },
     }),
-    [openInspector, backendConnected, hoveredDeviceId, hiddenByTower, target, zoomToHidden],
+    [
+      openInspector,
+      backendConnected,
+      hoveredDeviceId,
+      hiddenByTower,
+      target,
+      targetId,
+      zoomToHidden,
+      alarms,
+      selectedId,
+      selectAnomaly,
+      show,
+    ],
   );
 
-  useMarkerList(map, devices, options, [backendConnected, hoveredDeviceId, hiddenByTower, target]);
+  useMarkerList(map, devices, options, [backendConnected, hoveredDeviceId, hiddenByTower, target, alarms, selectedId]);
   return null;
 }

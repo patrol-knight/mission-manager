@@ -109,9 +109,9 @@ def service(tmp_path, map_server):
     return HeatmapService(str(tmp_path), map_server)
 
 
-def anomaly(resolution=None) -> Anomaly:
+def anomaly(resolution=None, types=("loitering",)) -> Anomaly:
     return Anomaly(
-        anomaly_id="a1", types=["loitering"], x=0.0, y=0.0, confidence=0.9, source_device_id="iot-01",
+        anomaly_id="a1", types=list(types), x=0.0, y=0.0, confidence=0.9, source_device_id="iot-01",
         detected_at=NOW, updated_at=NOW, last_seen_at=NOW, degrade_sec=10, expires_at=NOW, resolution=resolution,
     )
 
@@ -123,6 +123,11 @@ def test_service_records_anomalies_and_renders(service):
     assert view.available and view.image.record_count == 1
     assert service.state().real_events == 1
     assert service._store.real()[0].verdict == "expired"
+
+
+def test_camera_unhealthy_anomalies_are_not_heat(service):
+    service.record_final(anomaly(types=("camera_unhealthy",)), NOW)
+    assert service.state().real_events == 0
 
 
 def test_cache_follows_new_events(service):

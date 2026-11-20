@@ -158,12 +158,14 @@ class Sim:
             }
         )
 
-    def anomaly(self, anomaly_id: str, x: float, y: float, degrade_sec: float = 30) -> None:
+    def anomaly(
+        self, anomaly_id: str, x: float, y: float, degrade_sec: float = 30, types: tuple[str, ...] = ("lying_down",)
+    ) -> None:
         now = time.time()
         self.services.zenoh_gateway.ingest_anomaly_payload(
             {
                 "anomaly_id": anomaly_id,
-                "types": ["lying_down"],
+                "types": list(types),
                 "x": x,
                 "y": y,
                 "confidence": 0.9,

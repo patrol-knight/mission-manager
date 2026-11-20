@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { groupAnomalies, hideUnderTarget } from "./anomalyGroups";
+import { groupAnomalies, hideUnderAlarmTowers, hideUnderTarget } from "./anomalyGroups";
 import type { Anomaly } from "../anomalies/anomalyTypes";
 
 function anomaly(id: string, lon: number | null, lat = 0): Anomaly {
@@ -61,5 +61,24 @@ describe("hideUnderTarget", () => {
     const { singles, hidden } = hideUnderTarget([anomaly("a", 0)], [], null, project, new Set());
     expect(singles).toHaveLength(1);
     expect(hidden).toEqual([]);
+  });
+});
+
+describe("hideUnderAlarmTowers", () => {
+  it("hides markers a red tower covers, by tower, keeping far and kept ones", () => {
+    const near = anomaly("near", 10);
+    const picked = anomaly("picked", 5);
+    const far = anomaly("far", 200);
+    const group = { key: "g1|g2", members: [anomaly("g1", 15), anomaly("g2", 17)], lon: 16, lat: 0 };
+    const { singles, groups, hidden } = hideUnderAlarmTowers(
+      [near, picked, far],
+      [group],
+      [{ deviceId: "iot-01", lon: 0, lat: 0 }],
+      project,
+      new Set(["picked"]),
+    );
+    expect(singles.map((a) => a.anomalyId)).toEqual(["picked", "far"]);
+    expect(groups).toEqual([]);
+    expect(hidden["iot-01"].map((a) => a.anomalyId)).toEqual(["near", "g1", "g2"]);
   });
 });

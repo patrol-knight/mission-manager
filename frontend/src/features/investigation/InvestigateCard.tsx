@@ -21,7 +21,8 @@ const VERDICT_TONES: Record<AnomalyVerdict, PillTone> = {
 
 /** The anomaly the robot is investigating. Its phase (en route / on site) is
  * on the robot's status pill; this card carries the verdict. Keyed by
- * anomaly, so switching targets slides a fresh card in. */
+ * anomaly, so switching targets slides a fresh card in. A camera check has
+ * no verdict: on site the operator looks (Observe), then sends the robot on. */
 export function InvestigateCard() {
   const investigation = useInvestigationStore((s) => s.investigation);
   if (!investigation?.anomalyId) return null;
@@ -40,13 +41,20 @@ function InvestigateCardBody({ investigation, anomalyId }: { investigation: Inve
   const [pending, setPending] = useState(false);
 
   const onSite = investigation.phase === "on_site";
+  const camera = investigation.kind === "camera";
   const verdict = investigation.draftVerdict;
   const fallback = fallbackAfterInvestigation(execution, definition);
 
   // No confirm dialog: Cancel/Submit act at once, and the toast says what was
   // recorded and where the robot goes next.
   const end = async () => {
-    const recorded = onSite && verdict ? `Recorded as ${VERDICT_LABELS[verdict]}` : "Investigation cancelled";
+    const recorded = camera
+      ? onSite
+        ? "Camera check done"
+        : "Camera check cancelled"
+      : onSite && verdict
+        ? `Recorded as ${VERDICT_LABELS[verdict]}`
+        : "Investigation cancelled";
     setPending(true);
     try {
       await (onSite ? finishInvestigation() : cancelInvestigation());
@@ -68,7 +76,16 @@ function InvestigateCardBody({ investigation, anomalyId }: { investigation: Inve
     >
       {anomaly && <AnomalyInfoRows anomaly={anomaly} />}
       <ButtonRow>
-        {onSite ? (
+        {onSite && camera ? (
+          <>
+            <Button variant="primary" block onClick={openVerify}>
+              Observe
+            </Button>
+            <Button block onClick={() => void end()} disabled={pending}>
+              {fallback.kind === "route" ? "Back to route" : "Done"}
+            </Button>
+          </>
+        ) : onSite ? (
           <>
             <Button variant="primary" block onClick={openVerify}>
               Verify

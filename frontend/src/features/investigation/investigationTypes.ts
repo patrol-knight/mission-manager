@@ -12,13 +12,14 @@ export interface InvestigationTarget {
   lon: number | null;
 }
 
-/** "anomaly": sent to an anomaly, ends with a verdict. "manual": Explore,
+/** "anomaly": sent to an anomaly, ends with a verdict. "camera": sent to a
+ * tower whose camera is unhealthy, ends when dismissed. "manual": Explore,
  * sent by the operator to look at a point, ends when dismissed. */
-export type InvestigationKind = "anomaly" | "manual";
+export type InvestigationKind = "anomaly" | "camera" | "manual";
 
 export interface Investigation {
   kind: InvestigationKind;
-  /** Set exactly for "anomaly". */
+  /** Set for "anomaly" and "camera". */
   anomalyId: string | null;
   robotDeviceId: string;
   phase: InvestigationPhase;

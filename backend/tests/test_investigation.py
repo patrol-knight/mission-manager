@@ -229,6 +229,36 @@ def test_a_dropped_goal_to_the_anomaly_is_sent_again(sim: Sim):
     assert sim.investigation()["phase"] == "en_route"
 
 
+# -- Camera unhealthy --------------------------------------------------------------
+
+
+def test_a_camera_unhealthy_anomaly_is_checked_without_a_verdict(sim: Sim):
+    sim.robot(*sim.waypoints[0])
+    sim.anomaly("cam", 4, 3, types=("camera_unhealthy",))
+    state = sim.investigate("cam").json()
+    assert state["kind"] == "camera" and state["anomaly_id"] == "cam"
+
+    arrive_on_site(sim, 4, 3)
+    assert sim.verdict("true_positive").status_code == 409
+    assert sim.finish_investigation().status_code == 204
+    assert sim.investigation() is None
+    assert sim.anomaly_record("cam")["resolution"] is None  # stays until the camera recovers
+    assert sim.feedback == []
+
+
+def test_a_camera_check_can_be_cancelled_en_route_and_taken_over(sim: Sim):
+    sim.robot(*sim.waypoints[0])
+    sim.anomaly("cam", 4, 3, types=("camera_unhealthy",))
+    sim.anomaly("a", 0, 0)
+    sim.investigate("cam")
+    assert sim.cancel_investigation().status_code == 204
+
+    sim.investigate("cam")
+    arrive_on_site(sim, 4, 3)
+    assert sim.investigate("a").json()["kind"] == "anomaly"  # nothing to verify, so it can leave
+    assert sim.anomaly_record("cam")["resolution"] is None
+
+
 # -- Go here ----------------------------------------------------------------------
 
 

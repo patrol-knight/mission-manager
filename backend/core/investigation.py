@@ -62,10 +62,11 @@ class InvestigationCoordinator:
     active, mission drive sends no goals and MissionService refuses mission
     transitions.
 
-    Two kinds: ANOMALY sends the robot to an anomaly and ends with a verdict;
-    MANUAL (Go here) sends it to look at a point the operator clicked, and
-    ends when the operator dismisses it. Go here may take over from either
-    kind at any time; an anomaly may take over from Go here.
+    Three kinds: ANOMALY sends the robot to an anomaly and ends with a
+    verdict; CAMERA sends it to a tower whose camera is unhealthy (a
+    camera_unhealthy anomaly) and MANUAL (Go here) to a point the operator
+    clicked, both ending when the operator dismisses them. Only an ANOMALY on
+    site without a verdict holds the robot; anything else may be taken over.
 
     - start() / go_to(): send the robot, or switch it to another target.
     - on_command_result(): EN_ROUTE -> ON_SITE when the goal succeeds.
@@ -167,7 +168,8 @@ class InvestigationCoordinator:
             # Atomic with expiry: the anomaly may have expired since get().
             if self._anomalies.set_target(anomaly_id) is None:
                 raise AnomalyNotFoundError(f"Anomaly not found: {anomaly_id}")
-            state = self._begin(InvestigationKind.ANOMALY, anomaly_id, robot, look_at, view)
+            kind = InvestigationKind.CAMERA if anomaly.is_camera_unhealthy else InvestigationKind.ANOMALY
+            state = self._begin(kind, anomaly_id, robot, look_at, view)
             request_id = self._request_id
 
         self._dispatch(previous, state, request_id)
@@ -184,7 +186,7 @@ class InvestigationCoordinator:
 
         with self._lock:
             previous = self._state
-            if previous is not None and previous.kind == InvestigationKind.ANOMALY:
+            if previous is not None and previous.anomaly_id is not None:
                 self._anomalies.set_target(None)
             state = self._begin(InvestigationKind.MANUAL, None, robot, look_at, view)
             request_id = self._request_id
@@ -197,8 +199,8 @@ class InvestigationCoordinator:
         with self._lock:
             if self._state is None:
                 raise NoActiveInvestigationError("The robot is not investigating")
-            if self._state.kind == InvestigationKind.MANUAL:
-                raise NoVerdictError("Go here has no verdict")
+            if self._state.kind != InvestigationKind.ANOMALY:
+                raise NoVerdictError(f"{_describe(self._state)} has no verdict")
             if self._state.phase != InvestigationPhase.ON_SITE:
                 raise NotOnSiteError("The robot hasn't reached the anomaly yet")
             self._state = self._state.model_copy(update={"draft_verdict": verdict})
@@ -213,7 +215,7 @@ class InvestigationCoordinator:
         self._end(InvestigationPhase.ON_SITE)
 
     def _end(self, phase: InvestigationPhase) -> None:
-        """Go here ends from either phase; an anomaly only from `phase`."""
+        """Go here and camera end from either phase; an anomaly only from `phase`."""
         with self._lock:
             previous = self._state
             if previous is None:
@@ -227,7 +229,7 @@ class InvestigationCoordinator:
                 raise VerdictRequiredError("Verify the current anomaly first")
             self._state = None
             self._blocked_since = None
-            if anomaly:
+            if previous.anomaly_id is not None:
                 self._anomalies.set_target(None)
 
         if anomaly and phase == InvestigationPhase.ON_SITE:
@@ -297,7 +299,7 @@ class InvestigationCoordinator:
                 return None
             self._state = None
             self._blocked_since = None
-            if state.kind == InvestigationKind.ANOMALY:
+            if state.anomaly_id is not None:
                 self._anomalies.set_target(None)
         self._broadcast_state()
         logger.warning("%s cancelled", _describe(state))
@@ -461,4 +463,6 @@ def _awaits_verdict(state: InvestigationState | None) -> bool:
 
 
 def _describe(state: InvestigationState) -> str:
+    if state.kind == InvestigationKind.CAMERA:
+        return f"Camera check for anomaly {state.anomaly_id}"
     return f"Investigation of anomaly {state.anomaly_id}" if state.anomaly_id else "Go here"

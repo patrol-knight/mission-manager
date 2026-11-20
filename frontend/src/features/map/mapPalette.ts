@@ -35,9 +35,14 @@ export const mapPalette = {
   mapPoint: "#a97a9f",
   /** Ring around a tower whose row is hovered in the towers list. */
   towerHalo: "rgba(90,79,207,0.3)",
+  /** The same ring on a tower drawn as an anomaly (camera unhealthy). */
+  anomalyHalo: "rgba(197,30,58,0.3)",
   /** A tower camera's field of view. */
   fovFill: "rgba(90,79,207,0.08)",
   fovLine: "rgba(90,79,207,0.45)",
+  /** The field of view of a tower whose camera is unhealthy. */
+  fovAlarmFill: "rgba(197,30,58,0.14)",
+  fovAlarmLine: "rgba(197,30,58,0.6)",
   /** A restricted zone; stronger while selected. */
   geofenceLine: "#16a34a",
   geofenceFill: "rgba(22,163,74,0.12)",

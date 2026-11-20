@@ -16,7 +16,6 @@ import { CurrentMissionRouteLayer } from "../features/map/CurrentMissionRouteLay
 import { InvestigationRouteLayer } from "../features/map/InvestigationRouteLayer";
 import { InvestigationTargetLayer } from "../features/map/InvestigationTargetLayer";
 import { ExploreLayer } from "../features/map/ExploreLayer";
-import { ExploreButton } from "../features/map/ExploreButton";
 import { MissionWaypointMarkersLayer } from "../features/map/MissionWaypointMarkersLayer";
 import { MissionPreviewLayer } from "../features/map/MissionPreviewLayer";
 import { MissionEditorProvider } from "../features/missions/MissionEditorContext";
@@ -46,7 +45,8 @@ export function AppShell() {
           <DeviceInspectorProvider>
             <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
               <div style={{ flex: 1, position: "relative" }}>
-                <MapWorkspace containerRef={containerRef} map={map} ready={ready} controls={liveMap ? <ExploreButton /> : null}>
+                {/* Explore (ExploreButton) is out of the Encore: its entry is hidden. */}
+                <MapWorkspace containerRef={containerRef} map={map} ready={ready}>
                   <LaneletLayer />
                   {/* Orange = the active mission (monitor only); the library and
                       the editor show just their own mission, in blue. */}

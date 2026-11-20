@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import type { CameraState, Device } from "../types/domain";
-import { isClosed, type Anomaly } from "../features/anomalies/anomalyTypes";
+import { isCameraUnhealthy, isClosed, type Anomaly } from "../features/anomalies/anomalyTypes";
 
 interface DeviceStoreState {
   devices: Record<string, Device>;
@@ -65,6 +65,16 @@ export function selectAlertCounts(state: DeviceStoreState): Record<string, numbe
     if (!isClosed(a)) counts[a.sourceDeviceId] = (counts[a.sourceDeviceId] ?? 0) + 1;
   }
   return counts;
+}
+
+/** Each tower's open camera_unhealthy anomaly id, drawn on the tower's
+ * marker. Use with useShallow. */
+export function selectCameraAlarms(state: DeviceStoreState): Record<string, string> {
+  const alarms: Record<string, string> = {};
+  for (const a of Object.values(state.anomalies)) {
+    if (isCameraUnhealthy(a) && !isClosed(a)) alarms[a.sourceDeviceId] = a.anomalyId;
+  }
+  return alarms;
 }
 
 /** The robot (single-robot deployment), connected or not -- the lowest

@@ -694,7 +694,7 @@ export interface components {
             /** Source Device Id */
             source_device_id: string;
             /** Types */
-            types: ("lying_down" | "loitering" | "trespassing")[];
+            types: ("lying_down" | "loitering" | "trespassing" | "camera_unhealthy")[];
             /**
              * Updated At
              * Format: date-time
@@ -1094,7 +1094,7 @@ export interface components {
          * InvestigationKind
          * @enum {string}
          */
-        InvestigationKind: "anomaly" | "manual";
+        InvestigationKind: "anomaly" | "manual" | "camera";
         /**
          * InvestigationPhase
          * @enum {string}

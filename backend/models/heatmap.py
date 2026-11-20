@@ -3,14 +3,14 @@ from typing import Literal
 
 from pydantic import ConfigDict, Field, model_validator
 
-from models.anomaly import AnomalyType
+from models.anomaly import HumanAnomalyType
 from models.base import WireModel
 
 # How an anomaly ended: an operator verdict, or "expired" when nobody verified
 # it before it went away.
 HeatVerdict = Literal["true_positive", "unclear", "false_positive", "expired"]
 HEAT_VERDICTS: tuple[HeatVerdict, ...] = ("true_positive", "unclear", "false_positive", "expired")
-ANOMALY_TYPES: tuple[AnomalyType, ...] = ("trespassing", "loitering", "lying_down")
+ANOMALY_TYPES: tuple[HumanAnomalyType, ...] = ("trespassing", "loitering", "lying_down")
 
 
 class VerdictWeights(WireModel):
@@ -86,7 +86,7 @@ class Hotspot(WireModel):
     radius_m: float = Field(3.0, ge=0.0, le=50.0)
     per_day: float = Field(1.0, ge=0.0, le=500.0)
     verdicts: VerdictShares = Field(default_factory=VerdictShares)
-    types: list[AnomalyType] = Field(default_factory=lambda: list(ANOMALY_TYPES), min_length=1)
+    types: list[HumanAnomalyType] = Field(default_factory=lambda: list(ANOMALY_TYPES), min_length=1)
     confidence: ConfidenceRange = Field(default_factory=ConfidenceRange)
 
 
@@ -99,7 +99,7 @@ class Background(WireModel):
     verdicts: VerdictShares = Field(
         default_factory=lambda: VerdictShares(true_positive=0.05, unclear=0.1, false_positive=0.25, expired=0.6)
     )
-    types: list[AnomalyType] = Field(default_factory=lambda: list(ANOMALY_TYPES), min_length=1)
+    types: list[HumanAnomalyType] = Field(default_factory=lambda: list(ANOMALY_TYPES), min_length=1)
     confidence: ConfidenceRange = Field(default_factory=lambda: ConfidenceRange(low=0.3, high=0.8))
 
 
@@ -124,7 +124,7 @@ class HeatEvent(WireModel):
     y: float
     age_days: float = Field(ge=0.0)
     verdict: HeatVerdict
-    types: list[AnomalyType] = Field(min_length=1)
+    types: list[HumanAnomalyType] = Field(min_length=1)
     confidence: float = Field(ge=0.0, le=1.0)
 
 
@@ -138,7 +138,7 @@ class RealEvent(WireModel):
     y: float
     closed_at: datetime
     verdict: HeatVerdict
-    types: list[AnomalyType] = Field(min_length=1)
+    types: list[HumanAnomalyType] = Field(min_length=1)
     confidence: float = Field(ge=0.0, le=1.0)
     device_id: str | None = None
 

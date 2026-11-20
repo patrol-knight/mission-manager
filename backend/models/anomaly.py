@@ -7,7 +7,11 @@ from models.base import WireModel
 
 # The anomaly categories Anomaly Detection may report -- see
 # ../anomaly_detection/docs/topics_format.md section 2.1.
-AnomalyType = Literal["lying_down", "loitering", "trespassing"]
+HumanAnomalyType = Literal["lying_down", "loitering", "trespassing"]
+# A tower's camera can't be trusted (its status.camera_health); placed at the
+# tower. Anomaly Detection holds back that tower's other anomalies meanwhile.
+CAMERA_UNHEALTHY = "camera_unhealthy"
+AnomalyType = Literal[HumanAnomalyType, "camera_unhealthy"]
 # What the operator can conclude on site. Only the first two are final and
 # sent to Anomaly Detection as feedback; "unclear" (camera blocked, person
 # already gone, ...) keeps the anomaly on the map for another look.
@@ -98,3 +102,7 @@ class Anomaly(WireModel):
     @property
     def is_closed(self) -> bool:
         return self.resolution in FINAL_VERDICTS
+
+    @property
+    def is_camera_unhealthy(self) -> bool:
+        return CAMERA_UNHEALTHY in self.types

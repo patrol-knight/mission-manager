@@ -65,7 +65,8 @@ class HeatmapService:
             return view
 
     def record_final(self, anomaly: Anomaly, closed_at: datetime) -> None:
-        if self._store is None:
+        # A camera fault is not a place where people are.
+        if self._store is None or anomaly.is_camera_unhealthy:
             return
         event = RealEvent(
             id=anomaly.anomaly_id,

@@ -5,7 +5,9 @@ import { DeviceInspectorProvider } from "./DeviceInspectorProvider";
 import { useDeviceInspector } from "./useDeviceInspector";
 import { DeviceMarkerLayer } from "./DeviceMarkerLayer";
 import { useDeviceStore } from "../../stores/deviceStore";
+import { useInvestigationStore } from "../../stores/investigationStore";
 import type { Device } from "../../types/domain";
+import type { Anomaly } from "../anomalies/anomalyTypes";
 
 const { FakeMarker } = vi.hoisted(() => {
   class FakeMarker {
@@ -98,6 +100,8 @@ describe("DeviceMarkerLayer", () => {
   beforeEach(() => {
     FakeMarker.instances = [];
     useDeviceStore.getState().setDevices([robot, iotDevice]);
+    useDeviceStore.getState().setAnomalies([]);
+    useInvestigationStore.getState().selectAnomaly(null);
   });
 
   it("shows every device and opens the inspector on click", async () => {
@@ -124,5 +128,25 @@ describe("DeviceMarkerLayer", () => {
 
     expect(robotMarker!.element.style.opacity).toBe("1");
     expect(robotMarker!.element.style.filter).toBe("none");
+  });
+
+  it("draws a tower whose camera is unhealthy as that anomaly, and opens its card on click", async () => {
+    const alarm = {
+      anomalyId: "cam-1",
+      types: ["camera_unhealthy"],
+      sourceDeviceId: "sim-iot-01",
+      resolution: null,
+    } as unknown as Anomaly;
+    useDeviceStore.getState().setAnomalies([alarm]);
+    render(<Harness />);
+    await vi.waitFor(() => expect(FakeMarker.instances).toHaveLength(2));
+
+    const tower = FakeMarker.instances.find((m) => m.element.dataset.hint?.startsWith("sim-iot-01"))!;
+    expect(tower.element.dataset.hint).toBe("sim-iot-01 · Camera unhealthy · Click for details");
+    expect(tower.element.textContent).toBe("!");
+
+    tower.element.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await vi.waitFor(() => expect(useInvestigationStore.getState().selectedAnomalyId).toBe("cam-1"));
+    expect(document.body.textContent).toContain("inspector=closed");
   });
 });

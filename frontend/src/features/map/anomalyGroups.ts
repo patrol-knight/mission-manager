@@ -132,3 +132,48 @@ export function hideUnderTarget(
   });
   return { singles: keptSingles, groups: keptGroups, hidden };
 }
+
+/** A tower drawn as an anomaly (its camera is unhealthy), see DeviceMarkerLayer. */
+export interface AlarmTower {
+  deviceId: string;
+  lat: number;
+  lon: number;
+}
+
+/** On-screen size of a tower marker. */
+const TOWER_SIZE_PX = 22;
+
+/**
+ * Like hideUnderTarget, for towers drawn as anomalies: every marker a red
+ * tower would overlap is taken out and returned as `hidden`, by that tower,
+ * to be counted on its badge. `keepVisible` is never hidden.
+ */
+export function hideUnderAlarmTowers(
+  singles: Anomaly[],
+  groups: AnomalyGroup[],
+  towers: AlarmTower[],
+  project: (lon: number, lat: number) => ScreenPoint,
+  keepVisible: ReadonlySet<string>,
+): { singles: Anomaly[]; groups: AnomalyGroup[]; hidden: Record<string, Anomaly[]> } {
+  const hidden: Record<string, Anomaly[]> = {};
+  if (towers.length === 0) return { singles, groups, hidden };
+  const at = towers.map((t) => ({ deviceId: t.deviceId, p: project(t.lon, t.lat) }));
+  const coveredBy = (lon: number, lat: number, size: number) => {
+    const p = project(lon, lat);
+    return at.find((t) => Math.hypot(p.x - t.p.x, p.y - t.p.y) < (TOWER_SIZE_PX + size) / 2 + MIN_GAP_PX)?.deviceId;
+  };
+
+  const keptSingles = singles.filter((a) => {
+    const tower = keepVisible.has(a.anomalyId) ? undefined : coveredBy(a.lon as number, a.lat as number, SINGLE_SIZE_PX);
+    if (!tower) return true;
+    (hidden[tower] ??= []).push(a);
+    return false;
+  });
+  const keptGroups = groups.filter((g) => {
+    const tower = coveredBy(g.lon, g.lat, groupSize(g.members.length));
+    if (!tower) return true;
+    (hidden[tower] ??= []).push(...g.members);
+    return false;
+  });
+  return { singles: keptSingles, groups: keptGroups, hidden };
+}

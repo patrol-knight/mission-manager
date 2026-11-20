@@ -52,3 +52,24 @@ export function towersSeeing(devices: Device[], x: number, y: number): Device[] 
     })
     .sort((a, b) => Math.hypot(x - a.pose!.x, y - a.pose!.y) - Math.hypot(x - b.pose!.x, y - b.pose!.y));
 }
+
+const CAMERA_FLAGS = [
+  ["occluded", "Occluded"],
+  ["overexposed", "Overexposed"],
+  ["depth_degraded", "Depth degraded"],
+] as const;
+
+/** Why a tower's camera is unhealthy, from its `status.camera_health`, in a
+ * fixed order; null when the tower sends no current health data. */
+export function cameraHealthReasons(device: Device | undefined): string[] | null {
+  const health = device?.status.camera_health;
+  if (!health || typeof health !== "object") return null;
+  const flags = health as Record<string, unknown>;
+  return CAMERA_FLAGS.filter(([key]) => flags[key] === true).map(([, label]) => label);
+}
+
+/** One line: the first two reasons, then "+N". */
+export function formatReasons(reasons: string[] | null): string {
+  if (reasons === null || reasons.length === 0) return "No data";
+  return reasons.length > 2 ? `${reasons.slice(0, 2).join(", ")} +${reasons.length - 2}` : reasons.join(", ");
+}

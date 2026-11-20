@@ -3,15 +3,23 @@ import * as maplibregl from "maplibre-gl";
 import { useShallow } from "zustand/react/shallow";
 import { MapContext } from "./MapContext";
 import { useMarkerList, type UseMarkerListOptions } from "./mapMarkers";
-import { useDeviceStore, selectAnomalyList } from "../../stores/deviceStore";
+import { useDeviceStore, selectAnomalyList, selectCameraAlarms, selectDeviceList } from "../../stores/deviceStore";
 import { useInvestigationStore } from "../../stores/investigationStore";
 import { useToast } from "../../components/useToast";
 import { useNow } from "../../hooks/useNow";
 import { needsVerdict } from "../investigation/investigationTypes";
-import { groupAnomalies, groupSize, hideUnderTarget, SINGLE_SIZE_PX, type AnomalyGroup } from "./anomalyGroups";
+import {
+  groupAnomalies,
+  groupSize,
+  hideUnderAlarmTowers,
+  hideUnderTarget,
+  SINGLE_SIZE_PX,
+  type AlarmTower,
+  type AnomalyGroup,
+} from "./anomalyGroups";
 import { useMapHighlightStore } from "../../stores/mapHighlightStore";
 import { mapPalette } from "./mapPalette";
-import { formatAnomalyTypes, isClosed, type Anomaly } from "../anomalies/anomalyTypes";
+import { formatAnomalyTypes, isCameraUnhealthy, isClosed, type Anomaly } from "../anomalies/anomalyTypes";
 import { setMarkerGlyph } from "./markerGlyph";
 
 /** Below this share of the grace period left, an anomaly starts fading (and
@@ -89,10 +97,26 @@ function buildGroupElement(): HTMLElement {
  * a count; clicking it zooms in until they separate (regrouped on every
  * pan/zoom). The investigation target and the selected anomaly are never
  * grouped; markers the target would cover are left out and counted on
- * their tower's marker (see hideUnderTarget, DeviceMarkerLayer). */
+ * their tower's marker (see hideUnderTarget, DeviceMarkerLayer).
+ *
+ * A camera_unhealthy anomaly gets no marker here: its tower turns into one
+ * (DeviceMarkerLayer), and markers under such a tower are counted on it. */
 export function AnomalyLayer() {
   const { map } = useContext(MapContext);
-  const anomalies = useDeviceStore(useShallow((s) => selectAnomalyList(s).filter((a) => !isClosed(a))));
+  const anomalies = useDeviceStore(
+    useShallow((s) => selectAnomalyList(s).filter((a) => !isClosed(a) && !isCameraUnhealthy(a))),
+  );
+  const devices = useDeviceStore(useShallow(selectDeviceList));
+  const alarms = useDeviceStore(useShallow(selectCameraAlarms));
+  const alarmTowers = useMemo<AlarmTower[]>(
+    () =>
+      devices.flatMap((d) =>
+        d.deviceId in alarms && d.pose?.lat != null && d.pose.lon != null
+          ? [{ deviceId: d.deviceId, lat: d.pose.lat, lon: d.pose.lon }]
+          : [],
+      ),
+    [devices, alarms],
+  );
   const targetId = useInvestigationStore((s) => s.investigation?.anomalyId ?? null);
   const selectedId = useInvestigationStore((s) => s.selectedAnomalyId);
   const selectAnomaly = useInvestigationStore((s) => s.selectAnomaly);
@@ -110,24 +134,31 @@ export function AnomalyLayer() {
     };
   }, [map]);
 
-  const { singles, groups, hidden } = useMemo(() => {
-    if (!map) return { singles: [], groups: [], hidden: [] };
+  const { singles, groups, hidden, underTowers } = useMemo(() => {
+    if (!map) return { singles: [], groups: [], hidden: [], underTowers: {} };
     const project = (lon: number, lat: number) => map.project([lon, lat]);
     const keepSingle = new Set([targetId, selectedId].filter((id): id is string => id !== null));
+    const keepVisible = new Set(selectedId ? [selectedId] : []);
     const grouped = groupAnomalies(anomalies, project, keepSingle);
     const target = anomalies.find((a) => a.anomalyId === targetId) ?? null;
-    return hideUnderTarget(grouped.singles, grouped.groups, target, project, new Set(selectedId ? [selectedId] : []));
+    const visible = hideUnderTarget(grouped.singles, grouped.groups, target, project, keepVisible);
+    const towers = hideUnderAlarmTowers(visible.singles, visible.groups, alarmTowers, project, new Set(keepSingle));
+    return { singles: towers.singles, groups: towers.groups, hidden: visible.hidden, underTowers: towers.hidden };
     // viewVersion: re-project after the map moved.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map, anomalies, targetId, selectedId, viewVersion]);
+  }, [map, anomalies, targetId, selectedId, alarmTowers, viewVersion]);
 
-  // Anomalies under the investigated one are counted on their tower instead.
+  // Anomalies under the investigated one, or under a red tower, are counted
+  // on a tower instead.
   const setHiddenByTower = useMapHighlightStore((s) => s.setHiddenByTower);
   useEffect(() => {
     const byTower: Record<string, string[]> = {};
     for (const a of hidden) (byTower[a.sourceDeviceId] ??= []).push(a.anomalyId);
+    for (const [tower, members] of Object.entries(underTowers)) {
+      for (const a of members) (byTower[tower] ??= []).push(a.anomalyId);
+    }
     setHiddenByTower(byTower);
-  }, [hidden, setHiddenByTower]);
+  }, [hidden, underTowers, setHiddenByTower]);
   useEffect(() => () => setHiddenByTower({}), [setHiddenByTower]);
 
   useEffect(() => {
