@@ -101,4 +101,4 @@ class NoRouteError(Exception):
 
 
 class NoVerdictError(Exception):
-    """A camera check has nothing to verify."""
+    """A camera check or Explore has nothing to verify."""

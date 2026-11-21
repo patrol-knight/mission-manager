@@ -1,4 +1,5 @@
 import { useEffect, type ReactNode } from "react";
+import { useDistanceLeft } from "../investigation/useDistanceLeft";
 import { useDeviceStore, selectRobot } from "../../stores/deviceStore";
 import { useMapHighlightStore } from "../../stores/mapHighlightStore";
 import { useMissionStore } from "../../stores/missionStore";
@@ -21,6 +22,7 @@ export function RobotCard() {
   const investigation = useInvestigationStore((s) => s.investigation);
   const execution = useMissionStore((s) => s.execution);
   const state = useSettledRobotState(robot);
+  const distanceLeft = useDistanceLeft();
   // Ticks only while the robot dwells, for the countdown in its pill.
   const now = useNow(execution?.dwellSec != null ? 250 : 60_000);
   const { openInspector } = useDeviceInspector();
@@ -35,7 +37,7 @@ export function RobotCard() {
     );
   }
 
-  const status = robotStatus(connected, investigation, execution, state, now);
+  const status = robotStatus(connected, investigation, execution, state, now, distanceLeft);
   const mode = robotMode(robot);
   const name = robot.deviceId;
   return (

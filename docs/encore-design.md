@@ -8,7 +8,7 @@ Status (2026-11-20, `feat/encore`; demo 2026-11-23):
 | R3 | **Three cameras** on the robot | Done: one stream, split into three in Mission Manager | #__ |
 | R4 | **Camera blind**: a tower whose camera can't see raises the alarm | Message and zenoh_bridge done; Mission Manager done (`camera_unhealthy`); the node and Anomaly Detection in progress (teammate) | #__ |
 
-R0 (where the robot stops) is done: viewpoint stop and blocked arrival; R1 (Explore) is dropped. See [R0 and R1](#r0-and-r1). Lost tracks (trespassing a tower loses) are the teammate's, with the edge-case tests; not covered here.
+R0 (where the robot stops) is done: viewpoint stop and blocked arrival. R1 (Explore) is redone on the investigate mode. See [R0 and R1](#r0-and-r1). Lost tracks (trespassing a tower loses) are the teammate's, with the edge-case tests; not covered here.
 
 ## Background
 
@@ -20,7 +20,19 @@ All three features work within that: they choose which goal to send, and when.
 
 ## R0 and R1
 
-**R1, Explore: dropped (2026-11-20).** The operator picked a point on the map; the robot went there, held, and returned to the mission when dismissed. With dwell, three cameras and camera blind, the demo has enough, and Explore had no clear use case: a camera check already covers "send the robot to look". Its code was removed (Go here, `kind = manual`, `/api/investigation/goto` and `/goto/preview`, `look_at`, `eta_sec`, the Explore button, layer, cards and observe window). It is in `febc9a4` if it comes back.
+**R1, Explore: redone on the investigate mode (2026-11-21).** For places no anomaly was raised for, or no tower sees: the operator picks a point, the robot goes to look, and returns to the mission when dismissed. The first version (`febc9a4`: ring, sight line, preview route) was dropped; this one reuses what the investigate mode already has.
+
+| | Explore |
+|---|---|
+| Entry | **Explore** pill beside Overview, bottom left; while picking it reads "Click a point to explore · Cancel" (grey). A click picks the point, another moves it; Esc cancels |
+| Picked | A plain grey "×" with a white halo, no disc; its stop, a white dot ringed grey, since the point may be off the lanes. No route before Investigate, as for an anomaly |
+| Card | **Explore**, two rows: Position (x, y), Distance (driving). [Investigate] [Cancel]. Shares the slot with the selected anomaly |
+| Sent | The "×" stays grey (it grows while the card is hovered); the stop's ring turns dark yellow, the yellow route appears; En route · 12 m / On site |
+| On site | The observe window shared with the camera check (robot's three cameras); the card's [Observe] [Back to route] end it, no verdict |
+| Stop | R0's viewpoint rule: the shortest drive to a lane point that sees it within 4 m |
+| Priority | Like switching anomalies: an anomaly on site needs its verdict first; anything else is taken over, and an anomaly takes over from Explore |
+
+Backend: `InvestigationKind.EXPLORE` (`anomaly_id` None), `look_at` on every investigation, `POST /api/investigation/explore` and `/explore/preview` ({lat, lon}). Checked on the dummy robot: a point 3 m off the lane → stop 3.9 m from it on the lane, 5.5 m drive, on site, Back to route.
 
 **R0, where the robot stops: done (2026-11-20).** The problems: a person lying on the lane is an obstacle at the goal, so the robot stops short, reports `blocked`, and never arrives to verify; and the nearest lanelet point may be a U-turn away while another lane passes within view.
 
@@ -219,6 +231,27 @@ Decided 2026-11-19 with the teammate: Anomaly Detection owns the reaction, Missi
 
 ---
 
+## Investigation on the map (2026-11-20, to try at the test)
+
+Rules: yellow only for what the robot is working on (its route and the frozen target, an anomaly or a camera check's tower); everything else steps back without disappearing; a pulse only when the operator is needed, one at a time.
+
+| Element | While investigating |
+|---|---|
+| Mission route | The same line in pale orange (normal width, opaque `#ffc999`; see-through orange over the grey lanelet lines turned to mud): the patrol it goes back to. Waypoints stay hidden (their numbered discs made the map busy) |
+| Investigation route | Yellow, trimmed to what lies ahead; hidden on site (a dark casing was tried and dropped) |
+| Target | Yellow "!" (anomaly) or yellow tower (camera check), as before; still while en route |
+| Stop | A small white dot with a dark yellow ring at the route's end, still: where the robot parks, not a second destination |
+| Pulse | The target's ring, on site: an anomaly until a verdict is picked, a camera check until Back to route. Transform and opacity only, no repaints |
+| Other anomalies | 60 % opacity, still clickable |
+| On Investigate | If any of the route is off screen, the view eases out until it all shows (never in) |
+| Card hover | Hovering the investigation card grows its target on the map (the anomaly, or a camera check's tower, with a yellow ring) |
+| Robot pill | "En route · 12 m": the route left ahead, updated as it drives. Meters to 100, tens of meters to 1 km, then km, like a navigation app; padded to three digits with figure spaces so the pill keeps its width. Meters, not an ETA: the speed varies with turns and obstacles, so a countdown would jump |
+| Back to the mission | No line: the target waypoint pulses as before. A dashed join line, then a solid orange line from the robot to its goal, were tried and dropped: clearer, but they didn't look right |
+
+To ask at the test: does the faint mission line help or clutter, is the stop readable as "parks here, looks there", and is 60 % too faint for new anomalies.
+
+---
+
 ## Next (2026-11-20)
 
 **R4 camera blind.** Check it on the browser with the fake tower and the dummy robot; agree the `null` / low-sample behaviour and `degrade_sec` with the teammate; then with the real `camera_health` node.
@@ -227,11 +260,27 @@ Decided 2026-11-19 with the teammate: Anomaly Detection owns the reaction, Missi
 
 **R0.** On the real robot: whether 4 m is close enough to verify on the three cameras, and how far the LiDAR stop keeps it from a person (blocked within 3 m of driving distance for 2 s counts as arrived; farther, raise `arrive_blocked_within_m`). If the viewpoint stop misbehaves, `visible_stop: false` goes back to the nearest lanelet point.
 
+**Camera windows layout (after the test, before or after the Encore).** All camera windows share one layout (`CameraWindow.module.css`): the feed on the left, a sidebar of sections on the right.
+
+| Window | Sidebar today | Verdict |
+|---|---|---|
+| Verify | Anomaly facts + the TRUE / FALSE / UNCLEAR choice | Full: keep as it is |
+| Device inspector | Status and position sections | Has content, a bit sparse |
+| Camera check, Explore | Two to four facts, no buttons (the card ends them) | Mostly empty: change |
+
+The sidebar is the verdict's place; without a verdict it has nothing to hold, and it takes width the three-camera view (a 4:1 frame plus thumbnails) could use. Options for the windows without a verdict:
+
+- **A. No sidebar, facts on the feed (recommended).** The stage takes the whole width; the few facts sit in a slim strip under the title, or as a translucent chip in a corner of the feed ("Explore · 12.4, -3.1 · Arrived 1 min ago"), as camera and video-surveillance apps show metadata. Least work: the same components, one layout variant. The three cameras get the room
+- **B. Camera check: the tower beside the robot.** The point of a camera check is comparing what the tower sees with what the robot sees: both at once (the robot large, the tower picture-in-picture) instead of a switcher. Costs a second WebRTC stream while the window is open
+- **C. A mini-map in the sidebar.** Robot, point or tower, and the tower's FOV, for "which way am I looking". Useful, but a second map instance: heavier, and the most work
+
+Suggested: A for Explore and camera check, B on top for the camera check if a second stream is affordable on the tower. The device inspector can follow A later (its sections as a strip under the feed), keeping one layout for every window without a verdict.
+
 ## Decisions
 
-- R1 (Explore) dropped and its code removed (2026-11-20)
+- R1 (Explore) redone on the investigate mode (2026-11-21): a plain grey ×, its stop ringed grey until sent; observe window and card shared with the camera check
 - R0: stop at the shortest drive to a point that sees the anomaly within 4 m, ahead; nearest lanelet point as the fallback; blocked within 3 m of driving distance for 2 s counts as arrived
-- Robot pill: En route / On site while investigating; no live dot; "Dwell 0:18" while dwelling
+- Robot pill: "En route · 12 m" (the route left ahead; meters, not an ETA, since the speed varies) / On site while investigating; no live dot; "Dwell 0:18" while dwelling
 - Mission pill: its own four states only
 - No early end to a dwell; markers are not changed for dwell; the next waypoint pulses only once its goal is sent
 - Mission ETA: route length at 0.7 m/s, 5 s per waypoint, plus dwells (`patrol_speed_mps`, `waypoint_stop_sec`)

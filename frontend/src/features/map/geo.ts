@@ -42,7 +42,7 @@ export function fovSector(
   return ring;
 }
 
-type LngLatPair = [number, number];
+export type LngLatPair = [number, number];
 
 /**
  * What is left of `route` (a [lng, lat] polyline) for a vehicle at

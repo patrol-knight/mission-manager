@@ -1,6 +1,6 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
-import { robotMode, robotStatus, robotUnavailableHint, useSettledRobotState } from "./robotStatus";
+import { formatDistance, robotMode, robotStatus, robotUnavailableHint, useSettledRobotState } from "./robotStatus";
 import type { Device } from "../../types/domain";
 import { headingWaypointIndex, missionProgress, missionStatus, targetWaypointIndex } from "../missions/missionStatus";
 import type { MissionExecutionState, MissionStatus } from "../missions/missionTypes";
@@ -64,6 +64,13 @@ describe("robotStatus", () => {
     expect(robotStatus(true, null, dwelling, "arrived", 6_000).label).toBe("Dwell 0:13");
     const checking = { ...investigation, kind: "camera" } as Investigation;
     expect(robotStatus(true, checking, null, "navigating").label).toBe("En route");
+  });
+
+  it("shows the meters left en route, never 0, and none on site", () => {
+    expect(robotStatus(true, investigation, null, "navigating", 0, 23).label).toBe("En route · \u200723 m");
+    expect(robotStatus(true, investigation, null, "navigating", 0, 0).label).toBe("En route · \u2007\u20071 m");
+    const onSite = { ...investigation, phase: "on_site" } as Investigation;
+    expect(robotStatus(true, onSite, null, "arrived", 0, 5).label).toBe("On site");
   });
 
   it("never shows a live dot: being up is the connection pill's job", () => {
@@ -228,5 +235,15 @@ describe("headingWaypointIndex", () => {
     expect(headingWaypointIndex(execution("running", 2), 3)).toBe(2);
     expect(headingWaypointIndex({ ...execution("running", 2), dwellSec: 10, dwellRemainingSec: 5 }, 3)).toBeNull();
     expect(targetWaypointIndex({ ...execution("running", 2), dwellSec: 10, dwellRemainingSec: 5 }, 3)).toBe(2); // progress still counts it
+  });
+});
+
+describe("formatDistance", () => {
+  it("keeps three digits wide, in tens past 100 m, in km past 1 km", () => {
+    expect(formatDistance(5)).toBe("\u2007\u20075 m");
+    expect(formatDistance(42.4)).toBe("\u200742 m");
+    expect(formatDistance(144)).toBe("140 m");
+    expect(formatDistance(996)).toBe("990 m");
+    expect(formatDistance(1234)).toBe("1.2 km");
   });
 });

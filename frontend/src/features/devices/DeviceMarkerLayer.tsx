@@ -68,25 +68,26 @@ function buildTowerElement(): HTMLElement {
 }
 
 /** The tower's row is hovered in the towers list (or its camera anomaly is
- * selected): grow and ring it, so it can be found on the map even when
- * anomalies crowd it. The ring is red on a tower drawn as an anomaly. */
-function applyTowerHighlight(el: HTMLElement, highlighted: boolean, alarm: boolean): void {
+ * selected, or its camera check's card hovered): grow and ring it, so it can
+ * be found on the map even when anomalies crowd it. The ring takes the
+ * tower's colour: red as an anomaly, yellow as the investigation target. */
+function applyTowerHighlight(el: HTMLElement, highlighted: boolean, alarm: "alarm" | "target" | null): void {
   const size = highlighted ? 28 : 22;
   el.style.width = `${size}px`;
   el.style.height = `${size}px`;
   el.style.boxShadow = highlighted
-    ? `0 0 0 6px ${alarm ? mapPalette.anomalyHalo : mapPalette.towerHalo}, ${mapPalette.markerShadow}`
+    ? `0 0 0 6px ${alarm === "target" ? mapPalette.investigationHalo : alarm ? mapPalette.anomalyHalo : mapPalette.towerHalo}, ${mapPalette.markerShadow}`
     : mapPalette.markerShadow;
 }
 
 /** A tower whose camera is unhealthy is that anomaly's marker: red with a
- * white "!" in the tower's shape, yellow and pulsing while the robot is sent
- * there. Before applyHiddenBadge: setting the first glyph clears the
+ * white "!" in the tower's shape, yellow while the robot is sent there. Before applyHiddenBadge: setting the first glyph clears the
  * marker's children. */
-function applyCameraAlarm(el: HTMLElement, alarm: "alarm" | "target" | null): void {
+function applyCameraAlarm(el: HTMLElement, alarm: "alarm" | "target" | null, onSite: boolean): void {
   el.style.background =
     alarm === "target" ? mapPalette.investigation : alarm === "alarm" ? mapPalette.anomaly : mapPalette.device.iot;
-  el.style.animation = alarm === "target" ? "investigation-target-pulse 1.4s ease-out infinite" : "none";
+  // Pulses once the robot is there, like an anomaly awaiting its verdict.
+  el.classList.toggle("attention-pulse", alarm === "target" && onSite);
   el.style.textShadow = alarm === "target" ? "0 0 2px rgba(120,90,0,0.6)" : "none";
   if (alarm) setMarkerGlyph(el, "!");
   else el.querySelector(":scope > .marker-glyph")?.remove();
@@ -163,6 +164,7 @@ export function DeviceMarkerLayer() {
   const target = useDeviceStore((s) => (targetId ? s.anomalies[targetId] : undefined));
   const alarms = useDeviceStore(useShallow(selectCameraAlarms));
   const selectedId = useInvestigationStore((s) => s.selectedAnomalyId);
+  const onSite = useInvestigationStore((s) => s.investigation?.phase === "on_site");
   const selectAnomaly = useInvestigationStore((s) => s.selectAnomaly);
   const { show } = useToast();
 
@@ -201,8 +203,8 @@ export function DeviceMarkerLayer() {
         }
         const alarmId = alarms[d.deviceId] ?? null;
         const alarm = alarmId === null ? null : alarmId === targetId ? "target" : "alarm";
-        applyTowerHighlight(el, d.deviceId === hoveredDeviceId || (alarmId !== null && alarmId === selectedId), alarm !== null);
-        applyCameraAlarm(el, alarm);
+        applyTowerHighlight(el, d.deviceId === hoveredDeviceId || (alarmId !== null && alarmId === selectedId), alarm);
+        applyCameraAlarm(el, alarm, onSite);
         if (alarm) {
           el.dataset.hint = `${d.deviceId} · Camera unhealthy · ${alarm === "target" ? "Investigating" : "Click for details"}`;
         }
@@ -242,11 +244,12 @@ export function DeviceMarkerLayer() {
       zoomToHidden,
       alarms,
       selectedId,
+      onSite,
       selectAnomaly,
       show,
     ],
   );
 
-  useMarkerList(map, devices, options, [backendConnected, hoveredDeviceId, hiddenByTower, target, alarms, selectedId]);
+  useMarkerList(map, devices, options, [backendConnected, hoveredDeviceId, hiddenByTower, target, alarms, selectedId, onSite]);
   return null;
 }

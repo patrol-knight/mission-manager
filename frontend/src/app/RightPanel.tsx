@@ -5,6 +5,7 @@ import { MissionLibraryPanel } from "../features/missions/MissionLibraryPanel";
 import { MissionEditorPanel } from "../features/missions/MissionEditorPanel";
 import { AnomalyCard } from "../features/anomalies/AnomalyCard";
 import { InvestigateCard } from "../features/investigation/InvestigateCard";
+import { ExploreCard } from "../features/investigation/ExploreCard";
 import { RobotCard } from "../features/devices/RobotCard";
 import { TowersCard, TowersPanel } from "../features/devices/TowersCard";
 import { Pill, type PillTone } from "../components/ui/Pill";
@@ -75,6 +76,7 @@ export function RightPanel({
             <div className="mode-investigate" style={{ display: "contents" }}>
               <InvestigateCard />
               <AnomalyCard />
+              <ExploreCard />
             </div>
           </div>
           <div className={styles.bottom} data-fit-container>

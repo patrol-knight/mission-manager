@@ -1,4 +1,5 @@
 import { useDeviceInspector } from "./useDeviceInspector";
+import { useDistanceLeft } from "../investigation/useDistanceLeft";
 import { useDeviceStore, selectAlertCounts } from "../../stores/deviceStore";
 import { useInvestigationStore } from "../../stores/investigationStore";
 import { useMissionStore } from "../../stores/missionStore";
@@ -37,13 +38,14 @@ export function DeviceInspectorOverlay() {
   const investigation = useInvestigationStore((s) => s.investigation);
   const execution = useMissionStore((s) => s.execution);
   const state = useSettledRobotState(device ?? null);
+  const distanceLeft = useDistanceLeft();
   const now = useNow(execution?.dwellSec != null ? 250 : 60_000);
 
   if (!inspectorOpen || !device) return null;
 
   const connectivity = deviceConnectivity(device, wsStatus === "connected");
   const mode = device.type === "robot" ? robotMode(device) : null;
-  const activity = device.type === "robot" ? robotStatus(connectivity.status === "online", investigation, execution, state, now) : null;
+  const activity = device.type === "robot" ? robotStatus(connectivity.status === "online", investigation, execution, state, now, distanceLeft) : null;
 
   return (
     <Modal label={`${device.deviceId} inspector`} onClose={closeInspector} variant="fullscreen">

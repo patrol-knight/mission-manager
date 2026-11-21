@@ -290,6 +290,73 @@ def test_a_camera_check_can_be_cancelled_en_route_and_taken_over(sim: Sim):
     assert sim.anomaly_record("cam")["resolution"] is None
 
 
+# -- Explore ----------------------------------------------------------------------
+
+
+def test_explore_goes_to_look_and_ends_without_a_verdict(sim: Sim):
+    sim.robot(*sim.waypoints[0])
+    state = sim.explore(4, 3).json()
+    assert state["kind"] == "explore" and state["anomaly_id"] is None and state["phase"] == "en_route"
+    assert (state["look_at"]["x"], state["look_at"]["y"]) == (4, 3)
+
+    arrive_on_site(sim, 4, 3)
+    assert sim.verdict("true_positive").status_code == 409
+    assert sim.finish_investigation().status_code == 204
+    assert sim.investigation() is None
+    assert sim.last_command() == ("cancel_navigation", None)  # no mission: holds
+
+
+def test_explore_can_be_cancelled_en_route(sim: Sim):
+    sim.robot(*sim.waypoints[0])
+    sim.explore(4, 3)
+    assert sim.cancel_investigation().status_code == 204
+    assert sim.investigation() is None
+
+
+def test_explore_preview_sends_nothing(sim: Sim):
+    sim.robot(*sim.waypoints[0])
+    preview = sim.preview_explore(4, 3)
+    assert preview.status_code == 200
+    assert (preview.json()["target"]["x"], preview.json()["target"]["y"]) == (4, 3)
+    assert preview.json()["length_m"] > 0
+    assert sim.commands == [] and sim.investigation() is None
+
+
+def test_explore_needs_a_robot_and_a_reachable_point(sim: Sim, monkeypatch):
+    assert sim.explore(4, 3).status_code == 409
+    sim.robot(*sim.waypoints[0])
+    monkeypatch.setattr(sim.services.map_server, "get_route", lambda points: None)
+    assert sim.explore(4, 3).status_code == 409
+    assert sim.preview_explore(4, 3).status_code == 409
+    assert sim.commands == []
+
+
+def test_explore_and_anomalies_take_over_from_each_other(sim: Sim):
+    sim.robot(*sim.waypoints[0])
+    sim.anomaly("a", 0, 0)
+    sim.investigate("a")
+    assert sim.explore(4, 3).json()["kind"] == "explore"  # en route: abandoned
+    assert sim.anomaly_record("a")["resolution"] is None
+    assert sim.investigate("a").json()["kind"] == "anomaly"
+
+    arrive_on_site(sim, 0, 0)
+    assert sim.explore(4, 3).status_code == 409  # on site: verify first
+    sim.verdict("unclear")
+    assert sim.explore(4, 3).json()["kind"] == "explore"
+    assert sim.anomaly_record("a")["resolution"] == "unclear"
+
+
+def test_explore_freezes_a_running_mission_and_hands_it_back(sim: Sim):
+    sim.robot(*sim.waypoints[0])
+    sim.client.post("/api/missions/current/start")
+    sim.explore(4, 3)
+    assert sim.client.post("/api/missions/current/pause").status_code == 409
+    arrive_on_site(sim, 4, 3)
+    sim.finish_investigation()
+    assert sim.mission_status() == "running"
+    assert sim.last_command()[0] == "navigate_to_goal"
+
+
 # -- Blocked close to the goal -----------------------------------------------------
 
 

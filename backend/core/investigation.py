@@ -31,7 +31,7 @@ from core.websocket_manager import WebSocketManager
 from models.anomaly import FINAL_VERDICTS, AnomalyVerdict
 from models.camera import CommandResult
 from models.device import DeviceView
-from models.investigation import InvestigationKind, InvestigationPhase, InvestigationState
+from models.investigation import ExplorePreview, InvestigationKind, InvestigationPhase, InvestigationState
 from models.map import MapPoint
 from models.mission_execution import MissionStatus
 from transport.zenoh_gateway import ZenohGateway
@@ -64,12 +64,13 @@ class InvestigationCoordinator:
     active, mission drive sends no goals and MissionService refuses mission
     transitions.
 
-    Two kinds: ANOMALY ends with a verdict; CAMERA (a camera_unhealthy
-    anomaly: the robot goes to look in the tower's place) ends when the
-    operator dismisses it. Only an ANOMALY on site without a verdict holds
-    the robot; a camera check may be taken over at any time.
+    Three kinds: ANOMALY ends with a verdict; CAMERA (a camera_unhealthy
+    anomaly: the robot goes to look in the tower's place) and EXPLORE (a point
+    the operator picked) end when the operator dismisses them. Only an
+    ANOMALY on site without a verdict holds the robot; the others may be
+    taken over at any time.
 
-    - start(): send the robot, or switch it to another anomaly.
+    - start() / explore(): send the robot, or switch it to another target.
     - on_command_result(): EN_ROUTE -> ON_SITE when the goal succeeds.
     - on_device_state(): EN_ROUTE -> ON_SITE when blocked close to the goal.
     - set_verdict(): the operator's draft verdict while ON_SITE (ANOMALY).
@@ -135,19 +136,27 @@ class InvestigationCoordinator:
         with self._lock:
             return self._state is not None and self._state.robot_device_id == device_id
 
+    def preview_explore(self, lat: float, lon: float) -> ExplorePreview:
+        """Where Explore would stop to look at a point, from where the robot is now."""
+        robot = self._require_robot()
+        look_at = self._point_at_latlon(lat, lon)
+        view = self._goal(robot, look_at.x, look_at.y)
+        return ExplorePreview(look_at=look_at, target=view.target, length_m=view.length_m)
+
     # -- Commands ----------------------------------------------------------------
 
     def start(self, anomaly_id: str) -> InvestigationState:
         """Sends the robot to an anomaly, or switches it to another one. An
         EN_ROUTE anomaly is abandoned (no verdict), an ON_SITE one has its
         verdict committed -- which requires one to be chosen. A camera check
-        is simply taken over."""
+        or Explore is simply taken over."""
         robot = self._require_robot()
         anomaly = self._anomalies.get(anomaly_id)
         if anomaly is None:
             raise AnomalyNotFoundError(f"Anomaly not found: {anomaly_id}")
         if anomaly.is_closed:
             raise InvalidAnomalyTransitionError(f"Anomaly already resolved: {anomaly_id}")
+        look_at = self._point_at_xy(anomaly.x, anomaly.y, anomaly.frame_id)
         view = self._goal(robot, anomaly.x, anomaly.y)
 
         with self._lock:
@@ -160,11 +169,32 @@ class InvestigationCoordinator:
             if self._anomalies.set_target(anomaly_id) is None:
                 raise AnomalyNotFoundError(f"Anomaly not found: {anomaly_id}")
             kind = InvestigationKind.CAMERA if anomaly.is_camera_unhealthy else InvestigationKind.ANOMALY
-            state = self._begin(kind, anomaly_id, robot, view)
+            state = self._begin(kind, anomaly_id, robot, look_at, view)
             request_id = self._request_id
 
         self._dispatch(previous, state, request_id)
         logger.info("Investigation: robot %s heading to anomaly %s", robot.device_id, anomaly_id)
+        return state
+
+    def explore(self, lat: float, lon: float) -> InvestigationState:
+        """Explore: sends the robot to look at a point, or retargets it. Like
+        switching anomalies: an ON_SITE anomaly needs its verdict first (and
+        has it committed), anything else is taken over."""
+        robot = self._require_robot()
+        look_at = self._point_at_latlon(lat, lon)
+        view = self._goal(robot, look_at.x, look_at.y)
+
+        with self._lock:
+            previous = self._state
+            if _awaits_verdict(previous):
+                raise VerdictRequiredError("Verify the current anomaly first")
+            if previous is not None and previous.anomaly_id is not None:
+                self._anomalies.set_target(None)
+            state = self._begin(InvestigationKind.EXPLORE, None, robot, look_at, view)
+            request_id = self._request_id
+
+        self._dispatch(previous, state, request_id)
+        logger.info("Explore: robot %s heading to look at (%.1f, %.1f)", robot.device_id, look_at.x, look_at.y)
         return state
 
     def set_verdict(self, verdict: AnomalyVerdict) -> InvestigationState:
@@ -187,7 +217,7 @@ class InvestigationCoordinator:
         self._end(InvestigationPhase.ON_SITE)
 
     def _end(self, phase: InvestigationPhase) -> None:
-        """A camera check ends from either phase; an anomaly only from `phase`."""
+        """A camera check or Explore ends from either phase; an anomaly only from `phase`."""
         with self._lock:
             previous = self._state
             if previous is None:
@@ -201,7 +231,8 @@ class InvestigationCoordinator:
                 raise VerdictRequiredError("Verify the current anomaly first")
             self._state = None
             self._blocked_since = None
-            self._anomalies.set_target(None)
+            if previous.anomaly_id is not None:
+                self._anomalies.set_target(None)
 
         if anomaly and phase == InvestigationPhase.ON_SITE:
             self._commit(previous)
@@ -270,7 +301,8 @@ class InvestigationCoordinator:
                 return None
             self._state = None
             self._blocked_since = None
-            self._anomalies.set_target(None)
+            if state.anomaly_id is not None:
+                self._anomalies.set_target(None)
         self._broadcast_state()
         logger.warning("%s cancelled", _describe(state))
         return state
@@ -311,11 +343,20 @@ class InvestigationCoordinator:
             length_m=route["properties"]["length_m"],
         )
 
+    def _point_at_xy(self, x: float, y: float, frame_id: str = "map") -> MapPoint:
+        at = self._map.xy_to_latlon(x, y, frame_id)
+        return MapPoint(x=x, y=y, frame_id=frame_id, lat=at.lat, lon=at.lon)
+
+    def _point_at_latlon(self, lat: float, lon: float) -> MapPoint:
+        xy = self._map.latlon_to_xy(lat, lon)
+        return MapPoint(x=xy.x, y=xy.y, frame_id=xy.frame_id, lat=lat, lon=lon)
+
     def _begin(
         self,
         kind: InvestigationKind,
-        anomaly_id: str,
+        anomaly_id: str | None,
         robot: DeviceView,
+        look_at: MapPoint,
         view: _Goal,
     ) -> InvestigationState:
         """Replaces the state with a new target. Call under the lock. A
@@ -323,13 +364,14 @@ class InvestigationCoordinator:
         now = datetime.now(timezone.utc)
         there = view.length_m < ALREADY_THERE_M
         self._goal_count += 1
-        self._request_id = f"investigate-{anomaly_id}-{self._goal_count}"
+        self._request_id = f"investigate-{anomaly_id or 'explore'}-{self._goal_count}"
         self._blocked_since = None
         self._state = InvestigationState(
             kind=kind,
             anomaly_id=anomaly_id,
             robot_device_id=robot.device_id,
             phase=InvestigationPhase.ON_SITE if there else InvestigationPhase.EN_ROUTE,
+            look_at=look_at,
             target=view.target,
             target_yaw=view.yaw,
             route=view.route,
@@ -385,7 +427,8 @@ class InvestigationCoordinator:
         return self._state.model_copy(deep=True)
 
     def _after_arrival(self, state: InvestigationState, broadcast: bool = True) -> None:
-        self._anomalies.mark_arrived(state.anomaly_id, state.arrived_at)
+        if state.anomaly_id is not None:
+            self._anomalies.mark_arrived(state.anomaly_id, state.arrived_at)
         if broadcast:
             self._broadcast_state()
 
@@ -436,4 +479,6 @@ def _awaits_verdict(state: InvestigationState | None) -> bool:
 def _describe(state: InvestigationState) -> str:
     if state.kind == InvestigationKind.CAMERA:
         return f"Camera check for anomaly {state.anomaly_id}"
+    if state.kind == InvestigationKind.EXPLORE:
+        return "Explore"
     return f"Investigation of anomaly {state.anomaly_id}"

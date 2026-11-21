@@ -292,6 +292,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/investigation/explore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Explore
+         * @description Explore: sends the robot to look at a point, or retargets it.
+         */
+        post: operations["explore_api_investigation_explore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/investigation/explore/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview Explore
+         * @description Where Explore would stop to look at a point; sends nothing.
+         */
+        post: operations["preview_explore_api_investigation_explore_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/investigation/finish": {
         parameters: {
             query?: never;
@@ -830,6 +870,23 @@ export interface components {
             timestamp: number;
             type: components["schemas"]["DeviceType"];
         };
+        /**
+         * ExplorePreview
+         * @description Where Explore would send the robot to look at a point, without sending it.
+         */
+        ExplorePreview: {
+            /** Length M */
+            length_m: number;
+            look_at: components["schemas"]["MapPoint"];
+            target: components["schemas"]["MapPoint"];
+        };
+        /** ExploreRequest */
+        ExploreRequest: {
+            /** Lat */
+            lat: number;
+            /** Lon */
+            lon: number;
+        };
         /** GeofencePoint */
         GeofencePoint: {
             /** Lat */
@@ -1031,7 +1088,7 @@ export interface components {
          * InvestigationKind
          * @enum {string}
          */
-        InvestigationKind: "anomaly" | "camera";
+        InvestigationKind: "anomaly" | "camera" | "explore";
         /**
          * InvestigationPhase
          * @enum {string}
@@ -1045,13 +1102,14 @@ export interface components {
          */
         InvestigationState: {
             /** Anomaly Id */
-            anomaly_id: string;
+            anomaly_id: string | null;
             /** Arrived At */
             arrived_at: string | null;
             /** Draft Verdict */
             draft_verdict: ("true_positive" | "false_positive" | "unclear") | null;
             /** @default anomaly */
             kind: components["schemas"]["InvestigationKind"];
+            look_at: components["schemas"]["MapPoint"];
             phase: components["schemas"]["InvestigationPhase"];
             /** Robot Device Id */
             robot_device_id: string;
@@ -2024,6 +2082,72 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    explore_api_investigation_explore_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExploreRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvestigationState"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_explore_api_investigation_explore_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExploreRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExplorePreview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
             };
         };
     };

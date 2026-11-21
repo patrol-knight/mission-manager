@@ -26,6 +26,9 @@ import { setMarkerGlyph } from "./markerGlyph";
  * a group stops pulsing): nothing has re-reported it for a while. */
 const STALE_FROM = 0.5;
 const MIN_OPACITY = 0.45;
+/** Anomalies other than the investigated one, while the robot investigates:
+ * still there and clickable, no longer the focus. */
+const FOCUS_DIM = 0.6;
 /** First zoom level a group click goes to (see groupOptions.onClick). */
 const COMFORT_ZOOM = 21;
 
@@ -118,6 +121,10 @@ export function AnomalyLayer() {
     [devices, alarms],
   );
   const targetId = useInvestigationStore((s) => s.investigation?.anomalyId ?? null);
+  // The target pulses only once it needs the operator: on site, no verdict yet.
+  const awaitingVerdict = useInvestigationStore((s) => needsVerdict(s.investigation));
+  const hoveredId = useMapHighlightStore((s) => s.hoveredAnomalyId);
+  const investigating = useInvestigationStore((s) => s.investigation !== null);
   const selectedId = useInvestigationStore((s) => s.selectedAnomalyId);
   const selectAnomaly = useInvestigationStore((s) => s.selectAnomaly);
   const { show } = useToast();
@@ -184,7 +191,7 @@ export function AnomalyLayer() {
         // red "?" instead of the "!".
         const unclear = a.resolution === "unclear";
         const life = targeted ? 1 : lifeLeft(a, now);
-        const size = selected && !targeted ? SIZE_SELECTED : SIZE;
+        const size = (selected && !targeted) || (targeted && a.anomalyId === hoveredId) ? SIZE_SELECTED : SIZE;
         el.style.width = `${size}px`;
         el.style.height = `${size}px`;
         // The investigated one: a plain white rim (it doesn't expire), a
@@ -200,13 +207,13 @@ export function AnomalyLayer() {
         core.style.fontSize = `${size >= SIZE_SELECTED ? 14 : 11}px`;
         setMarkerGlyph(core, unclear && !targeted ? "?" : "!");
 
-        el.style.opacity = targeted ? "1" : String(expiryOpacity(a, now));
+        el.style.opacity = targeted ? "1" : String(expiryOpacity(a, now) * (investigating ? FOCUS_DIM : 1));
         // The investigated anomaly sits on top of its neighbours (only the
         // robot is higher, see DeviceMarkerLayer), then the selected one.
         el.style.zIndex = targeted ? "8" : selected ? "6" : "5";
         // Single anomalies stay still (the countdown ring is their motion);
-        // only the investigated one pulses, in yellow.
-        el.style.animation = targeted ? "investigation-target-pulse 1.4s ease-out infinite" : "none";
+        // the investigated one pulses only while it awaits the verdict.
+        el.classList.toggle("attention-pulse", targeted && awaitingVerdict);
         el.setAttribute("aria-label", `Anomaly: ${formatAnomalyTypes(a.types)}`);
         el.dataset.hint = targeted ? `${formatAnomalyTypes(a.types)} · Investigating` : `${formatAnomalyTypes(a.types)} · Click for details`;
       },
@@ -219,7 +226,7 @@ export function AnomalyLayer() {
         selectAnomaly(a.anomalyId);
       },
     }),
-    [targetId, selectedId, now, selectAnomaly, show],
+    [targetId, selectedId, awaitingVerdict, hoveredId, investigating, now, selectAnomaly, show],
   );
 
   const groupOptions = useMemo<UseMarkerListOptions<AnomalyGroup>>(
@@ -236,7 +243,7 @@ export function AnomalyLayer() {
         setMarkerGlyph(el, String(g.members.length));
         // A group fades and stops pulsing only once all its members are stale.
         const freshest = Math.max(...g.members.map((m) => lifeLeft(m, now)));
-        el.style.opacity = String(Math.max(...g.members.map((m) => expiryOpacity(m, now))));
+        el.style.opacity = String(Math.max(...g.members.map((m) => expiryOpacity(m, now))) * (investigating ? FOCUS_DIM : 1));
         el.style.animation = freshest < STALE_FROM ? "none" : "anomaly-pulse 1.4s ease-out infinite";
         el.setAttribute("aria-label", `${g.members.length} anomalies, click to zoom in`);
         el.dataset.hint = `${g.members.length} anomalies · Click to zoom in`;
@@ -253,10 +260,10 @@ export function AnomalyLayer() {
         map.fitBounds(bounds, { padding: 160, maxZoom, duration: 600 });
       },
     }),
-    [map, now],
+    [map, now, investigating],
   );
 
-  useMarkerList(map, singles, options, [targetId, selectedId, now]);
-  useMarkerList(map, groups, groupOptions, [now]);
+  useMarkerList(map, singles, options, [targetId, selectedId, awaitingVerdict, hoveredId, investigating, now]);
+  useMarkerList(map, groups, groupOptions, [now, investigating]);
   return null;
 }

@@ -86,20 +86,24 @@ export function robotUnavailableHint(robot: Device | null): string | null {
  * the mode it's in (orange mission, yellow investigation; a camera check is
  * an investigation too). No live dot: whether the robot is up is the
  * connection pill's job. Who drives is robotMode's pill. Dwelling at a
- * waypoint counts down, as of `now`. */
+ * waypoint counts down, as of `now`; en route shows the meters left. */
 export function robotStatus(
   robotConnected: boolean,
   investigation: Investigation | null,
   execution: MissionExecutionState | null,
   state: string | null,
   now: number = Date.now(),
+  distanceLeftM: number | null = null,
 ): StatusLabel {
   const label = (text: string, tone: PillTone): StatusLabel => ({ label: text, tone, live: false });
   if (!robotConnected) return label("Offline", "danger");
   if (state === "failure") return label("Failure", "danger");
   if (state === null || !AVAILABLE_STATES.includes(state)) return label("Not ready", "muted");
   if (state === "blocked") return label("Blocked", "warning");
-  if (investigation) return label(investigation.phase === "en_route" ? "En route" : "On site", "investigate");
+  if (investigation) {
+    if (investigation.phase === "on_site") return label("On site", "investigate");
+    return label(distanceLeftM === null ? "En route" : `En route · ${formatDistance(distanceLeftM)}`, "investigate");
+  }
   switch (execution?.status) {
     case "running": {
       const left = dwellLeft(execution, now);
@@ -110,4 +114,15 @@ export function robotStatus(
       return label("Holding", "missionSoft");
   }
   return state === "navigating" ? label("Patrolling", "mission") : label("Ready", "success");
+}
+
+/** A pad as wide as a digit (U+2007): keeps the pill's width as digits drop. */
+const FIGURE_SPACE = "\u2007";
+
+/** Like a navigation app: meters to 100, tens of meters to 1 km, then km.
+ * Padded to three digits, so the pill doesn't narrow as the robot nears. */
+export function formatDistance(meters: number): string {
+  if (meters >= 1000) return `${(meters / 1000).toFixed(1)} km`;
+  const m = meters >= 100 ? Math.round(meters / 10) * 10 : Math.max(1, Math.round(meters));
+  return `${String(Math.min(m, 990)).padStart(3, FIGURE_SPACE)} m`;
 }

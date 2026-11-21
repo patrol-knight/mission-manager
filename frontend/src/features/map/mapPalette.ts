@@ -12,6 +12,8 @@ import type { DeviceType } from "../../types/domain";
 export const mapPalette = {
   lanelet: "#555555",
   route: "#ff8a1f",
+  /** The mission route while the robot investigates. */
+  routeFaint: "#ffc999",
   waypoint: "#ff8a1f",
   /** Digits on a waypoint disc. */
   waypointText: "#ffffff",
@@ -19,6 +21,11 @@ export const mapPalette = {
    * (--mode-edit in tokens.css). */
   edit: "#a97a9f",
   investigation: "#ffd23f",
+  /** Dark yellow ring of the stop, so it holds up on the light basemap. */
+  investigationEdge: "#a07800",
+  /** A point picked to Explore, and its stop, before the robot is sent:
+   * grey = a proposal, yellow once it's sent. */
+  explorePick: "#6b7280",
   /** Ring that separates a marker from the (light) map. */
   markerBorder: "#ffffff",
   markerText: "#ffffff",
@@ -37,6 +44,8 @@ export const mapPalette = {
   towerHalo: "rgba(90,79,207,0.3)",
   /** The same ring on a tower drawn as an anomaly (camera unhealthy). */
   anomalyHalo: "rgba(197,30,58,0.3)",
+  /** And on the investigation target (a camera check's tower). */
+  investigationHalo: "rgba(255,210,63,0.45)",
   /** A tower camera's field of view. */
   fovFill: "rgba(90,79,207,0.08)",
   fovLine: "rgba(90,79,207,0.45)",

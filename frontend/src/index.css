@@ -44,7 +44,7 @@ body {
   animation: card-enter 220ms ease-out;
 }
 
-/* Map marker pulses (AnomalyLayer, InvestigationTargetLayer) and the camera
+/* Map marker pulses (AnomalyLayer, DeviceMarkerLayer, waypoints) and the camera
    loading spinner (CameraStreamView). Global, since marker elements are
    built outside React and referenced by name. */
 @keyframes anomaly-pulse {
@@ -59,15 +59,27 @@ body {
   }
 }
 
-@keyframes investigation-target-pulse {
+/* The one marker that needs the operator now (on site at the target): a
+   yellow ring that grows and fades. Only transform and opacity change, so
+   the compositor animates it without repainting. */
+.attention-pulse::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  border: 3px solid rgba(255, 210, 63, 0.9);
+  pointer-events: none;
+  animation: attention-pulse 1.4s ease-out infinite;
+}
+
+@keyframes attention-pulse {
   0% {
-    box-shadow: 0 0 0 0 rgba(255, 215, 0, 0.8);
-  }
-  70% {
-    box-shadow: 0 0 0 12px rgba(255, 215, 0, 0);
+    transform: scale(1);
+    opacity: 0.9;
   }
   100% {
-    box-shadow: 0 0 0 0 rgba(255, 215, 0, 0);
+    transform: scale(2);
+    opacity: 0;
   }
 }
 

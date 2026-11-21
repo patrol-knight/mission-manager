@@ -13,15 +13,19 @@ export interface InvestigationTarget {
 }
 
 /** "anomaly": ends with a verdict. "camera": sent to a tower whose camera is
- * unhealthy (a camera_unhealthy anomaly), ends when dismissed. */
-export type InvestigationKind = "anomaly" | "camera";
+ * unhealthy (a camera_unhealthy anomaly), ends when dismissed. "explore": sent
+ * by the operator to look at a point, ends when dismissed. */
+export type InvestigationKind = "anomaly" | "camera" | "explore";
 
 export interface Investigation {
   kind: InvestigationKind;
-  anomalyId: string;
+  /** null exactly for "explore". */
+  anomalyId: string | null;
   robotDeviceId: string;
   phase: InvestigationPhase;
-  /** The anomaly's position snapped to the lanelet network, frozen at start. */
+  /** What the robot is sent to look at: the anomaly, or the explored point. */
+  lookAt: InvestigationTarget;
+  /** Where it stops to look, frozen at start. */
   target: InvestigationTarget;
   route: GeoJSON.Feature<GeoJSON.LineString>;
   /** null until the operator picks one on site; committed when the robot leaves. */
@@ -44,7 +48,8 @@ function targetFromRaw(raw: RawPoint): InvestigationTarget {
 export function investigationFromRaw(raw: RawInvestigation): Investigation {
   return {
     kind: raw.kind ?? "anomaly",
-    anomalyId: raw.anomaly_id,
+    anomalyId: raw.anomaly_id ?? null,
+    lookAt: targetFromRaw(raw.look_at),
     robotDeviceId: raw.robot_device_id,
     phase: raw.phase,
     target: targetFromRaw(raw.target),
@@ -113,4 +118,16 @@ export function needsVerdict(investigation: Investigation | null): boolean {
     investigation.phase === "on_site" &&
     investigation.draftVerdict === null
   );
+}
+
+/** Where Explore would stop to look at a point (POST /api/investigation/explore/preview). */
+export interface ExplorePreview {
+  lookAt: InvestigationTarget;
+  target: InvestigationTarget;
+  /** Driving distance from the robot, as it stood when previewed. */
+  lengthM: number;
+}
+
+export function explorePreviewFromRaw(raw: components["schemas"]["ExplorePreview"]): ExplorePreview {
+  return { lookAt: targetFromRaw(raw.look_at), target: targetFromRaw(raw.target), lengthM: raw.length_m };
 }

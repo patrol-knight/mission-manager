@@ -1,4 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useDistanceLeft } from "./useDistanceLeft";
+import { ExploreInfoRows } from "./ExploreCard";
+import { useMapHighlightStore } from "../../stores/mapHighlightStore";
 import { useDeviceStore } from "../../stores/deviceStore";
 import { useMissionStore } from "../../stores/missionStore";
 import { useInvestigationStore } from "../../stores/investigationStore";
@@ -21,18 +24,24 @@ const VERDICT_TONES: Record<AnomalyVerdict, PillTone> = {
 
 /** The anomaly the robot is investigating. Its phase (en route / on site) is
  * on the robot's status pill; this card carries the verdict. Keyed by
- * anomaly, so switching targets slides a fresh card in. A camera check has
- * no verdict: on site the operator looks (Observe), then sends the robot on. */
+ * target, so switching targets slides a fresh card in. A camera check and
+ * Explore have no verdict: on site the operator looks (Observe), then sends
+ * the robot on. */
 export function InvestigateCard() {
   const investigation = useInvestigationStore((s) => s.investigation);
   if (!investigation) return null;
   return (
-    <InvestigateCardBody key={investigation.anomalyId} investigation={investigation} anomalyId={investigation.anomalyId} />
+    <InvestigateCardBody
+      key={investigation.anomalyId ?? `explore-${investigation.startedAt}`}
+      investigation={investigation}
+      anomalyId={investigation.anomalyId}
+    />
   );
 }
 
-function InvestigateCardBody({ investigation, anomalyId }: { investigation: Investigation; anomalyId: string }) {
-  const anomaly = useDeviceStore((s) => s.anomalies[anomalyId]);
+function InvestigateCardBody({ investigation, anomalyId }: { investigation: Investigation; anomalyId: string | null }) {
+  const anomaly = useDeviceStore((s) => (anomalyId ? s.anomalies[anomalyId] : undefined));
+  const distanceLeft = useDistanceLeft();
   const execution = useMissionStore((s) => s.execution);
   const definition = useMissionStore((s) => s.definition);
   const setInvestigation = useInvestigationStore((s) => s.setInvestigation);
@@ -42,16 +51,38 @@ function InvestigateCardBody({ investigation, anomalyId }: { investigation: Inve
 
   const onSite = investigation.phase === "on_site";
   const camera = investigation.kind === "camera";
+  const explore = investigation.kind === "explore";
+  // Nothing to verify: Observe, then Back to route.
+  const observe = camera || explore;
+
+  // Hovering the card grows its target on the map: the anomaly, the tower of
+  // a camera check, or the explored point.
+  const setHoveredAnomaly = useMapHighlightStore((s) => s.setHoveredAnomaly);
+  const setHoveredDevice = useMapHighlightStore((s) => s.setHoveredDevice);
+  const setHoveredExplore = useMapHighlightStore((s) => s.setHoveredExplore);
+  const towerId = camera ? (anomaly?.sourceDeviceId ?? null) : null;
+  const hover = (on: boolean) =>
+    explore
+      ? setHoveredExplore(on)
+      : towerId
+        ? setHoveredDevice(on ? towerId : null)
+        : setHoveredAnomaly(on ? anomalyId : null);
+  useEffect(
+    () => () => {
+      setHoveredAnomaly(null);
+      setHoveredDevice(null);
+      setHoveredExplore(false);
+    },
+    [setHoveredAnomaly, setHoveredDevice, setHoveredExplore],
+  );
   const verdict = investigation.draftVerdict;
   const fallback = fallbackAfterInvestigation(execution, definition);
 
   // No confirm dialog: Cancel/Submit act at once, and the toast says what was
   // recorded and where the robot goes next.
   const end = async () => {
-    const recorded = camera
-      ? onSite
-        ? "Camera check done"
-        : "Camera check cancelled"
+    const recorded = observe
+      ? `${camera ? "Camera check" : "Explore"} ${onSite ? "done" : "cancelled"}`
       : onSite && verdict
         ? `Recorded as ${VERDICT_LABELS[verdict]}`
         : "Investigation cancelled";
@@ -70,13 +101,22 @@ function InvestigateCardBody({ investigation, anomalyId }: { investigation: Inve
   return (
     <Card
       enter
-      title={anomalyTitle(anomalyId)}
+      title={anomalyId ? anomalyTitle(anomalyId) : "Explore"}
       aside={verdict ? <Pill tone={VERDICT_TONES[verdict]}>{VERDICT_LABELS[verdict]}</Pill> : undefined}
       aria-label="Investigation"
+      onMouseEnter={() => hover(true)}
+      onMouseLeave={() => hover(false)}
     >
-      {anomaly && <AnomalyInfoRows anomaly={anomaly} />}
+      {explore ? (
+        <ExploreInfoRows
+          distance={onSite ? "Arrived" : distanceLeft !== null ? `${Math.max(1, distanceLeft)} m` : "…"}
+          lookAt={investigation.lookAt}
+        />
+      ) : (
+        anomaly && <AnomalyInfoRows anomaly={anomaly} />
+      )}
       <ButtonRow>
-        {onSite && camera ? (
+        {onSite && observe ? (
           <>
             <Button variant="primary" block onClick={openVerify}>
               Observe
