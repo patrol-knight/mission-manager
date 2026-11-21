@@ -27,13 +27,14 @@ All three features work within that: they choose which goal to send, and when.
 - **Stop where the robot first sees the anomaly.** On every lanelet within 4 m of it, the first centerline point with the anomaly within 4 m and ahead (the front half along the lane; the three cameras face forward), plus where the robot stands if it already sees it. The goal is the one with the shortest drive, heading along its lane (`MapServer.viewpoints`, `VIEW_RANGE_M = 4.0`). None found: the nearest lanelet point, as before. `visible_stop: false` turns it off
 - A person lying on the lane is seen from 4 m before them, so the robot arrives by its goal instead of being stopped by them
 - On the nsh map, from the dummy robot's pose: an anomaly 4 m behind it was a 100.9 m drive to its nearest point, 35.1 m to a viewpoint on the opposite lane; 8 m behind, 98.6 → 38.5 m. On the dummy robot, an anomaly 12 m ahead on the lane: stop 3.96 m before it, normal arrival
-- **Blocked arrival.** While an investigation is EN_ROUTE, a robot reporting `blocked` within **2 m of driving distance** of its stop for **2 s** counts as arrived: `cancel_navigation`, ON_SITE, and the verify (or camera check) window opens as on a normal arrival
-- Driving distance, not a radius: a route is planned from the robot to the stop, so a robot on the opposite lane, a U-turn away, isn't close however near it looks. Routing only happens once the straight line is already within 2 m
+- **Blocked arrival.** While an investigation is EN_ROUTE, a robot reporting `blocked` within **3 m of driving distance** of its stop for **2 s** counts as arrived: `cancel_navigation`, ON_SITE, and the verify (or camera check) window opens as on a normal arrival
+- Driving distance, not a radius: a route is planned from the robot to the stop, so a robot on the opposite lane, a U-turn away, isn't close however near it looks. Routing only happens once the straight line is already within 3 m
 - 2 s rather than 0: a `blocked` that only flickers (someone walking past) doesn't count, and the robot has come to rest
 - On site, the investigation route is no longer drawn, so no stub is left across the person
-- Config: `arrive_blocked_within_m` (2.0), `arrive_blocked_after_sec` (2.0)
+- 3 m: the LiDAR stops the robot about 2 m before an obstacle, measured from its front; the pose is the body's centre, half a metre further back, and the stop is the lane's centre line, behind the body's near edge
+- Config: `arrive_blocked_within_m` (3.0), `arrive_blocked_after_sec` (2.0)
 - Blocked arrival, checked on the dummy robot: blocked 1.1 m short → on site 2.2 s later; blocked 3.4 m short → still en route after 12 s, and arrives normally once the obstacle clears
-- **To check on the real robot:** how far the LiDAR stop keeps it from a person. Farther than 2 m, raise `arrive_blocked_within_m`
+- **To check on the real robot:** how far the LiDAR stop keeps it from a person (about 2 m, per the teammate). Farther than 3 m, raise `arrive_blocked_within_m`
 
 ---
 
@@ -224,12 +225,12 @@ Decided 2026-11-19 with the teammate: Anomaly Detection owns the reaction, Missi
 
 **R3.** Check CPU and driving on the robot; name the thumbnails by position if wanted.
 
-**R0.** On the real robot: whether 4 m is close enough to verify on the three cameras, and how far the LiDAR stop keeps it from a person (blocked within 2 m of driving distance for 2 s counts as arrived; farther, raise `arrive_blocked_within_m`). If the viewpoint stop misbehaves, `visible_stop: false` goes back to the nearest lanelet point.
+**R0.** On the real robot: whether 4 m is close enough to verify on the three cameras, and how far the LiDAR stop keeps it from a person (blocked within 3 m of driving distance for 2 s counts as arrived; farther, raise `arrive_blocked_within_m`). If the viewpoint stop misbehaves, `visible_stop: false` goes back to the nearest lanelet point.
 
 ## Decisions
 
 - R1 (Explore) dropped and its code removed (2026-11-20)
-- R0: stop at the shortest drive to a point that sees the anomaly within 4 m, ahead; nearest lanelet point as the fallback; blocked within 2 m of driving distance for 2 s counts as arrived
+- R0: stop at the shortest drive to a point that sees the anomaly within 4 m, ahead; nearest lanelet point as the fallback; blocked within 3 m of driving distance for 2 s counts as arrived
 - Robot pill: En route / On site while investigating; no live dot; "Dwell 0:18" while dwelling
 - Mission pill: its own four states only
 - No early end to a dwell; markers are not changed for dwell; the next waypoint pulses only once its goal is sent

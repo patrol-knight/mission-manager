@@ -306,13 +306,13 @@ def test_blocked_close_to_the_goal_long_enough_counts_as_arrived(sim: Sim, clock
     sim.investigate("a")
     sim.goal_result("running")
 
-    sim.robot(1.5, 0, "blocked", "auto")  # 1.5 m short
+    sim.robot(2.5, 0, "blocked", "auto")  # 2.5 m short: LiDAR stops ~2 m before, the pose is behind the bumper
     clock[0] += 1.9
-    sim.robot(1.5, 0, "blocked", "auto")
+    sim.robot(2.5, 0, "blocked", "auto")
     assert sim.investigation()["phase"] == "en_route"
 
     clock[0] += 0.2
-    sim.robot(1.5, 0, "blocked", "auto")
+    sim.robot(2.5, 0, "blocked", "auto")
     assert sim.investigation()["phase"] == "on_site"
     assert sim.anomaly_record("a")["arrived_at"] is not None
     assert sim.last_command() == ("cancel_navigation", None)
@@ -326,9 +326,9 @@ def test_blocked_far_from_the_goal_or_moving_again_is_not_arrival(sim: Sim, cloc
     sim.robot(*sim.waypoints[0])
     sim.anomaly("a", 0, 0)
     sim.investigate("a")
-    sim.robot(2.5, 0, "blocked", "auto")  # beyond 2 m
+    sim.robot(3.5, 0, "blocked", "auto")  # beyond 3 m
     clock[0] += 10
-    sim.robot(2.5, 0, "blocked", "auto")
+    sim.robot(3.5, 0, "blocked", "auto")
     assert sim.investigation()["phase"] == "en_route"
 
     sim.robot(1.5, 0, "blocked", "auto")

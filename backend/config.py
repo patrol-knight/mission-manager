@@ -83,7 +83,7 @@ class Settings(BaseSettings):
     # distance of its goal (along the lanes, not a radius) for this long
     # counts as arrived (state_machine pauses not_moving while blocked, so the
     # goal would never end on its own).
-    arrive_blocked_within_m: float = 2.0
+    arrive_blocked_within_m: float = 3.0
     arrive_blocked_after_sec: float = 2.0
     # Stop where the robot's cameras first see the anomaly (within 4 m, ahead),
     # on whichever lane is the shortest drive; off: its nearest lanelet point.
