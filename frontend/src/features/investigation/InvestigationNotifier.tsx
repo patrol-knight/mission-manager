@@ -27,8 +27,7 @@ export function InvestigationNotifier() {
       previous?.startedAt === investigation.startedAt &&
       previous.phase === "en_route";
     if (arrived) {
-      if (investigation.kind === "manual") show("info", "Arrived. Have a look around.");
-      else if (investigation.kind === "camera") show("info", "Arrived at the tower. Have a look around.");
+      if (investigation.kind === "camera") show("info", "Arrived at the tower. Have a look around.");
       else show("warning", "Arrived at the anomaly. Please verify.");
       openVerify();
     }

@@ -229,6 +229,37 @@ def test_a_dropped_goal_to_the_anomaly_is_sent_again(sim: Sim):
     assert sim.investigation()["phase"] == "en_route"
 
 
+# -- Where the robot stops ---------------------------------------------------------
+
+
+def test_the_shortest_drive_to_a_viewpoint_is_the_goal(sim: Sim, monkeypatch):
+    from models.map import MapPoint
+
+    def point(x: float, y: float) -> MapPoint:
+        return MapPoint(x=x, y=y, frame_id="map", lat=1.0, lon=2.0)
+
+    # The fake route is the straight line: (2, 0) is the shorter drive from (0, 0).
+    monkeypatch.setattr(
+        sim.services.map_server, "viewpoints", lambda x, y, within_m, robot_xy=None: [(point(9, 0), 3.0), (point(2, 0), 0.5)]
+    )
+    sim.robot(0, 0)
+    sim.anomaly("a", 5, 0)
+    state = sim.investigate("a").json()
+    assert (state["target"]["x"], state["target"]["y"]) == (2, 0)
+    assert sim.last_command() == ("navigate_to_goal", {"x": 2.0, "y": 0.0, "frame_id": "map", "yaw": 0.5})
+
+
+def test_without_a_viewpoint_or_with_visible_stop_off_the_goal_is_the_nearest_point(sim: Sim, monkeypatch):
+    sim.robot(0, 0)
+    sim.anomaly("a", 5, 0)
+    assert sim.investigate("a").json()["target"]["x"] == 5  # the fake map has no viewpoints
+    sim.cancel_investigation()
+
+    monkeypatch.setattr(sim.services.investigation._settings, "visible_stop", False)
+    monkeypatch.setattr(sim.services.map_server, "viewpoints", lambda *a, **k: pytest.fail("not asked"))
+    assert sim.investigate("a").json()["target"]["x"] == 5
+
+
 # -- Camera unhealthy --------------------------------------------------------------
 
 
@@ -259,136 +290,6 @@ def test_a_camera_check_can_be_cancelled_en_route_and_taken_over(sim: Sim):
     assert sim.anomaly_record("cam")["resolution"] is None
 
 
-# -- Go here ----------------------------------------------------------------------
-
-
-def test_go_here_from_idle_holds_on_site_until_dismissed(sim: Sim):
-    sim.robot(*sim.waypoints[0])
-    started = sim.go_here(4, 3)
-    assert started.status_code == 200
-    state = started.json()
-    assert state["kind"] == "manual" and state["anomaly_id"] is None and state["phase"] == "en_route"
-    assert (state["look_at"]["x"], state["look_at"]["y"]) == (4, 3)
-    assert sim.last_command() == ("navigate_to_goal", {"x": 4.0, "y": 3.0, "frame_id": "map", "yaw": LANE_YAW})
-
-    sim.drive_to(4, 3)
-    assert sim.investigation()["phase"] == "on_site"
-    assert sim.verdict("true_positive").status_code == 409  # nothing to verify
-
-    assert sim.finish_investigation().status_code == 204  # Dismiss needs no verdict
-    assert sim.investigation() is None
-    assert sim.last_command() == ("cancel_navigation", None)  # no mission: holds
-
-
-def test_go_here_can_be_cancelled_en_route(sim: Sim):
-    sim.robot(*sim.waypoints[0])
-    sim.go_here(4, 3)
-    assert sim.cancel_investigation().status_code == 204
-    assert sim.investigation() is None
-
-
-def test_go_here_freezes_a_running_mission_and_hands_it_back(sim: Sim):
-    w = sim.waypoints
-    sim.robot(*w[0])
-    sim.client.post("/api/missions/current/start")
-    sim.drive_to(*w[0])
-
-    sim.go_here(4, 3)
-    assert sim.client.post("/api/missions/current/pause").status_code == 409
-    sim.drive_to(4, 3)
-    assert sim.execution()["current_waypoint_index"] == 0  # the arrival was Go here's
-
-    sim.finish_investigation()
-    assert sim.mission_status() == "running"
-    assert sim.last_command()[0] == "navigate_to_goal" and sim.goal() in w
-
-
-def test_go_here_retargets_and_ignores_the_old_goal(sim: Sim):
-    sim.robot(*sim.waypoints[0])
-    sim.go_here(4, 3)
-    old_request = sim.request_ids[-1]
-    assert sim.go_here(8, 1).json()["phase"] == "en_route"
-    assert sim.goal() == (8, 1)
-
-    sim.goal_result("succeeded", request_id=old_request)
-    assert sim.investigation()["phase"] == "en_route"
-    sim.drive_to(8, 1)
-    on_site = sim.investigation()
-    assert on_site["phase"] == "on_site"
-    assert sim.go_here(4, 3).json()["phase"] == "en_route"  # on site too
-
-
-def test_go_here_takes_over_an_anomaly_en_route_without_a_verdict(sim: Sim):
-    sim.robot(*sim.waypoints[0])
-    sim.anomaly("a", 0, 0)
-    sim.investigate("a")
-    assert sim.go_here(4, 3).json()["kind"] == "manual"
-    assert sim.anomaly_record("a")["resolution"] is None
-
-
-def test_go_here_takes_over_an_anomaly_on_site_without_a_verdict(sim: Sim):
-    sim.robot(*sim.waypoints[0])
-    sim.anomaly("a", 0, 0)
-    sim.investigate("a")
-    arrive_on_site(sim, 0, 0)
-    assert sim.go_here(4, 3).status_code == 200  # no VerdictRequired: an explicit order
-    assert sim.anomaly_record("a")["resolution"] is None and sim.feedback == []
-
-
-def test_go_here_commits_the_draft_verdict_of_the_anomaly_it_leaves(sim: Sim):
-    sim.robot(*sim.waypoints[0])
-    sim.anomaly("a", 0, 0)
-    sim.investigate("a")
-    arrive_on_site(sim, 0, 0)
-    sim.verdict("true_positive")
-    sim.go_here(4, 3)
-    assert sim.anomaly_record("a")["resolution"] == "true_positive"
-    assert sim.feedback == [("a", "true_positive")]
-
-
-def test_an_anomaly_takes_over_from_go_here(sim: Sim):
-    sim.robot(*sim.waypoints[0])
-    sim.go_here(4, 3)
-    sim.drive_to(4, 3)
-    sim.anomaly("a", 0, 0)
-    started = sim.investigate("a").json()
-    assert started["kind"] == "anomaly" and started["anomaly_id"] == "a"
-
-
-def test_go_here_preview_sends_nothing(sim: Sim, settings):
-    settings.patrol_speed_mps = 0.5
-    settings.waypoint_stop_sec = 5
-    sim.robot(*sim.waypoints[0])
-    preview = sim.preview_go_here(4, 3)
-    assert preview.status_code == 200
-    assert preview.json()["eta_sec"] == pytest.approx(preview.json()["length_m"] / 0.5 + 5)
-    assert (preview.json()["target"]["x"], preview.json()["target"]["y"]) == (4, 3)
-    assert sim.commands == [] and sim.investigation() is None
-
-
-def test_go_here_needs_a_robot_and_a_reachable_point(sim: Sim, monkeypatch):
-    assert sim.go_here(4, 3).status_code == 409
-    sim.robot(*sim.waypoints[0])
-    monkeypatch.setattr(sim.services.map_server, "get_route", lambda points: None)
-    assert sim.go_here(4, 3).status_code == 409
-    assert sim.preview_go_here(4, 3).status_code == 409
-    assert sim.commands == []
-
-
-def test_go_here_where_the_robot_already_is_starts_on_site(sim: Sim):
-    sim.robot(4, 3)
-    state = sim.go_here(4, 3).json()
-    assert state["phase"] == "on_site" and state["arrived_at"] is not None
-    assert sim.last_command() == ("cancel_navigation", None)
-
-
-def test_losing_the_robot_aborts_go_here(sim: Sim):
-    sim.robot(*sim.waypoints[0])
-    sim.go_here(4, 3)
-    assert sim.services.mission_service.abort_autonomy("robot_disconnected") is True
-    assert sim.investigation() is None
-
-
 # -- Blocked close to the goal -----------------------------------------------------
 
 
@@ -405,13 +306,13 @@ def test_blocked_close_to_the_goal_long_enough_counts_as_arrived(sim: Sim, clock
     sim.investigate("a")
     sim.goal_result("running")
 
-    sim.robot(3, 0, "blocked", "auto")  # 3 m short
-    clock[0] += 4.9
-    sim.robot(3, 0, "blocked", "auto")
+    sim.robot(1.5, 0, "blocked", "auto")  # 1.5 m short
+    clock[0] += 1.9
+    sim.robot(1.5, 0, "blocked", "auto")
     assert sim.investigation()["phase"] == "en_route"
 
     clock[0] += 0.2
-    sim.robot(3, 0, "blocked", "auto")
+    sim.robot(1.5, 0, "blocked", "auto")
     assert sim.investigation()["phase"] == "on_site"
     assert sim.anomaly_record("a")["arrived_at"] is not None
     assert sim.last_command() == ("cancel_navigation", None)
@@ -423,17 +324,32 @@ def test_blocked_close_to_the_goal_long_enough_counts_as_arrived(sim: Sim, clock
 
 def test_blocked_far_from_the_goal_or_moving_again_is_not_arrival(sim: Sim, clock: list[float]):
     sim.robot(*sim.waypoints[0])
-    sim.go_here(0, 0)
-    sim.robot(5, 0, "blocked", "auto")  # beyond 4 m
+    sim.anomaly("a", 0, 0)
+    sim.investigate("a")
+    sim.robot(2.5, 0, "blocked", "auto")  # beyond 2 m
     clock[0] += 10
-    sim.robot(5, 0, "blocked", "auto")
+    sim.robot(2.5, 0, "blocked", "auto")
     assert sim.investigation()["phase"] == "en_route"
 
-    sim.robot(3, 0, "blocked", "auto")
-    clock[0] += 3
-    sim.robot(3, 0, "navigating", "auto")  # cleared: the window restarts
-    clock[0] += 3
-    sim.robot(3, 0, "blocked", "auto")
-    clock[0] += 3
-    sim.robot(3, 0, "blocked", "auto")
+    sim.robot(1.5, 0, "blocked", "auto")
+    clock[0] += 1.5
+    sim.robot(1.5, 0, "navigating", "auto")  # cleared: the window restarts
+    clock[0] += 1.5
+    sim.robot(1.5, 0, "blocked", "auto")
+    clock[0] += 1.5
+    sim.robot(1.5, 0, "blocked", "auto")
+    assert sim.investigation()["phase"] == "en_route"
+
+
+def test_blocked_on_the_opposite_lane_is_not_arrival(sim: Sim, clock: list[float], monkeypatch):
+    sim.robot(*sim.waypoints[0])
+    sim.anomaly("a", 0, 0)
+    sim.investigate("a")
+    # 1 m away as the crow flies, but a U-turn away along the lanes.
+    monkeypatch.setattr(
+        sim.services.map_server, "get_route", lambda points: {"type": "Feature", "properties": {"length_m": 25.0}}
+    )
+    sim.robot(0, 1, "blocked", "auto")
+    clock[0] += 10
+    sim.robot(0, 1, "blocked", "auto")
     assert sim.investigation()["phase"] == "en_route"

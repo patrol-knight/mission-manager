@@ -2,7 +2,7 @@ import { useContext, useMemo } from "react";
 import { MapContext } from "./MapContext";
 import { useMarkerList, type UseMarkerListOptions } from "./mapMarkers";
 import { useMissionStore } from "../../stores/missionStore";
-import { selectPreviewing, useInvestigationStore } from "../../stores/investigationStore";
+import { useInvestigationStore } from "../../stores/investigationStore";
 import { buildWaypointMarkerElement, setWaypointTarget } from "../missions/waypointMarker";
 import { headingWaypointIndex } from "../missions/missionStatus";
 import type { Waypoint } from "../missions/missionTypes";
@@ -24,8 +24,6 @@ export function MissionWaypointMarkersLayer() {
     [definition, investigating],
   );
   const target = headingWaypointIndex(execution, waypoints.length);
-  // Behind an Explore preview, like the mission's route.
-  const previewing = useInvestigationStore(selectPreviewing);
 
   const options = useMemo<UseMarkerListOptions<Waypoint>>(
     () => ({
@@ -39,12 +37,11 @@ export function MissionWaypointMarkersLayer() {
         const index = waypoints.findIndex((w) => w.waypointId === wp.waypointId);
         setMarkerGlyph(el, String(index + 1));
         setWaypointTarget(el, index === target);
-        el.style.opacity = previewing ? "0.3" : "1";
       },
     }),
-    [waypoints, target, previewing],
+    [waypoints, target],
   );
 
-  useMarkerList(map, waypoints, options, [target, previewing]);
+  useMarkerList(map, waypoints, options, [target]);
   return null;
 }

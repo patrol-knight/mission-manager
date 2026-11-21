@@ -83,8 +83,8 @@ export function robotUnavailableHint(robot: Device | null): string | null {
 }
 
 /** What the robot is doing right now, for its status pill -- colored by
- * the mode it's in (orange mission, yellow investigation; Explore is an
- * investigation too). No live dot: whether the robot is up is the
+ * the mode it's in (orange mission, yellow investigation; a camera check is
+ * an investigation too). No live dot: whether the robot is up is the
  * connection pill's job. Who drives is robotMode's pill. Dwelling at a
  * waypoint counts down, as of `now`. */
 export function robotStatus(

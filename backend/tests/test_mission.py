@@ -537,7 +537,8 @@ def test_an_investigation_drops_the_dwell(sim: Sim, dwell_clock: list[float]):
     sim.drive_to(*w[0])
     sim.drive_to(*w[1])
 
-    sim.go_here(4, 3)
+    sim.anomaly("cam", 4, 3, types=("camera_unhealthy",))
+    sim.investigate("cam")
     assert sim.execution()["dwell_sec"] is None
     sim.drive_to(4, 3)
     sim.finish_investigation()

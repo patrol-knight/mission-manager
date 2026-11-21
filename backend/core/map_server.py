@@ -195,6 +195,61 @@ class MapServer:
         ll = self._nearest_lanelet(x, y)
         return self._get_lanelet_yaw(ll, x, y) if ll is not None else None
 
+    def viewpoints(
+        self, x: float, y: float, within_m: float, robot_xy: tuple[float, float] | None = None
+    ) -> list[tuple[MapPoint, float]]:
+        """Places to stop and see (x, y): on each lanelet near it, the first
+        centerline point with (x, y) within `within_m` and ahead (in the front
+        half, along the lane), with the lane's heading there. If the robot is
+        on such a stretch already, where it stands counts too. Empty without a
+        map or when no lane sees the point."""
+        if not self._available:
+            return []
+        found: list[tuple[MapPoint, float]] = []
+        for dist, ll in findNearest(self._lanelet_layer, BasicPoint2d(x, y), 12):
+            if dist > within_m:
+                continue
+            pts, arc = self._centerline(ll)
+            if len(pts) < 2 or arc[-1] == 0:
+                continue
+            sees = self._sees(pts, arc, x, y, within_m)
+            first = next((s for s in self._arc_samples(arc[-1]) if sees(s)), None)
+            if first is not None:
+                found.append(self._viewpoint(ll, pts, arc, first))
+            if robot_xy is not None:
+                at = self._project_point_onto_centerline(ll, *robot_xy) * arc[-1]
+                px, py = self._point_at(pts, arc, at / arc[-1])
+                if math.hypot(px - robot_xy[0], py - robot_xy[1]) < 1.0 and sees(at):
+                    found.append(self._viewpoint(ll, pts, arc, at))
+        return found
+
+    @staticmethod
+    def _arc_samples(length: float, step: float = 0.25) -> list[float]:
+        return [min(i * step, length) for i in range(int(length / step) + 2)]
+
+    def _sees(self, pts, arc: list[float], x: float, y: float, within_m: float):
+        """Whether (x, y) is within range and ahead from arc length s."""
+
+        def sees(s: float) -> bool:
+            px, py = self._point_at(pts, arc, s / arc[-1])
+            dx, dy = x - px, y - py
+            if math.hypot(dx, dy) > within_m:
+                return False
+            yaw = self._yaw_at(pts, arc, s)
+            return dx * math.cos(yaw) + dy * math.sin(yaw) >= 0.0
+
+        return sees
+
+    @staticmethod
+    def _yaw_at(pts, arc: list[float], s: float) -> float:
+        i = next((k for k in range(len(pts) - 1) if arc[k] <= s <= arc[k + 1]), len(pts) - 2)
+        return math.atan2(pts[i + 1].y - pts[i].y, pts[i + 1].x - pts[i].x)
+
+    def _viewpoint(self, ll, pts, arc: list[float], s: float) -> tuple[MapPoint, float]:
+        px, py = self._point_at(pts, arc, s / arc[-1])
+        lon, lat = self._to_latlon(px, py)
+        return MapPoint(x=px, y=py, frame_id="map", lanelet_id=ll.id, lat=lat, lon=lon), self._yaw_at(pts, arc, s)
+
     def place_waypoint(self, lat: float, lon: float) -> MapPoint | None:
         """A clicked point snapped onto its lanelet, or None if it's off the road."""
         xy = self.latlon_to_xy(lat, lon)

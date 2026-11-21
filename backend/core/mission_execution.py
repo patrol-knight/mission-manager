@@ -225,7 +225,7 @@ class MissionExecutionManager:
                 self._update(state, dwell_sec=None)
 
     def drop_dwell(self) -> None:
-        """Something else took the robot (an investigation, Go here)."""
+        """Something else took the robot (an investigation)."""
         self.end_dwell()
 
     def record_waypoint_reached(self, waypoint_index: int) -> MissionExecutionState | None:

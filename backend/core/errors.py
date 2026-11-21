@@ -101,4 +101,4 @@ class NoRouteError(Exception):
 
 
 class NoVerdictError(Exception):
-    """Go here has nothing to verify."""
+    """A camera check has nothing to verify."""

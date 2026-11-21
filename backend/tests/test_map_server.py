@@ -76,3 +76,32 @@ def test_a_point_is_on_the_leg_into_its_waypoint_and_on_the_next_just_past_it(ma
 def test_a_point_off_the_route_is_on_no_leg(map_server: MapServer, waypoints):
     loop = [{"x": wp.x, "y": wp.y} for wp in [*waypoints, waypoints[0]]]
     assert map_server.leg_at(loop, waypoints[0].x + 5000, waypoints[0].y) is None
+
+
+def test_a_viewpoint_sees_the_point_from_up_to_4_m_before_it(map_server: MapServer, waypoints):
+    for wp in waypoints:
+        ll = map_server._nearest_lanelet(wp.x, wp.y)
+        pts, arc = map_server._centerline(ll)
+        if arc[-1] >= 8:
+            break
+    else:
+        pytest.skip("no lanelet long enough")
+    ax, ay = map_server._point_at(pts, arc, 6 / arc[-1])  # 6 m along the lane
+
+    views = [(p, yaw) for p, yaw in map_server.viewpoints(ax, ay, 4.0) if p.lanelet_id == ll.id]
+    assert len(views) == 1
+    p, yaw = views[0]
+    assert math.hypot(ax - p.x, ay - p.y) == pytest.approx(4.0, abs=0.3)  # stops short, not on it
+    assert (ax - p.x) * math.cos(yaw) + (ay - p.y) * math.sin(yaw) > 0  # facing it
+
+
+def test_a_robot_already_seeing_the_point_is_a_viewpoint(map_server: MapServer, waypoints):
+    for wp in waypoints:
+        ll = map_server._nearest_lanelet(wp.x, wp.y)
+        pts, arc = map_server._centerline(ll)
+        if arc[-1] >= 8:
+            break
+    ax, ay = map_server._point_at(pts, arc, 6 / arc[-1])
+    rx, ry = map_server._point_at(pts, arc, 4 / arc[-1])  # 2 m before it
+    views = map_server.viewpoints(ax, ay, 4.0, (rx, ry))
+    assert any(math.hypot(p.x - rx, p.y - ry) < 0.01 for p, _ in views)

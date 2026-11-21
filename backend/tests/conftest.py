@@ -17,7 +17,7 @@ from fastapi.testclient import TestClient
 from app import create_app
 from bootstrap import Services
 from config import Settings
-from models.map import XY, LatLon, MapPoint
+from models.map import LatLon, MapPoint
 
 # Two KS-map missions, kept here so the tests never depend on (or touch)
 # the missions saved in storage/.
@@ -96,9 +96,8 @@ def fake_map(services: Services, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(m, "get_route", _straight_route)
     monkeypatch.setattr(m, "leg_at", _straight_leg_at)
     monkeypatch.setattr(m, "lane_yaw", lambda x, y: LANE_YAW)
-    # Lat/lon are y/x, so Go here can click any point.
-    monkeypatch.setattr(m, "latlon_to_xy", lambda lat, lon, target_frame_id="map": XY(x=lon, y=lat))
-
+    # No viewpoints: the goal falls back to the nearest lanelet point.
+    monkeypatch.setattr(m, "viewpoints", lambda x, y, within_m, robot_xy=None: [])
 
 
 def current_mission(services: Services) -> dict:
@@ -213,13 +212,6 @@ class Sim:
 
     def finish_investigation(self):
         return self.client.post("/api/investigation/finish")
-
-    def go_here(self, x: float, y: float):
-        """Go here at map (x, y): the fake map reads lat/lon as y/x."""
-        return self.client.post("/api/investigation/goto", json={"lat": y, "lon": x})
-
-    def preview_go_here(self, x: float, y: float):
-        return self.client.post("/api/investigation/goto/preview", json={"lat": y, "lon": x})
 
     def goal(self) -> tuple[float, float]:
         fields = next(f for c, f in reversed(self.commands) if c == "navigate_to_goal")

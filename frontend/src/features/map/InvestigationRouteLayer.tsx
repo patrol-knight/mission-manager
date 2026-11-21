@@ -21,7 +21,10 @@ const ROUTE_PAINT: maplibregl.LineLayerSpecification["paint"] = {
  * mount order. */
 export function InvestigationRouteLayer() {
   const { map } = useContext(MapContext);
-  const route = useInvestigationStore((s) => s.investigation?.route ?? null);
+  // On site there is nothing left to drive (a blocked arrival stops short).
+  const route = useInvestigationStore((s) =>
+    s.investigation?.phase === "en_route" ? s.investigation.route : null,
+  );
   const robotLon = useDeviceStore((s) => selectRobot(s)?.pose?.lon ?? null);
   const robotLat = useDeviceStore((s) => selectRobot(s)?.pose?.lat ?? null);
 

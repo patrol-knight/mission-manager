@@ -58,12 +58,12 @@ describe("robotStatus", () => {
     expect(robotStatus(true, null, null, "blocked").label).toBe("Blocked");
   });
 
-  it("counts down a dwell in place of patrolling, and Explore is an investigation like any other", () => {
+  it("counts down a dwell in place of patrolling, and a camera check is an investigation like any other", () => {
     const dwelling = { ...execution("running"), dwellSec: 30, dwellRemainingSec: 18, receivedAt: 1_000 };
     expect(robotStatus(true, null, dwelling, "arrived", 1_000).label).toBe("Dwell 0:18");
     expect(robotStatus(true, null, dwelling, "arrived", 6_000).label).toBe("Dwell 0:13");
-    const exploring = { ...investigation, kind: "manual", anomalyId: null } as Investigation;
-    expect(robotStatus(true, exploring, null, "navigating").label).toBe("En route");
+    const checking = { ...investigation, kind: "camera" } as Investigation;
+    expect(robotStatus(true, checking, null, "navigating").label).toBe("En route");
   });
 
   it("never shows a live dot: being up is the connection pill's job", () => {

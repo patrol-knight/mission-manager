@@ -41,13 +41,13 @@ describe("InvestigationNotifier", () => {
     expect(useInvestigationStore.getState().verifyOpen).toBe(false);
   });
 
-  it("opens the observe window when Explore arrives", () => {
-    const exploring = { ...enRoute, kind: "manual", anomalyId: null } as Investigation;
-    useInvestigationStore.setState({ investigation: exploring });
+  it("opens the camera check window when the robot reaches the tower", () => {
+    const checking = { ...enRoute, kind: "camera" } as Investigation;
+    useInvestigationStore.setState({ investigation: checking });
     render(<ToastProvider><InvestigationNotifier /></ToastProvider>);
-    act(() => useInvestigationStore.getState().setInvestigation({ ...exploring, phase: "on_site" }));
+    act(() => useInvestigationStore.getState().setInvestigation({ ...checking, phase: "on_site" }));
     expect(useInvestigationStore.getState().verifyOpen).toBe(true);
-    expect(screen.getByText("Arrived. Have a look around.")).toBeInTheDocument();
+    expect(screen.getByText("Arrived at the tower. Have a look around.")).toBeInTheDocument();
   });
 
   it("announces autonomy being aborted", () => {

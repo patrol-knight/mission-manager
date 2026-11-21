@@ -1,6 +1,5 @@
-import { useMemo, useState, type CSSProperties } from "react";
-import { useShallow } from "zustand/react/shallow";
-import { useDeviceStore, selectDeviceList } from "../../stores/deviceStore";
+import { useState, type CSSProperties } from "react";
+import { useDeviceStore } from "../../stores/deviceStore";
 import { useInvestigationStore } from "../../stores/investigationStore";
 import { useToast } from "../../components/useToast";
 import { setVerdict } from "../../api/investigationApi";
@@ -21,9 +20,6 @@ import {
   type AnomalyVerdict,
 } from "../anomalies/anomalyTypes";
 import type { Investigation } from "./investigationTypes";
-import { Button } from "../../components/ui/Button";
-import { towersSeeing } from "../devices/towers";
-import { useEndExplore } from "./explore";
 import { ReasonRow } from "../anomalies/AnomalyInfoRows";
 
 const VERDICTS: AnomalyVerdict[] = ["true_positive", "false_positive", "unclear"];
@@ -42,7 +38,6 @@ export function VerifyModal() {
   const verifyOpen = useInvestigationStore((s) => s.verifyOpen);
   if (!verifyOpen || investigation?.phase !== "on_site") return null;
   // Mounted only while open, so the camera stream starts and stops with it.
-  if (!investigation.anomalyId) return <ObserveDialog investigation={investigation} />;
   if (investigation.kind === "camera") return <CameraCheckDialog investigation={investigation} anomalyId={investigation.anomalyId} />;
   return <VerifyDialog investigation={investigation} anomalyId={investigation.anomalyId} />;
 }
@@ -127,68 +122,6 @@ function VerifyDialog({ investigation, anomalyId }: { investigation: Investigati
               })}
             </div>
             <Note size="sm">Saved as a draft. It's recorded when you press Finish.</Note>
-          </section>
-        </aside>
-      </div>
-    </Modal>
-  );
-}
-
-/** Explore's window on site: the robot's camera, and any tower that sees the
- * point for a second angle. Nothing to verify; the operator looks, then
- * sends the robot back (or on to another point with the map's Explore). */
-function ObserveDialog({ investigation }: { investigation: Investigation }) {
-  const closeVerify = useInvestigationStore((s) => s.closeVerify);
-  const devices = useDeviceStore(useShallow(selectDeviceList));
-  const towers = useMemo(
-    () => towersSeeing(devices, investigation.lookAt.x, investigation.lookAt.y),
-    [devices, investigation.lookAt.x, investigation.lookAt.y],
-  );
-  const [deviceId, setDeviceId] = useState(investigation.robotDeviceId);
-  const shown = towers.some((t) => t.deviceId === deviceId) ? deviceId : investigation.robotDeviceId;
-  const { camera, stream, error } = useCameraSession(shown, true);
-  const { end, pending, label } = useEndExplore();
-  const now = useNow();
-
-  return (
-    <Modal label="Observe" onClose={closeVerify} variant="fullscreen">
-      <ModalHeader title="Explore" onClose={closeVerify} />
-      <div className={layout.body}>
-        <div className={layout.stage}>
-          {towers.length > 0 && (
-            <div className={layout.switcher} role="tablist" aria-label="Camera">
-              <SwitchButton
-                on={shown === investigation.robotDeviceId}
-                onClick={() => setDeviceId(investigation.robotDeviceId)}
-                name={investigation.robotDeviceId}
-                role="Robot"
-              />
-              {towers.map((t) => (
-                <SwitchButton key={t.deviceId} on={shown === t.deviceId} onClick={() => setDeviceId(t.deviceId)} name={t.deviceId} role="Tower" />
-              ))}
-            </div>
-          )}
-          <div className={layout.feed}>
-            {error ? <Note tone="danger">{error}</Note> : <CameraStreamView camera={camera} stream={stream} />}
-          </div>
-        </div>
-
-        <aside className={layout.sidebar}>
-          <section className={layout.section}>
-            <h3 className={layout.sectionTitle}>Explore</h3>
-            <InfoList gap={8}>
-              {investigation.arrivedAt && <InfoRow label="Arrived" value={`${formatAge(investigation.arrivedAt, now)} ago`} />}
-              <InfoRow label="Towers" value={towers.length > 0 ? towers.map((t) => t.deviceId).join(", ") : "None see it"} />
-            </InfoList>
-          </section>
-
-          <section className={cx(layout.section, layout.footer)}>
-            <Note size="sm">Explore another point from the map, or send the robot back when you're done.</Note>
-            <div className="mode-investigate">
-              <Button variant="primary" block disabled={pending} onClick={() => void end()}>
-                {label}
-              </Button>
-            </div>
           </section>
         </aside>
       </div>

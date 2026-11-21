@@ -1,6 +1,6 @@
 # FVD Encore: dwell, three cameras and camera health
 
-Status (2026-11-19 evening, `feat/encore`; demo 2026-11-23):
+Status (2026-11-20, `feat/encore`; demo 2026-11-23):
 
 | | Feature | State | Issue |
 |---|---|---|---|
@@ -8,7 +8,7 @@ Status (2026-11-19 evening, `feat/encore`; demo 2026-11-23):
 | R3 | **Three cameras** on the robot | Done: one stream, split into three in Mission Manager | #__ |
 | R4 | **Camera blind**: a tower whose camera can't see raises the alarm | Message and zenoh_bridge done; Mission Manager done (`camera_unhealthy`); the node and Anomaly Detection in progress (teammate) | #__ |
 
-R0 (where the robot stops) and R1 (Explore) are out of the Encore; see [Out of scope](#out-of-scope-r0-and-r1). Lost tracks (trespassing a tower loses) are the teammate's, with the edge-case tests; not covered here.
+R0 (where the robot stops) is done: viewpoint stop and blocked arrival; R1 (Explore) is dropped. See [R0 and R1](#r0-and-r1). Lost tracks (trespassing a tower loses) are the teammate's, with the edge-case tests; not covered here.
 
 ## Background
 
@@ -18,12 +18,22 @@ All three features work within that: they choose which goal to send, and when.
 
 ---
 
-## Out of scope: R0 and R1
+## R0 and R1
 
-Taken out of the Encore on 2026-11-20: the approach isn't right yet and will be reworked later. What `febc9a4` left in the code:
+**R1, Explore: dropped (2026-11-20).** The operator picked a point on the map; the robot went there, held, and returned to the mission when dismissed. With dwell, three cameras and camera blind, the demo has enough, and Explore had no clear use case: a camera check already covers "send the robot to look". Its code was removed (Go here, `kind = manual`, `/api/investigation/goto` and `/goto/preview`, `look_at`, `eta_sec`, the Explore button, layer, cards and observe window). It is in `febc9a4` if it comes back.
 
-- **R0, where the robot stops.** The goal is still the subject's nearest lanelet point (`snap_to_lanelet`, heading `lane_yaw`). Two fixes were tried and taken out: a stand-off pulled 2 m back along the route, and choosing between lanelets within 6 m by route length. Still in the code: **blocked arrival**. While an investigation is EN_ROUTE, being `blocked` within 4 m of the target for 5 s counts as arrived (`arrive_blocked_within_m`, `arrive_blocked_after_sec`)
-- **R1, Explore** (backend: Go here, `kind = manual`, `/api/investigation/goto` and `/goto/preview`). The operator picks a point; the robot goes, holds, and returns to the mission when dismissed. It works end to end, but the card, the markers (ring, stop dot, sight line) and the preview didn't read well. In the code: the Explore button among the map's controls, `ExploreLayer`, `ExploreCards`, and the observe window in `VerifyModal`
+**R0, where the robot stops: done (2026-11-20).** The problems: a person lying on the lane is an obstacle at the goal, so the robot stops short, reports `blocked`, and never arrives to verify; and the nearest lanelet point may be a U-turn away while another lane passes within view.
+
+- **Stop where the robot first sees the anomaly.** On every lanelet within 4 m of it, the first centerline point with the anomaly within 4 m and ahead (the front half along the lane; the three cameras face forward), plus where the robot stands if it already sees it. The goal is the one with the shortest drive, heading along its lane (`MapServer.viewpoints`, `VIEW_RANGE_M = 4.0`). None found: the nearest lanelet point, as before. `visible_stop: false` turns it off
+- A person lying on the lane is seen from 4 m before them, so the robot arrives by its goal instead of being stopped by them
+- On the nsh map, from the dummy robot's pose: an anomaly 4 m behind it was a 100.9 m drive to its nearest point, 35.1 m to a viewpoint on the opposite lane; 8 m behind, 98.6 → 38.5 m. On the dummy robot, an anomaly 12 m ahead on the lane: stop 3.96 m before it, normal arrival
+- **Blocked arrival.** While an investigation is EN_ROUTE, a robot reporting `blocked` within **2 m of driving distance** of its stop for **2 s** counts as arrived: `cancel_navigation`, ON_SITE, and the verify (or camera check) window opens as on a normal arrival
+- Driving distance, not a radius: a route is planned from the robot to the stop, so a robot on the opposite lane, a U-turn away, isn't close however near it looks. Routing only happens once the straight line is already within 2 m
+- 2 s rather than 0: a `blocked` that only flickers (someone walking past) doesn't count, and the robot has come to rest
+- On site, the investigation route is no longer drawn, so no stub is left across the person
+- Config: `arrive_blocked_within_m` (2.0), `arrive_blocked_after_sec` (2.0)
+- Blocked arrival, checked on the dummy robot: blocked 1.1 m short → on site 2.2 s later; blocked 3.4 m short → still en route after 12 s, and arrives normally once the obstacle clears
+- **To check on the real robot:** how far the LiDAR stop keeps it from a person. Farther than 2 m, raise `arrive_blocked_within_m`
 
 ---
 
@@ -200,7 +210,7 @@ Decided 2026-11-19 with the teammate: Anomaly Detection owns the reaction, Missi
 | `AnomalyInfoRows.tsx`, `towers.ts` | Reason row (`cameraHealthReasons`, `formatReasons`) |
 | `InvestigateCard.tsx`, `VerifyModal.tsx`, `InvestigationNotifier.tsx` | Observe / Done; `CameraCheckDialog`; arrival toast |
 
-**The teammate's side:** `anomaly_detection/transport/messages.py` still lists only the three human types, so its transport rejects `camera_unhealthy` until it's added there.
+**Anomaly Detection's transport:** `camera_unhealthy` added to `transport/messages.py` and `docs/topics_format.md` on `anomaly_detection` main (2026-11-20).
 
 ### Testing without the real node
 
@@ -214,9 +224,12 @@ Decided 2026-11-19 with the teammate: Anomaly Detection owns the reaction, Missi
 
 **R3.** Check CPU and driving on the robot; name the thumbnails by position if wanted.
 
+**R0.** On the real robot: whether 4 m is close enough to verify on the three cameras, and how far the LiDAR stop keeps it from a person (blocked within 2 m of driving distance for 2 s counts as arrived; farther, raise `arrive_blocked_within_m`). If the viewpoint stop misbehaves, `visible_stop: false` goes back to the nearest lanelet point.
+
 ## Decisions
 
-- R0 and R1 are out of the Encore (2026-11-20)
+- R1 (Explore) dropped and its code removed (2026-11-20)
+- R0: stop at the shortest drive to a point that sees the anomaly within 4 m, ahead; nearest lanelet point as the fallback; blocked within 2 m of driving distance for 2 s counts as arrived
 - Robot pill: En route / On site while investigating; no live dot; "Dwell 0:18" while dwelling
 - Mission pill: its own four states only
 - No early end to a dwell; markers are not changed for dwell; the next waypoint pulses only once its goal is sent
@@ -224,4 +237,3 @@ Decided 2026-11-19 with the teammate: Anomaly Detection owns the reaction, Missi
 - Three cameras: composed on the robot into one stream, split in the browser by frame shape; no protocol change
 - Camera health: `CameraHealthStatus` in `patrolknight_msgs`, its own node and container in `iot`; zenoh_bridge forwards the flags unchanged as `status.camera_health`, `null` when stale
 - Camera blind: Anomaly Detection raises `camera_unhealthy` at the tower and suspends the tower's other anomalies; Mission Manager draws it on the tower (red, "!", red FOV), checks it without a verdict, and keeps it out of the heatmap
-- Explore's entry is hidden for the demo; its code stays

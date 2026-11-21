@@ -1,23 +1,12 @@
-/* The map's own controls, bottom left (the attribution sits bottom right):
-   Explore, then Overview when it applies. */
-.controls {
+/* Floating "back to the whole site" pill, bottom left of the map (the
+   attribution sits bottom right). Fades in only once the view has moved
+   away from the overview. */
+.overview {
   position: absolute;
   left: 16px;
   bottom: 16px;
   z-index: var(--z-map-overlay);
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-/* Floating "back to the whole site" pill. Fades in only once the view has
-   moved away from the overview. */
-.overview {
-  display: flex;
-  align-items: center;
-  height: 32px;
-  box-sizing: border-box;
-  padding: 0 14px;
+  padding: 7px 14px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-pill);
   background: var(--color-surface);

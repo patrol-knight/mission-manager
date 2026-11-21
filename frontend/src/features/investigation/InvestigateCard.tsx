@@ -25,7 +25,7 @@ const VERDICT_TONES: Record<AnomalyVerdict, PillTone> = {
  * no verdict: on site the operator looks (Observe), then sends the robot on. */
 export function InvestigateCard() {
   const investigation = useInvestigationStore((s) => s.investigation);
-  if (!investigation?.anomalyId) return null;
+  if (!investigation) return null;
   return (
     <InvestigateCardBody key={investigation.anomalyId} investigation={investigation} anomalyId={investigation.anomalyId} />
   );

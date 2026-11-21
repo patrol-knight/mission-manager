@@ -309,46 +309,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/investigation/goto": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Go To
-         * @description Go here: sends the robot to look at a point, or retargets it.
-         */
-        post: operations["go_to_api_investigation_goto_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/investigation/goto/preview": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Preview Go To
-         * @description Where Go here would send the robot, without sending it.
-         */
-        post: operations["preview_go_to_api_investigation_goto_preview_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/investigation/verdict": {
         parameters: {
             query?: never;
@@ -895,29 +855,6 @@ export interface components {
             /** Zone Id */
             zone_id: string;
         };
-        /**
-         * GoToPreview
-         * @description Where Go here would send the robot, without sending it.
-         */
-        GoToPreview: {
-            /** Eta Sec */
-            eta_sec: number;
-            /** Length M */
-            length_m: number;
-            look_at: components["schemas"]["MapPoint"];
-            /** Route */
-            route: {
-                [key: string]: unknown;
-            };
-            target: components["schemas"]["MapPoint"];
-        };
-        /** GoToRequest */
-        GoToRequest: {
-            /** Lat */
-            lat: number;
-            /** Lon */
-            lon: number;
-        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -1094,7 +1031,7 @@ export interface components {
          * InvestigationKind
          * @enum {string}
          */
-        InvestigationKind: "anomaly" | "manual" | "camera";
+        InvestigationKind: "anomaly" | "camera";
         /**
          * InvestigationPhase
          * @enum {string}
@@ -1108,16 +1045,13 @@ export interface components {
          */
         InvestigationState: {
             /** Anomaly Id */
-            anomaly_id: string | null;
+            anomaly_id: string;
             /** Arrived At */
             arrived_at: string | null;
             /** Draft Verdict */
             draft_verdict: ("true_positive" | "false_positive" | "unclear") | null;
-            /** Eta Sec */
-            eta_sec: number | null;
             /** @default anomaly */
             kind: components["schemas"]["InvestigationKind"];
-            look_at: components["schemas"]["MapPoint"];
             phase: components["schemas"]["InvestigationPhase"];
             /** Robot Device Id */
             robot_device_id: string;
@@ -2108,72 +2042,6 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
-            };
-        };
-    };
-    go_to_api_investigation_goto_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["GoToRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["InvestigationState"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    preview_go_to_api_investigation_goto_preview_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["GoToRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GoToPreview"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
             };
         };
     };

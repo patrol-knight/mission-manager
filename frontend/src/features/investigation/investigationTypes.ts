@@ -12,24 +12,18 @@ export interface InvestigationTarget {
   lon: number | null;
 }
 
-/** "anomaly": sent to an anomaly, ends with a verdict. "camera": sent to a
- * tower whose camera is unhealthy, ends when dismissed. "manual": Explore,
- * sent by the operator to look at a point, ends when dismissed. */
-export type InvestigationKind = "anomaly" | "camera" | "manual";
+/** "anomaly": ends with a verdict. "camera": sent to a tower whose camera is
+ * unhealthy (a camera_unhealthy anomaly), ends when dismissed. */
+export type InvestigationKind = "anomaly" | "camera";
 
 export interface Investigation {
   kind: InvestigationKind;
-  /** Set for "anomaly" and "camera". */
-  anomalyId: string | null;
+  anomalyId: string;
   robotDeviceId: string;
   phase: InvestigationPhase;
-  /** What the robot is sent to look at: the anomaly, or the clicked point. */
-  lookAt: InvestigationTarget;
-  /** Where it stops to look, frozen at start. */
+  /** The anomaly's position snapped to the lanelet network, frozen at start. */
   target: InvestigationTarget;
   route: GeoJSON.Feature<GeoJSON.LineString>;
-  /** Estimated seconds from start to arrival. */
-  etaSec: number | null;
   /** null until the operator picks one on site; committed when the robot leaves. */
   draftVerdict: AnomalyVerdict | null;
   startedAt: string;
@@ -50,13 +44,11 @@ function targetFromRaw(raw: RawPoint): InvestigationTarget {
 export function investigationFromRaw(raw: RawInvestigation): Investigation {
   return {
     kind: raw.kind ?? "anomaly",
-    anomalyId: raw.anomaly_id ?? null,
+    anomalyId: raw.anomaly_id,
     robotDeviceId: raw.robot_device_id,
     phase: raw.phase,
-    lookAt: targetFromRaw(raw.look_at),
     target: targetFromRaw(raw.target),
     route: raw.route,
-    etaSec: raw.eta_sec ?? null,
     draftVerdict: raw.draft_verdict,
     startedAt: raw.started_at,
     arrivedAt: raw.arrived_at,
@@ -121,29 +113,4 @@ export function needsVerdict(investigation: Investigation | null): boolean {
     investigation.phase === "on_site" &&
     investigation.draftVerdict === null
   );
-}
-
-/** Where Explore would send the robot (POST /api/investigation/goto/preview). */
-export interface ExplorePreview {
-  lookAt: InvestigationTarget;
-  /** Where the robot would stop to look. */
-  target: InvestigationTarget;
-  /** From the robot, as it stood when previewed, to `target`. */
-  route: GeoJSON.Feature<GeoJSON.LineString>;
-  lengthM: number;
-  etaSec: number;
-}
-
-export type RawExplorePreview = Omit<components["schemas"]["GoToPreview"], "route"> & {
-  route: GeoJSON.Feature<GeoJSON.LineString>;
-};
-
-export function explorePreviewFromRaw(raw: RawExplorePreview): ExplorePreview {
-  return {
-    lookAt: targetFromRaw(raw.look_at),
-    target: targetFromRaw(raw.target),
-    route: raw.route,
-    lengthM: raw.length_m,
-    etaSec: raw.eta_sec,
-  };
 }
